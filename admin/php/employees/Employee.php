@@ -58,7 +58,6 @@ try {
     if ($db_connected) {
         $employee_summary = fetchEmployeeSummary($conn);
     }
-
 } catch (Exception $e) {
     $error_message = $e->getMessage();
     $db_connected = false;
@@ -170,7 +169,7 @@ function fetchEmployeeSummary($conn)
     $summary = [];
 
     // Fetch permanent employees by office
-    $query = "SELECT office, COUNT(*) as count FROM permanent 
+    $query = "SELECT office, COUNT(*) as count FROM permanent
               WHERE office IS NOT NULL AND TRIM(office) != ''
               GROUP BY office";
     $result = $conn->query($query);
@@ -194,7 +193,7 @@ function fetchEmployeeSummary($conn)
     $contractualTable = findContractualTable($conn);
 
     if ($contractualTable) {
-        $query = "SELECT office, COUNT(*) as count FROM `$contractualTable` 
+        $query = "SELECT office, COUNT(*) as count FROM `$contractualTable`
                   WHERE office IS NOT NULL AND TRIM(office) != ''
                   GROUP BY office";
         $result = $conn->query($query);
@@ -216,7 +215,7 @@ function fetchEmployeeSummary($conn)
     }
 
     // Fetch job order employees by office
-    $query = "SELECT office, COUNT(*) as count FROM job_order 
+    $query = "SELECT office, COUNT(*) as count FROM job_order
               WHERE office IS NOT NULL AND TRIM(office) != ''
               GROUP BY office";
     $result = $conn->query($query);
@@ -266,23 +265,23 @@ function fetchEmployeeDetails($conn)
 
     switch ($table) {
         case 'permanent':
-            $query = "SELECT 
+            $query = "SELECT
                       CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
                       COALESCE(position, 'Not specified') as position,
                       COALESCE(office, 'Not specified') as office,
                       'PERMANENT' as status
-                      FROM permanent 
+                      FROM permanent
                       WHERE office = ?
                       ORDER BY last_name, first_name";
             break;
 
         case 'job_order':
-            $query = "SELECT 
+            $query = "SELECT
                       CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
                       COALESCE(position, 'Not specified') as position,
                       COALESCE(office, 'Not specified') as office,
                       'JOB ORDER' as status
-                      FROM job_order 
+                      FROM job_order
                       WHERE office = ?
                       ORDER BY last_name, first_name";
             break;
@@ -291,12 +290,12 @@ function fetchEmployeeDetails($conn)
             // Handle contractual tables
             $contractualTable = findContractualTable($conn);
             if ($contractualTable) {
-                $query = "SELECT 
+                $query = "SELECT
                           CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
                           COALESCE(position, 'Not specified') as position,
                           COALESCE(office, 'Not specified') as office,
                           'CONTRACTUAL' as status
-                          FROM `$contractualTable` 
+                          FROM `$contractualTable`
                           WHERE office = ?
                           ORDER BY last_name, first_name";
             } else {
@@ -346,12 +345,12 @@ function fetchOfficeSummary($conn)
     $all_employees = [];
 
     // Fetch permanent employees
-    $query = "SELECT 
+    $query = "SELECT
               CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
               COALESCE(position, 'Not specified') as position,
               COALESCE(office, 'Not specified') as office,
               'PERMANENT' as status
-              FROM permanent 
+              FROM permanent
               WHERE office = ?
               ORDER BY last_name, first_name";
 
@@ -368,12 +367,12 @@ function fetchOfficeSummary($conn)
     // Find and fetch contractual employees
     $contractualTable = findContractualTable($conn);
     if ($contractualTable) {
-        $query = "SELECT 
+        $query = "SELECT
                   CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
                   COALESCE(position, 'Not specified') as position,
                   COALESCE(office, 'Not specified') as office,
                   'CONTRACTUAL' as status
-                  FROM `$contractualTable` 
+                  FROM `$contractualTable`
                   WHERE office = ?
                   ORDER BY last_name, first_name";
 
@@ -389,12 +388,12 @@ function fetchOfficeSummary($conn)
     }
 
     // Fetch job order employees
-    $query = "SELECT 
+    $query = "SELECT
               CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
               COALESCE(position, 'Not specified') as position,
               COALESCE(office, 'Not specified') as office,
               'JOB ORDER' as status
-              FROM job_order 
+              FROM job_order
               WHERE office = ?
               ORDER BY last_name, first_name";
 
@@ -441,14 +440,14 @@ function searchEmployees($conn)
     $results = [];
 
     // Search in permanent employees
-    $sql = "SELECT 
+    $sql = "SELECT
             CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
             COALESCE(position, 'Not specified') as position,
             COALESCE(office, 'Not specified') as office,
             'PERMANENT' as status
-            FROM permanent 
-            WHERE (CONCAT(first_name, ' ', last_name) LIKE ? 
-                   OR position LIKE ? 
+            FROM permanent
+            WHERE (CONCAT(first_name, ' ', last_name) LIKE ?
+                   OR position LIKE ?
                    OR office LIKE ?)
             ORDER BY last_name, first_name";
 
@@ -465,14 +464,14 @@ function searchEmployees($conn)
     // Search in contractual employees
     $contractualTable = findContractualTable($conn);
     if ($contractualTable) {
-        $sql = "SELECT 
+        $sql = "SELECT
                 CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
                 COALESCE(position, 'Not specified') as position,
                 COALESCE(office, 'Not specified') as office,
                 'CONTRACTUAL' as status
-                FROM `$contractualTable` 
-                WHERE (CONCAT(first_name, ' ', last_name) LIKE ? 
-                       OR position LIKE ? 
+                FROM `$contractualTable`
+                WHERE (CONCAT(first_name, ' ', last_name) LIKE ?
+                       OR position LIKE ?
                        OR office LIKE ?)
                 ORDER BY last_name, first_name";
 
@@ -488,14 +487,14 @@ function searchEmployees($conn)
     }
 
     // Search in job order
-    $sql = "SELECT 
+    $sql = "SELECT
             CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
             COALESCE(position, 'Not specified') as position,
             COALESCE(office, 'Not specified') as office,
             'JOB ORDER' as status
-            FROM job_order 
-            WHERE (CONCAT(first_name, ' ', last_name) LIKE ? 
-                   OR position LIKE ? 
+            FROM job_order
+            WHERE (CONCAT(first_name, ' ', last_name) LIKE ?
+                   OR position LIKE ?
                    OR office LIKE ?)
             ORDER BY last_name, first_name";
 
@@ -1908,7 +1907,7 @@ function searchEmployees($conn)
             transform: translateY(-2px);
         }
 
-            .brand-logo {
+        .brand-logo {
             width: 40px;
             height: 40px;
             object-fit: contain;
@@ -2710,7 +2709,7 @@ function searchEmployees($conn)
                     <?php else: ?>
                         <?php foreach ($employee_summary as $office_data):
                             $total_office = ($office_data['PERMANENT'] ?? 0) + ($office_data['CONTRACTUAL'] ?? 0) + ($office_data['JOB ORDER'] ?? 0);
-                            ?>
+                        ?>
                             <div class="office-card">
                                 <div class="office-header">
                                     <div class="office-title">
@@ -2842,7 +2841,7 @@ function searchEmployees($conn)
             table: ''
         };
 
-        document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function() {
             // ===============================================
             // TOAST NOTIFICATION FUNCTIONS
             // ===============================================
@@ -2912,7 +2911,12 @@ function searchEmployees($conn)
                 const now = new Date();
 
                 // Format date: Weekday, Month Day, Year
-                const optionsDate = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                const optionsDate = {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                };
                 const dateString = now.toLocaleDateString('en-US', optionsDate);
 
                 // Format time: HH:MM:SS AM/PM
@@ -2946,20 +2950,20 @@ function searchEmployees($conn)
             const sidebarOverlay = document.getElementById('sidebar-overlay');
 
             if (sidebarToggle && sidebarContainer) {
-                sidebarToggle.addEventListener('click', function () {
+                sidebarToggle.addEventListener('click', function() {
                     sidebarContainer.classList.toggle('active');
                     sidebarOverlay.classList.toggle('active');
                     document.body.style.overflow = sidebarContainer.classList.contains('active') ? 'hidden' : '';
                 });
 
-                sidebarOverlay.addEventListener('click', function () {
+                sidebarOverlay.addEventListener('click', function() {
                     sidebarContainer.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
                     document.body.style.overflow = '';
                 });
 
                 // Close sidebar when clicking outside on mobile
-                document.addEventListener('click', function (event) {
+                document.addEventListener('click', function(event) {
                     if (window.innerWidth < 768 &&
                         sidebarContainer.classList.contains('active') &&
                         !sidebarContainer.contains(event.target) &&
@@ -2978,7 +2982,7 @@ function searchEmployees($conn)
             const payrollDropdown = document.getElementById('payroll-dropdown');
 
             if (payrollToggle && payrollDropdown) {
-                payrollToggle.addEventListener('click', function (e) {
+                payrollToggle.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
                     payrollDropdown.classList.toggle('show');
@@ -2989,7 +2993,7 @@ function searchEmployees($conn)
                 });
 
                 // Close payroll dropdown when clicking outside
-                document.addEventListener('click', function (event) {
+                document.addEventListener('click', function(event) {
                     if (!payrollToggle.contains(event.target) && !payrollDropdown.contains(event.target)) {
                         payrollDropdown.classList.remove('show');
                         const chevron = payrollToggle.querySelector('.chevron');
@@ -3015,14 +3019,18 @@ function searchEmployees($conn)
             const errorMessage = document.getElementById('errorMessage');
 
             // Global functions for employee modal
-            window.viewEmployeeDetails = function (office, status, table) {
+            window.viewEmployeeDetails = function(office, status, table) {
                 // Update modal headers
                 modalOfficeName.textContent = office;
                 modalStatusType.textContent = status;
                 document.getElementById('modalTitle').textContent = 'Employee Details';
 
                 // Store for retry
-                lastRequest = { type: 'details', office, table };
+                lastRequest = {
+                    type: 'details',
+                    office,
+                    table
+                };
 
                 // Reset and open modal
                 resetModalState();
@@ -3073,14 +3081,17 @@ function searchEmployees($conn)
                     });
             };
 
-            window.viewAllEmployees = function (office) {
+            window.viewAllEmployees = function(office) {
                 // Update modal headers
                 modalOfficeName.textContent = office;
                 modalStatusType.textContent = 'ALL EMPLOYEES';
                 document.getElementById('modalTitle').textContent = 'Office Employee Summary';
 
                 // Store for retry
-                lastRequest = { type: 'summary', office };
+                lastRequest = {
+                    type: 'summary',
+                    office
+                };
 
                 // Reset and open modal
                 resetModalState();
@@ -3129,7 +3140,7 @@ function searchEmployees($conn)
             };
 
             // Retry function
-            window.retryLoad = function () {
+            window.retryLoad = function() {
                 if (lastRequest.type === 'details') {
                     viewEmployeeDetails(lastRequest.office, modalStatusType.textContent, lastRequest.table);
                 } else if (lastRequest.type === 'summary') {
@@ -3184,7 +3195,7 @@ function searchEmployees($conn)
 
             // Modal Event Listeners
             closeModalBtn.addEventListener('click', closeEmployeeModal);
-            modal.addEventListener('click', function (e) {
+            modal.addEventListener('click', function(e) {
                 if (e.target === modal) {
                     closeEmployeeModal();
                 }
@@ -3279,18 +3290,18 @@ function searchEmployees($conn)
             // Event listeners for search
             searchButton.addEventListener('click', performSearch);
 
-            searchInput.addEventListener('keypress', function (e) {
+            searchInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     performSearch();
                 }
             });
 
-            closeSearchBtn.addEventListener('click', function () {
+            closeSearchBtn.addEventListener('click', function() {
                 searchResultsModal.classList.remove('active');
                 document.body.style.overflow = '';
             });
 
-            searchResultsModal.addEventListener('click', function (e) {
+            searchResultsModal.addEventListener('click', function(e) {
                 if (e.target === searchResultsModal) {
                     searchResultsModal.classList.remove('active');
                     document.body.style.overflow = '';
@@ -3301,7 +3312,7 @@ function searchEmployees($conn)
             // UTILITY FUNCTIONS
             // ===============================================
             // Handle window resize
-            window.addEventListener('resize', function () {
+            window.addEventListener('resize', function() {
                 // Close sidebar if open when resizing to desktop
                 if (window.innerWidth >= 768 && sidebarContainer.classList.contains('active')) {
                     sidebarContainer.classList.remove('active');

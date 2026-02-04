@@ -368,7 +368,7 @@ if (isset($_GET['view_id']) && !isset($_GET['edit_id'])) {
             $html .= '</div>';
             $html .= '<div class="info-item">';
             $html .= '<span class="info-label">Office Assignment:</span>';
-            $html .= '<span class="info-value">' . htmlspecialchars($employee['office_assignment'] ?: 'N/A') . '</span>';
+            $html .= '<span class="info-value">' . htmlspecialchars($employee['office'] ?: 'N/A') . '</span>';
             $html .= '</div>';
             $html .= '<div class="info-item">';
             $html .= '<span class="info-label">Joining Date:</span>';
@@ -416,7 +416,7 @@ if (isset($_GET['view_id']) && !isset($_GET['edit_id'])) {
                     'employee_id' => $employee['employee_id'],
                     'full_name' => $employee['full_name'],
                     'designation' => $employee['designation'],
-                    'office_assignment' => $employee['office_assignment'],
+                    'office' => $employee['office'],
                     'joining_date' => formatDateForView($employee['joining_date']),
                     'profile_image_path' => $employee['profile_image_path']
                 ]
@@ -677,7 +677,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     employee_id = :employee_id,
                     full_name = :full_name,
                     designation = :designation,
-                    office_assignment = :office_assignment,
+                    office = :office,
                     period_from = :period_from,
                     period_to = :period_to,
                     wages = :wages,
@@ -718,7 +718,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     ':employee_id' => $employee_id,
                     ':full_name' => $full_name,
                     ':designation' => $designation,
-                    ':office_assignment' => $office,
+                    ':office' => $office,
                     ':period_from' => $period_from,
                     ':period_to' => $period_to,
                     ':wages' => $wages,
@@ -760,14 +760,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             } else {
                 // INSERT new record
                 $sql = "INSERT INTO contractofservice (
-                    employee_id, full_name, designation, office_assignment, period_from, period_to, wages, contribution, 
+                    employee_id, full_name, designation, office, period_from, period_to, wages, contribution, 
                     profile_image_path, first_name, last_name, mobile_number, email_address, date_of_birth, 
                     marital_status, gender, nationality, street_address, 
                     city, state_region, zip_code, password_hash, joining_date, eligibility, 
                     doc_id_path, doc_resume_path, doc_service_path, doc_appointment_path, doc_transcript_path, doc_eligibility_path,
                     status, created_at, updated_at
                 ) VALUES (
-                    :employee_id, :full_name, :designation, :office_assignment, :period_from, :period_to, :wages, :contribution, 
+                    :employee_id, :full_name, :designation, :office, :period_from, :period_to, :wages, :contribution, 
                     :profile_image_path, :first_name, :last_name, :mobile_number, :email_address, :date_of_birth, 
                     :marital_status, :gender, :nationality, :street_address, 
                     :city, :state_region, :zip_code, :password_hash, :joining_date, :eligibility, 
@@ -782,7 +782,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     ':employee_id' => $employee_id,
                     ':full_name' => $full_name,
                     ':designation' => $designation,
-                    ':office_assignment' => $office,
+                    ':office' => $office,
                     ':period_from' => $period_from,
                     ':period_to' => $period_to,
                     ':wages' => $wages,
@@ -864,7 +864,7 @@ try {
 
     // Fetch employees with pagination
     $sql = "SELECT 
-                id, employee_id, full_name, designation, office_assignment, 
+                id, employee_id, full_name, designation, office, 
                 period_from, period_to, wages, contribution,
                 email_address, mobile_number, status
             FROM 
@@ -1918,7 +1918,7 @@ $office_options = [
                                                 <?php echo htmlspecialchars($employee['designation']); ?>
                                             </td>
                                             <td class="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                                <?php echo htmlspecialchars($employee['office_assignment']); ?>
+                                                <?php echo htmlspecialchars($employee['office']); ?>
                                             </td>
                                             <td class="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                 <div class="flex flex-col">
@@ -2793,7 +2793,7 @@ $office_options = [
                     // Update header information
                     document.getElementById('viewEmployeeName').textContent = employee.full_name || 'N/A';
                     document.getElementById('viewEmployeePosition').textContent =
-                        `${employee.designation || 'N/A'} • ${employee.office_assignment || 'N/A'}`;
+                        `${employee.designation || 'N/A'} • ${employee.office || 'N/A'}`;
                     document.getElementById('viewEmployeeId').textContent = `ID: ${employee.employee_id || 'N/A'}`;
                     document.getElementById('viewEmployeeJoiningDate').textContent = `Joined: ${employee.joining_date || 'N/A'}`;
 
@@ -3347,7 +3347,7 @@ $office_options = [
             document.getElementById('employee_id_input').value = employeeData.employee_id || '';
             document.getElementById('full_name').value = employeeData.full_name || '';
             document.getElementById('designation').value = employeeData.designation || '';
-            document.getElementById('office').value = employeeData.office_assignment || '';
+            document.getElementById('office').value = employeeData.office || '';
             document.getElementById('period_from').value = employeeData.period_from || '';
             document.getElementById('period_to').value = employeeData.period_to || '';
             document.getElementById('wages').value = employeeData.wages || '';
