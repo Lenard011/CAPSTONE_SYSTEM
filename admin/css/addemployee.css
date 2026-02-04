@@ -1,0 +1,100 @@
+ 
+        .form-section {
+            padding: 2rem;
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            max-width: 960px; /* Adjust max-width as needed */
+            margin: 2rem auto;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .flowbite-input, .flowbite-select {
+            border-color: #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.625rem 1rem;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+            color: #374151;
+            background-color: #f9fafb;
+        }
+        .flowbite-input:focus, .flowbite-select:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 1px #2563eb;
+        }
+        .input-group {
+            position: relative;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #111827;
+            font-size: 0.875rem;
+        }
+        .input-group .tooltip-icon {
+            position: absolute;
+            top: 0.3rem;
+            right: 0;
+            cursor: help;
+            color: #6b7280;
+        }
+        .avatar-upload-section {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .avatar-preview {
+            width: 6rem;
+            height: 6rem;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+        .avatar-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .file-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            background-color: #f9fafb;
+            flex-grow: 1;
+        }
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+        .file-input-wrapper .file-upload-button {
+            background-color: #2563eb;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .file-input-wrapper .file-name {
+            color: #6b7280;
+            flex-grow: 1;
+        }
+        .file-info {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 0.25rem;
+        }
+    

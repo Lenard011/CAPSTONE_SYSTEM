@@ -1,0 +1,220 @@
+/* Basic Reset and Font */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f4f5f7;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+/* Panel Container */
+.columns-panel {
+    width: 300px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    padding-bottom: 5px; /* Adjust padding for button spacing */
+}
+
+/* Header Styling */
+.panel-header {
+    display: flex;
+    align-items: center;
+    padding: 5px 0 15px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.panel-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    color: #333;
+}
+
+.header-icon {
+    font-size: 20px;
+    margin-right: 10px;
+    color: #5d5dff; /* Blue color similar to the image */
+}
+
+/* Search Bar Styling */
+.search-bar {
+    display: flex;
+    align-items: center;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 15px 0;
+    background-color: #f7f7f7;
+}
+
+.search-bar input {
+    border: none;
+    outline: none;
+    flex-grow: 1;
+    font-size: 14px;
+    background-color: transparent;
+}
+
+.search-icon {
+    margin-right: 8px;
+    color: #888;
+}
+
+/* Show All / Lock All Row */
+.control-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    padding: 8px 0;
+    margin-bottom: 5px;
+}
+
+.show-all-toggle, .lock-all-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.show-all-toggle {
+    color: #5d5dff; /* Blue for 'Show All' */
+}
+
+.toggle-icon {
+    font-size: 16px;
+    margin-right: 8px;
+    padding: 3px 5px;
+    border-radius: 4px;
+    background-color: #e0e0ff;
+}
+
+.lock-all-toggle .lock-icon {
+    font-size: 14px;
+    color: #888;
+    margin-left: 8px;
+}
+
+/* Column List */
+.column-list {
+    max-height: 250px; /* Limit height and allow scroll */
+    overflow-y: auto;
+    padding-right: 5px; /* Space for the scrollbar to not overlay content */
+}
+
+/* Individual Column Item */
+.column-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    font-size: 15px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.column-item:first-child {
+    border-top: none;
+}
+
+.drag-handle {
+    margin-right: 10px;
+    color: #888;
+    cursor: grab;
+}
+
+.column-item label {
+    flex-grow: 1;
+    margin-left: 10px;
+    cursor: pointer;
+}
+
+.column-item .lock-icon {
+    color: #bbb;
+    font-size: 14px;
+    margin-left: auto;
+}
+
+/* Locked columns styling */
+.column-item .lock-icon.locked {
+    color: #5d5dff; /* Blue for the active lock */
+}
+
+/* Custom Checkbox Styling to match the image */
+.column-item input[type="checkbox"] {
+    /* Hide the default checkbox */
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    outline: none;
+}
+
+/* Checked state */
+.column-item input[type="checkbox"]:checked {
+    border-color: #5d5dff; /* Blue border */
+    background-color: #5d5dff; /* Blue background */
+}
+
+/* Checkmark icon for checked state */
+.column-item input[type="checkbox"]:checked::after {
+    content: '\f00c'; /* Font Awesome check icon */
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 12px;
+    color: white;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Footer Buttons */
+.panel-footer {
+    padding: 15px 0;
+    border-top: 1px solid #e0e0e0;
+}
+
+.panel-footer button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.panel-footer button i {
+    margin-right: 8px;
+}
+
+/* Reset Button */
+.reset-button {
+    background-color: #ffffff;
+    color: #5d5dff;
+    border: 1px solid #5d5dff;
+}
+
+.reset-button:hover {
+    background-color: #f0f0ff;
+}
+
+/* Add Button */
+.add-button {
+    background-color: #5d5dff;
+    color: #ffffff;
+    border: none;
+}
+
+.add-button:hover {
+    background-color: #4c4ccf;
+}
