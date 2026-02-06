@@ -696,7 +696,7 @@ if (isset($_GET['logout'])) {
       max-width: 900px;
       margin: 20px auto;
       background-color: white;
-      border: 2px solid #000;
+      /* border: 1px solid #000; */
       font-size: 14px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       font-family: Arial, sans-serif;
@@ -706,19 +706,18 @@ if (isset($_GET['logout'])) {
     .table-container {
       width: 100%;
       overflow-x: auto;
-      margin-bottom: 20px;
       -webkit-overflow-scrolling: touch;
     }
 
     .form-table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1200px;
     }
 
     .form-table th,
     .form-table td {
-      border: 1px solid #000;
+      border: 2px solid #000;
+      border-top: 0;
       padding: 8px 10px;
       line-height: 1.3;
       height: 40px;
@@ -733,17 +732,19 @@ if (isset($_GET['logout'])) {
 
     .certification-box {
       border: 1px solid #000;
-      padding: 15px;
-      margin-bottom: 20px;
-      border-radius: 4px;
+      border-top: 0;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      padding-left: 5px;
+      padding-right: 5px;
       background-color: #fff;
+      font-size: 12px;
     }
 
     .signature-line {
       border-bottom: 1px solid #000;
-      min-width: 200px;
-      display: inline-block;
-      margin-left: 10px;
+      /* min-width: 200px; */
+      /* display: inline-block; */
       height: 20px;
     }
 
@@ -1122,7 +1123,7 @@ if (isset($_GET['logout'])) {
     <!-- FORM CONTAINER - MATCHING THE JOB ORDER STRUCTURE -->
     <div class="form-container">
       <!-- HEADER -->
-      <div class="flex border-b border-black w-full">
+      <div class="flex  border-2 border-black w-full">
         <div class="text-center font-bold text-sm w-[600px] ">
           <p>OBLIGATION REQUEST AND STATUS</p>
           <p>LOCAL GOVERNMENT UNIT OF PALUAN</p>
@@ -1130,98 +1131,109 @@ if (isset($_GET['logout'])) {
 
         <!-- SERIAL NO, DATE, FUND CLUSTER -->
         <div class="flex flex-col font-semibold text-xs border-l-[2px] border-black">
-            <div>Serial No.: <span class="border-b border-black w-[178px] inline-block"></span></div>
-            <div>Date: <span class="border-b border-black w-[208px] inline-block"></span></div>
-            <div>Fund Cluster: <span class="border-b border-black w-[160px] inline-block"></span></div>
+          <div>Serial No.: <span class="border-b border-black w-[178px] inline-block"></span></div>
+          <div>Date: <span class="border-b border-black w-[208px] inline-block"></span></div>
+          <div>Fund Cluster: <span class="border-b border-black w-[160px] inline-block"></span></div>
         </div>
       </div>
 
       <!-- PAYEE INFORMATION TABLE -->
-      <div class="table-container mb-4">
-        <table class="w-full text-xs text-left text-gray-900 border-collapse form-table">
-          <tbody>
+      <div class="table-container">
+        <table class="w-full text-xs text-left border-t-0 text-gray-900 border-collapse form-table">
+          <thead>
             <tr>
               <td class="w-[13.5%] header-cell">Payee</td>
-              <td colspan="3" class="font-bold uppercase">angelica jane v. alfaro  co.</td>
+              <td colspan="4" class="font-bold uppercase">angelica jane v. alfaro co.</td>
             </tr>
             <tr>
               <td class="w-[13.5%] header-cell">Office</td>
-              <td colspan="3">Office of the Municipal Mayor</td>
+              <td colspan="4">Office of the Municipal Mayor</td>
             </tr>
             <tr>
               <td class="w-[13.5%] header-cell">Address</td>
-              <td colspan="3">Paluan, Occidental Mindoro</td>
+              <td colspan="4">Paluan, Occidental Mindoro</td>
             </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- OBLIGATION ITEMS TABLE -->
-      <div class="table-container mb-4">
-        <table class="w-full text-xs text-left text-gray-900 border-collapse form-table">
-          <thead>
-            <tr>
-              <th class="w-[10%] text-center header-cell">Responsibility Center</th>
-              <th class="w-[45%] text-center header-cell">Particulars</th>
-              <th class="w-[10%] text-center header-cell mobile-hide">MFO/PAP</th>
-              <th class="w-[10%] text-center header-cell mobile-hide">UACS Object Code</th>
-              <th class="w-[10%] text-center header-cell">Amount</th>
+            <tr class="border-t-2 border-black">
+              <td class="w-[13.5%] header-cell">Responsibility Center</td>
+              <td class="text-center w-[30%]">Particulars</td>
+              <td class="text-center w-[7%]">MFO/PAP</td>
+              <td class="text-center w-[10%]">UACS Object Code</td>
+              <td class="text-center w-[20%]">Amount</td>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td class="text-center">A.</td>
-              <td>WAGES - Contractual Employees<br>For the period 35/TH/MB/13-15,2025</td>
+            <tr class="">
+              <td class="text-center"></td>
+              <td class="font-bold text-center">
+                <div class="flex flex-col h-[300px] justify-between">
+                  <div class="flex flex-col">
+                    <div>WAGERS</div>
+                    <div>September 1-15, 2025</div>
+                  </div>
+                  <div class="justify-end flex">Total</div>
+                </div>
+              </td>
               <td class="mobile-hide"></td>
               <td class="mobile-hide"></td>
-              <td class="text-right">59,156.67</td>
+              <td class="text-right font-bold">
+                <div class="flex flex-col h-[300px] justify-between">
+                  <div>
+                    59,156.67
+                  </div>
+                  <div class="flex flex-row justify-between">
+                    <div>
+                      ₱
+                    </div>
+                    <div>
+                      59,156.67
+                    </div>
+                  </div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <!-- CERTIFICATION SECTION A -->
-      <div class="certification-box">
-        <p class="font-bold">A.</p>
-        <p class="mb-4">Certified: Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal</p>
-
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Signature: <span class="signature-line"></span></div>
-          <div>Printed Name: <strong>JOREL B. VICENTE</strong></div>
-        </div>
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Position: <em>Administrative Officer IV (HRMO II)</em></div>
-          <div class="text-center font-bold">Head, Requesting</div>
-        </div>
-        <div class="mt-4">
-          Date: <span class="signature-line"></span>
-        </div>
-      </div>
 
       <!-- CERTIFICATION SECTION B -->
-      <div class="certification-box">
-        <p class="font-bold">B.</p>
-        <p class="mb-4">Certified: Allotment available and obligated for the purpose/adjustment necessary as indicated above</p>
+      <div class="flex flex-row w-full border-t-0 border border-black">
+        <!-- Set A  -->
+        <div class="certification-box w-[740px]">
+          <p class="mb-4 font-medium"><span class="font-bold">A. Certified:</span> Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal</p>
 
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Signature: <span class="signature-line"></span></div>
-          <div>Printed Name: <strong>EFIGENIA V. SAN AGUSTIN</strong></div>
+          <div class="flex flex-col font-semibold w-full">
+            <div class="w-full mb-[-3px]">Signature<span class="ml-[22px] mr-1">:</span><span class="border-b border-black w-[365px] inline-block"></span></div>
+            <div class="w-full mb-[-3px]">Printed Name: <span class="uppercase font-bold ml-[120px]">HON. michael d. diaz</span></div>
+            <div class="w-full">Position <span class="ml-[27px]">:</span><span class="font-bold ml-[143px]">Municipal Mayor</span></div>
+          </div>
+          <div class="mt-3 text-center">Head, Requesting Office/Authorized Representative</div>
+          <div class="w-full font-semibold mt-2 mb-2">Date<span class="ml-[52px] mr-3">:</span><span class="border-b border-black w-[350px] inline-block "></span></div>
         </div>
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Position: <em>Municipal Budget Officer</em></div>
-          <div></div>
-        </div>
-        <div class="mt-4">
-          Date: <span class="signature-line"></span>
+        <!-- Set B  -->
+        <div class="certification-box w-[685px]">
+          <p class="mb-4 font-medium"><span class="font-bold">B. Certified:</span> Allotment available and obligated for the purpose/adjustment necessary as indicated above</p>
+
+          <div class="flex flex-col font-semibold w-full">
+            <div class="w-full mb-[-3px]">Signature<span class="ml-[22px] mr-1">:</span><span class="border-b border-black w-[330px] inline-block"></span></div>
+            <div class="w-full mb-[-3px]">Printed Name: <span class="uppercase font-bold ml-[90px]">Efiginia v. san agustin</span></div>
+            <div class="w-full">Position <span class="ml-[27px]">:</span><span class="font-bold ml-[97px]">Municipal Budget Officer</span></div>
+          </div>
+          <div class="w-full font-semibold mt-9 mb-2">Date<span class="ml-[52px] mr-3">:</span><span class="border-b border-black w-[316px] inline-block "></span></div>
         </div>
       </div>
 
       <!-- STATUS OF OBLIGATION SECTION -->
-      <div class="mt-6">
-        <p class="font-bold border-b border-black px-1 py-1">C. STATUS OF OBLIGATION</p>
-        <div class="table-container mt-2">
+      <div class="">
+        <p class="font-bold border-2 border-t-0 border-black px-1 py-1">C. STATUS OF OBLIGATION</p>
+        <div class="table-container">
           <table class="w-full text-sm text-left text-gray-900 border-collapse form-table">
             <thead>
+              <tr class="font-bold">
+                <th class="text-center" colspan="3">Reference</th>
+                <th class="text-center" colspan="5">Amount</th>
+              </tr>
               <tr>
                 <th class="text-center header-cell" rowspan="2">Date</th>
                 <th class="text-center header-cell" rowspan="2">Particulars</th>
