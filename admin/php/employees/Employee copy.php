@@ -128,8 +128,8 @@ function fetchDashboardStats($conn)
         'total_employees' => 0
     ];
 
-    // Count permanent employees (only active ones based on your table structure)
-    $query = "SELECT COUNT(*) as count FROM permanent WHERE status = 'Active'";
+    // Count permanent employees
+    $query = "SELECT COUNT(*) as count FROM permanent";
     $result = $conn->query($query);
     if ($result && $row = $result->fetch_assoc()) {
         $stats['total_permanent'] = (int) $row['count'];
@@ -139,16 +139,15 @@ function fetchDashboardStats($conn)
     $contractualTable = findContractualTable($conn);
 
     if ($contractualTable) {
-        // Count contractual employees (only active ones based on your table structure)
-        $query = "SELECT COUNT(*) as count FROM `$contractualTable` WHERE (status = 'active' OR status IS NULL)";
+        $query = "SELECT COUNT(*) as count FROM `$contractualTable`";
         $result = $conn->query($query);
         if ($result && $row = $result->fetch_assoc()) {
             $stats['total_contractual'] = (int) $row['count'];
         }
     }
 
-    // Count job order employees (only non-archived ones based on your table structure)
-    $query = "SELECT COUNT(*) as count FROM job_order WHERE is_archived = 0 OR is_archived IS NULL";
+    // Count job order employees
+    $query = "SELECT COUNT(*) as count FROM job_order";
     $result = $conn->query($query);
     if ($result && $row = $result->fetch_assoc()) {
         $stats['total_joborder'] = (int) $row['count'];
@@ -169,9 +168,9 @@ function fetchEmployeeSummary($conn)
 {
     $summary = [];
 
-    // Fetch permanent employees by office (only active ones)
-    $query = "SELECT office, COUNT(*) as count FROM permanent 
-              WHERE office IS NOT NULL AND TRIM(office) != '' AND status = 'Active'
+    // Fetch permanent employees by office
+    $query = "SELECT office, COUNT(*) as count FROM permanent
+              WHERE office IS NOT NULL AND TRIM(office) != ''
               GROUP BY office";
     $result = $conn->query($query);
 
@@ -194,9 +193,8 @@ function fetchEmployeeSummary($conn)
     $contractualTable = findContractualTable($conn);
 
     if ($contractualTable) {
-        // Fetch contractual employees by office (only active ones)
         $query = "SELECT office, COUNT(*) as count FROM `$contractualTable`
-                  WHERE office IS NOT NULL AND TRIM(office) != '' AND (status = 'active' OR status IS NULL)
+                  WHERE office IS NOT NULL AND TRIM(office) != ''
                   GROUP BY office";
         $result = $conn->query($query);
 
@@ -216,9 +214,9 @@ function fetchEmployeeSummary($conn)
         }
     }
 
-    // Fetch job order employees by office (only non-archived)
+    // Fetch job order employees by office
     $query = "SELECT office, COUNT(*) as count FROM job_order
-              WHERE office IS NOT NULL AND TRIM(office) != '' AND (is_archived = 0 OR is_archived IS NULL)
+              WHERE office IS NOT NULL AND TRIM(office) != ''
               GROUP BY office";
     $result = $conn->query($query);
 
@@ -264,32 +262,27 @@ function fetchEmployeeDetails($conn)
 
     // Prepare query based on table type
     $query = "";
-    $params = [];
-
-    // Sanitize office parameter
-    $office = trim($office);
 
     switch ($table) {
         case 'permanent':
             $query = "SELECT
-                      COALESCE(CONCAT(first_name, ' ', last_name), full_name) as full_name,
+                      CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
                       COALESCE(position, 'Not specified') as position,
                       COALESCE(office, 'Not specified') as office,
                       'PERMANENT' as status
                       FROM permanent
-                      WHERE office = ? AND status = 'Active'
+                      WHERE office = ?
                       ORDER BY last_name, first_name";
             break;
 
         case 'job_order':
-            // Updated to use correct column names from your job_order table structure
             $query = "SELECT
-                      COALESCE(CONCAT(first_name, ' ', last_name), employee_name) as full_name,
-                      COALESCE(occupation, 'Not specified') as position,
+                      CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
+                      COALESCE(position, 'Not specified') as position,
                       COALESCE(office, 'Not specified') as office,
                       'JOB ORDER' as status
                       FROM job_order
-                      WHERE office = ? AND (is_archived = 0 OR is_archived IS NULL)
+                      WHERE office = ?
                       ORDER BY last_name, first_name";
             break;
 
@@ -297,14 +290,13 @@ function fetchEmployeeDetails($conn)
             // Handle contractual tables
             $contractualTable = findContractualTable($conn);
             if ($contractualTable) {
-                // Updated to use correct column names from your contractofservice table structure
                 $query = "SELECT
-                          COALESCE(CONCAT(first_name, ' ', last_name), full_name) as full_name,
-                          COALESCE(designation, 'Not specified') as position,
+                          CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
+                          COALESCE(position, 'Not specified') as position,
                           COALESCE(office, 'Not specified') as office,
                           'CONTRACTUAL' as status
                           FROM `$contractualTable`
-                          WHERE office = ? AND (status = 'active' OR status IS NULL)
+                          WHERE office = ?
                           ORDER BY last_name, first_name";
             } else {
                 return json_encode(['success' => false, 'error' => 'Contractual table not found']);
@@ -351,16 +343,15 @@ function fetchOfficeSummary($conn)
     }
 
     $all_employees = [];
-    $office = trim($office);
 
-    // Fetch permanent employees (only active)
+    // Fetch permanent employees
     $query = "SELECT
-              COALESCE(CONCAT(first_name, ' ', last_name), full_name) as full_name,
+              CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
               COALESCE(position, 'Not specified') as position,
               COALESCE(office, 'Not specified') as office,
               'PERMANENT' as status
               FROM permanent
-              WHERE office = ? AND status = 'Active'
+              WHERE office = ?
               ORDER BY last_name, first_name";
 
     $stmt = $conn->prepare($query);
@@ -377,12 +368,12 @@ function fetchOfficeSummary($conn)
     $contractualTable = findContractualTable($conn);
     if ($contractualTable) {
         $query = "SELECT
-                  COALESCE(CONCAT(first_name, ' ', last_name), full_name) as full_name,
-                  COALESCE(designation, 'Not specified') as position,
+                  CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
+                  COALESCE(position, 'Not specified') as position,
                   COALESCE(office, 'Not specified') as office,
                   'CONTRACTUAL' as status
                   FROM `$contractualTable`
-                  WHERE office = ? AND (status = 'active' OR status IS NULL)
+                  WHERE office = ?
                   ORDER BY last_name, first_name";
 
         $stmt = $conn->prepare($query);
@@ -396,14 +387,14 @@ function fetchOfficeSummary($conn)
         $stmt->close();
     }
 
-    // Fetch job order employees (only non-archived)
+    // Fetch job order employees
     $query = "SELECT
-              COALESCE(CONCAT(first_name, ' ', last_name), employee_name) as full_name,
-              COALESCE(occupation, 'Not specified') as position,
+              CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
+              COALESCE(position, 'Not specified') as position,
               COALESCE(office, 'Not specified') as office,
               'JOB ORDER' as status
               FROM job_order
-              WHERE office = ? AND (is_archived = 0 OR is_archived IS NULL)
+              WHERE office = ?
               ORDER BY last_name, first_name";
 
     $stmt = $conn->prepare($query);
@@ -448,22 +439,20 @@ function searchEmployees($conn)
     $search_term = "%" . $query . "%";
     $results = [];
 
-    // Search in permanent employees (only active)
+    // Search in permanent employees
     $sql = "SELECT
-            COALESCE(CONCAT(first_name, ' ', last_name), full_name) as full_name,
+            CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
             COALESCE(position, 'Not specified') as position,
             COALESCE(office, 'Not specified') as office,
             'PERMANENT' as status
             FROM permanent
             WHERE (CONCAT(first_name, ' ', last_name) LIKE ?
-                   OR full_name LIKE ?
                    OR position LIKE ?
                    OR office LIKE ?)
-            AND status = 'Active'
             ORDER BY last_name, first_name";
 
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+    $stmt->bind_param("sss", $search_term, $search_term, $search_term);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -476,20 +465,18 @@ function searchEmployees($conn)
     $contractualTable = findContractualTable($conn);
     if ($contractualTable) {
         $sql = "SELECT
-                COALESCE(CONCAT(first_name, ' ', last_name), full_name) as full_name,
-                COALESCE(designation, 'Not specified') as position,
+                CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
+                COALESCE(position, 'Not specified') as position,
                 COALESCE(office, 'Not specified') as office,
                 'CONTRACTUAL' as status
                 FROM `$contractualTable`
                 WHERE (CONCAT(first_name, ' ', last_name) LIKE ?
-                       OR full_name LIKE ?
-                       OR designation LIKE ?
+                       OR position LIKE ?
                        OR office LIKE ?)
-                AND (status = 'active' OR status IS NULL)
                 ORDER BY last_name, first_name";
 
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+        $stmt->bind_param("sss", $search_term, $search_term, $search_term);
         $stmt->execute();
         $result = $stmt->get_result();
 
@@ -499,22 +486,20 @@ function searchEmployees($conn)
         $stmt->close();
     }
 
-    // Search in job order (only non-archived)
+    // Search in job order
     $sql = "SELECT
-            COALESCE(CONCAT(first_name, ' ', last_name), employee_name) as full_name,
-            COALESCE(occupation, 'Not specified') as position,
+            CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
+            COALESCE(position, 'Not specified') as position,
             COALESCE(office, 'Not specified') as office,
             'JOB ORDER' as status
             FROM job_order
             WHERE (CONCAT(first_name, ' ', last_name) LIKE ?
-                   OR employee_name LIKE ?
-                   OR occupation LIKE ?
+                   OR position LIKE ?
                    OR office LIKE ?)
-            AND (is_archived = 0 OR is_archived IS NULL)
             ORDER BY last_name, first_name";
 
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+    $stmt->bind_param("sss", $search_term, $search_term, $search_term);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -531,7 +516,6 @@ function searchEmployees($conn)
     ]);
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -1812,53 +1796,8 @@ function searchEmployees($conn)
         .text-red-800 {
             color: #991b1b;
         }
-
-        /* Utility Classes */
-        .hidden {
-            display: none !important;
-        }
-
-        .flex {
-            display: flex;
-        }
-
-        .items-center {
-            align-items: center;
-        }
-
-        .justify-center {
-            justify-content: center;
-        }
-
-        .text-center {
-            text-align: center;
-        }
-
-        /* Status badge colors */
-        .bg-indigo-100 {
-            background-color: #e0e7ff;
-        }
-
-        .text-indigo-800 {
-            color: #3730a3;
-        }
-
-        .bg-amber-100 {
-            background-color: #fef3c7;
-        }
-
-        .text-amber-800 {
-            color: #92400e;
-        }
-
-        .bg-red-100 {
-            background-color: #fee2e2;
-        }
-
-        .text-red-800 {
-            color: #991b1b;
-        }
     </style>
+
     <style>
         /* Your existing CSS styles remain the same */
         :root {
@@ -2491,39 +2430,39 @@ function searchEmployees($conn)
         }
 
         /* Dropdown Menu in Sidebar */
-        .sidebar-dropdown-menu {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
-            margin-left: 2.5rem;
-        }
+    .sidebar-dropdown-menu {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      margin-left: 2.5rem;
+    }
 
-        .sidebar-dropdown-menu.open {
-            max-height: 500px;
-        }
+    .sidebar-dropdown-menu.open {
+      max-height: 500px;
+    }
 
-        .sidebar-dropdown-item {
-            display: flex;
-            align-items: center;
-            padding: 0.5rem 1rem;
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            border-radius: 8px;
-            margin-bottom: 0.25rem;
-            transition: all 0.3s ease;
-            font-size: 0.85rem;
-        }
+    .sidebar-dropdown-item {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      color: rgba(255, 255, 255, 0.8);
+      text-decoration: none;
+      border-radius: 8px;
+      margin-bottom: 0.25rem;
+      transition: all 0.3s ease;
+      font-size: 0.85rem;
+    }
 
-        .sidebar-dropdown-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            transform: translateX(5px);
-        }
+    .sidebar-dropdown-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      transform: translateX(5px);
+    }
 
-        .sidebar-dropdown-item i {
-            font-size: 0.75rem;
-            margin-right: 0.5rem;
-        }
+    .sidebar-dropdown-item i {
+      font-size: 0.75rem;
+      margin-right: 0.5rem;
+    }
     </style>
 </head>
 

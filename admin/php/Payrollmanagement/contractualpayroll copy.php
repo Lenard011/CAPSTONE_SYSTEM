@@ -715,65 +715,217 @@ if (isset($_GET['logout'])) {
         /* CSS to ensure only the form content is visible and formatted for print */
         @media print {
 
-            /* Force all text to be black */
-            * {
-                color: #000000 !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
+            /* Hide ALL navigation, UI elements, and buttons */
+            nav,
+            .navbar,
+            .sidebar,
+            .sidebar-overlay,
+            .breadcrumb-container,
+            .mt-8.pt-4.border-t.border-gray-200,
+            #user-menu-button,
+            .user-dropdown,
+            .mobile-toggle,
+            .datetime-container,
+            .user-menu,
+            .navbar-left,
+            .navbar-right,
+            .navbar-container,
+            .navbar-brand,
+            .mobile-brand,
+            .main-content>.breadcrumb-container,
+            button,
+            a,
+            .print-hide {
+                display: none !important;
             }
 
-            /* Ensure the payroll container prints properly */
-            .max-w-7xl.mx-auto.bg-white.shadow-lg.p-2.mt-4 {
+            /* Show only the payroll content */
+            body * {
+                visibility: hidden;
+            }
+
+            .main-content,
+            .main-content * {
+                visibility: visible;
+            }
+
+            .main-content {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Set page to landscape with minimal margins */
+            @page {
+                size: landscape;
+                margin: 0.25cm;
+            }
+
+            /* Reset body for printing */
+            body {
+                background-color: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 10px !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            /* Make the payroll container full width */
+            .max-w-7xl.mx-auto.bg-white.shadow-lg.rounded-lg.p-6 {
                 max-width: 100% !important;
                 margin: 0 !important;
-                padding: 5mm !important;
+                padding: 2mm !important;
                 box-shadow: none !important;
                 border-radius: 0 !important;
-                border: 1px solid #000 !important;
+                background-color: white !important;
                 width: 100% !important;
-                page-break-inside: avoid !important;
-                page-break-after: avoid !important;
+                page-break-inside: avoid;
+                position: relative;
+                top: 0;
+                left: 0;
             }
 
             /* Ensure table fits perfectly */
+            .payroll-table-container {
+                overflow: visible !important;
+                width: 100% !important;
+                page-break-inside: avoid;
+            }
+
             .payroll-table {
                 width: 100% !important;
-                font-size: 8px !important;
+                font-size: 7px !important;
                 table-layout: fixed !important;
                 border-collapse: collapse !important;
-                page-break-inside: avoid !important;
+                page-break-inside: avoid;
             }
 
             /* Thin borders for all cells */
             .payroll-table th,
             .payroll-table td {
                 border: 0.5px solid #000000 !important;
-                padding: 2px 3px !important;
-                line-height: 1.1 !important;
-                min-height: 18px !important;
-                vertical-align: middle !important;
+                padding: 1px 2px !important;
+                line-height: 1 !important;
+                height: auto !important;
+            }
+
+            /* Remove background colors and ensure black text */
+            .payroll-table,
+            .payroll-table th,
+            .payroll-table td,
+            .section-box,
+            .section-box p,
+            .max-w-7xl.mx-auto.bg-white.shadow-lg.rounded-lg.p-6,
+            .max-w-7xl.mx-auto.bg-white.shadow-lg.rounded-lg.p-6 * {
+                color: #000000 !important;
+                background-color: transparent !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
 
             /* Table header styling */
-            .payroll-table thead th {
+            .payroll-table thead tr th {
                 background-color: #f0f0f0 !important;
                 font-weight: bold !important;
                 border: 0.5px solid #000000 !important;
-                font-size: 8px !important;
-                padding: 3px 4px !important;
             }
 
-            /* Signature sections */
+            /* Total row styling */
+            .payroll-table tr.bg-gray-100 {
+                background-color: #f5f5f5 !important;
+                font-weight: bold !important;
+            }
+
+            /* Right align numeric cells */
+            .payroll-table td.text-right {
+                text-align: right !important;
+            }
+
+            /* Compact signature sections */
             .section-box {
-                page-break-inside: avoid !important;
+                page-break-inside: avoid;
                 border: 0.5px solid #000000 !important;
                 margin-bottom: 2mm !important;
-                padding: 1.5mm !important;
+                padding: 1mm !important;
+                height: auto !important;
                 min-height: 25mm !important;
-                font-size: 9px !important;
+            }
+
+            /* Grid layout for signature boxes */
+            .grid.grid-cols-1.md\:grid-cols-3 {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 2mm !important;
+                page-break-inside: avoid;
+                margin-bottom: 3mm !important;
+            }
+
+            /* Reduce all spacing */
+            .text-center.mb-4 {
+                margin-bottom: 1mm !important;
+            }
+
+            .flex.flex-col.md\:flex-row.justify-between.text-xs.mb-4.border-b.pb-2 {
+                margin-bottom: 1mm !important;
+                padding-bottom: 1mm !important;
+                border-bottom: 0.5px solid #000000 !important;
+            }
+
+            p.text-xs.italic.mb-4 {
+                margin-bottom: 1mm !important;
+            }
+
+            /* Signature lines */
+            .border-b.border-gray-600 {
+                border-bottom: 0.5px solid #000000 !important;
+                width: 100%;
+                display: inline-block;
+            }
+
+            .border-t.border-gray-600 {
+                border-top: 0.5px solid #000000 !important;
+            }
+
+            /* Reduce spacing */
+            .mt-8 {
+                margin-top: 3mm !important;
+            }
+
+            .mt-2 {
+                margin-top: 1mm !important;
+            }
+
+            /* Ensure proper text alignment in signature boxes */
+            .text-center {
+                text-align: center !important;
+            }
+
+            /* Fix for multi-row headers */
+            .payroll-table thead tr th[rowspan="2"],
+            .payroll-table thead tr th[colspan] {
+                vertical-align: middle !important;
+            }
+
+            /* Ensure all text is visible */
+            .payroll-table th,
+            .payroll-table td {
+                overflow: visible !important;
+                white-space: normal !important;
+                word-wrap: break-word !important;
+            }
+
+            /* Hide the print button itself */
+            #print-btn,
+            #save-btn,
+            #next-btn {
+                display: none !important;
             }
         }
-
 
         /* Scrollbar Styling */
         ::-webkit-scrollbar {
@@ -1117,323 +1269,286 @@ if (isset($_GET['logout'])) {
         </div>
 
         <div class="max-w-7xl mx-auto bg-white shadow-lg rounded-lg p-2 mt-4">
-            <!-- to print -->
-            <div>
-                <div class="absolute right-12">
-                    <p class="text-xs font-medium">Appendix 33</p>
+            <div class="absolute right-12">
+                <p class="text-xs font-medium">Appendix 33</p>
+            </div>
+            <!-- Header Section with Appendix on top right -->
+            <div class="relative mb-4 mt-5">
+                <div class="text-center">
+                    <h1 class="text-lg font-bold">PAYROLL</h1>
                 </div>
-                <!-- Header Section with Appendix on top right -->
-                <div class="relative mb-4 mt-5">
-                    <div class="text-center">
-                        <h1 class="text-lg font-bold">PAYROLL</h1>
-                    </div>
 
-                    <!-- Period section below PAYROLL title -->
-                    <div class="flex justify-center font-bold">
-                        <div class="flex items-center">
-                            <span class="whitespace-nowrap text-[12px]">For the period:</span>
-                            <div class="relative">
-                                <span class="relative z-10 px-1 text-[12px] uppercase">September 29, 2025</span>
-                                <div class="absolute bottom-0 mb-[4px] left-0 right-0 border-b border-gray-500"></div>
-                            </div>
+                <!-- Period section below PAYROLL title -->
+                <div class="flex justify-center font-bold">
+                    <div class="flex items-center">
+                        <span class="whitespace-nowrap text-[12px]">For the period:</span>
+                        <div class="relative">
+                            <span class="relative z-10 px-1 text-[12px] uppercase">September 29, 2025</span>
+                            <div class="absolute bottom-0 mb-[4px] left-0 right-0 border-b border-gray-500"></div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Entity Information Section -->
-                <div class="flex flex-col md:flex-row justify-between text-xs mb-4  pb-2">
-                    <div class="mb-2 md:mb-0">
-                        <div class="flex items-center mb-2">
-                            <strong class="whitespace-nowrap text-[12px]">Entity Name:</strong>
-                            <div class="relative flex-1">
-                                <span class="relative z-10 px-1 bg-white text-[11px]">LGU PALUAN</span>
-                                <div class="absolute bottom-0 left-0 right-0 w-[200px] border-b border-gray-500"></div>
-                            </div>
-                        </div>
-                        <div class="flex">
-                            <strong class="whitespace-nowrap text-[12px]">Fund/Cluster:</strong>
-                            <div class="relative flex-1">
-                                <div class="absolute bottom-0 left-0 right-0 w-[195px] border-b border-gray-500"></div>
-                            </div>
+            <!-- Entity Information Section -->
+            <div class="flex flex-col md:flex-row justify-between text-xs mb-4  pb-2">
+                <div class="mb-2 md:mb-0">
+                    <div class="flex items-center mb-2">
+                        <strong class="whitespace-nowrap text-[12px]">Entity Name:</strong>
+                        <div class="relative flex-1">
+                            <span class="relative z-10 px-1 bg-white text-[11px]">LGU PALUAN</span>
+                            <div class="absolute bottom-0 left-0 right-0 w-[200px] border-b border-gray-500"></div>
                         </div>
                     </div>
-                    <div class="text-left mr-20">
-                        <div class="flex justify-end mb-2">
-                            <strong class="whitespace-nowrap">Payroll No. :</strong>
-                            <div class="relative w-[119px]">
-                                <span class="relative z-10 px-1 bg-white"></span>
-                                <div class="absolute bottom-0 left-0 right-0 border-b border-gray-500"></div>
-                            </div>
+                    <div class="flex">
+                        <strong class="whitespace-nowrap text-[12px]">Fund/Cluster:</strong>
+                        <div class="relative flex-1">
+                            <div class="absolute bottom-0 left-0 right-0 w-[195px] border-b border-gray-500"></div>
                         </div>
-                        <div class="flex justify-end">
-                            <strong class="whitespace-nowrap">Sheet:</strong>
-                            <div class="relative">
-                                <!-- Split the text into separate underlined parts -->
-                                <div class="flex justify-between">
-                                    <div class="relative">
-                                        <span class="relative z-10 px-1 bg-white ml-4">1</span>
-                                        <div class="absolute bottom-0 left-0 w-[50px] right-0 border-b border-gray-500"></div>
-                                    </div>
-                                    <span class="mx-1 ml-5 mr-1">of</span>
-                                    <div class="relative">
-                                        <span class="relative z-10 px-1 bg-white ml-4">1</span>
-                                        <div class="absolute bottom-0 left-0 w-[50px] right-0 border-b border-gray-500"></div>
-                                    </div>
-                                    <span class="ml-5">Sheets</span>
+                    </div>
+                </div>
+                <div class="text-left mr-20">
+                    <div class="flex justify-end mb-2">
+                        <strong class="whitespace-nowrap">Payroll No. :</strong>
+                        <div class="relative w-[119px]">
+                            <span class="relative z-10 px-1 bg-white"></span>
+                            <div class="absolute bottom-0 left-0 right-0 border-b border-gray-500"></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <strong class="whitespace-nowrap">Sheet:</strong>
+                        <div class="relative">
+                            <!-- Split the text into separate underlined parts -->
+                            <div class="flex justify-between">
+                                <div class="relative">
+                                    <span class="relative z-10 px-1 bg-white ml-4">1</span>
+                                    <div class="absolute bottom-0 left-0 w-[50px] right-0 border-b border-gray-500"></div>
                                 </div>
+                                <span class="mx-1 ml-5 mr-1">of</span>
+                                <div class="relative">
+                                    <span class="relative z-10 px-1 bg-white ml-4">1</span>
+                                    <div class="absolute bottom-0 left-0 w-[50px] right-0 border-b border-gray-500"></div>
+                                </div>
+                                <span class="ml-5">Sheets</span>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <p class="text-xs italic mb-4">
-                    We acknowledge receipt of cash shown opposite our names as full compensation for services rendered for the period covered.
-                </p>
+            <p class="text-xs italic mb-4">
+                We acknowledge receipt of cash shown opposite our names as full compensation for services rendered for the period covered.
+            </p>
 
-                <div class="payroll-table-container overflow-auto border bg-white">
-                    <table class="payroll-table w-full border-collapse text-sm">
-                        <thead class="bg-gray-100 text-gray-700">
-                            <!-- Header Row 1 -->
-                            <tr class="border-b uppercase">
-                                <th rowspan="2" class="border p-2 w-10">#</th>
-                                <th rowspan="2" class="border p-2">Name</th>
-                                <th rowspan="2" class="border p-2">Position</th>
-                                <th rowspan="2" class="border p-2">Address</th>
-                                <th colspan="3" class="border p-2 text-center bg-blue-50">Compensation</th>
-                                <th colspan="3" class="border p-2 text-center bg-red-50">Deductions</th>
-                                <th colspan="2" class="border p-2 text-center bg-green-50">Community Tax Certificate</th>
-                                <th rowspan="2" class="border p-2 text-center bg-green-50">
-                                    <div>Net Amount</div>
-                                    <div>Due</div>
-                                </th>
-                                <th rowspan="2" class="border p-2">Signature</th>
-                            </tr>
+            <div class="payroll-table-container overflow-auto border rounded-lg bg-white">
+                <table class="payroll-table w-full border-collapse text-sm">
+                    <thead class="bg-gray-100 text-gray-700">
+                        <!-- Header Row 1 -->
+                        <tr class="border-b uppercase">
+                            <th rowspan="2" class="border p-2 w-10">#</th>
+                            <th rowspan="2" class="border p-2">Name</th>
+                            <th rowspan="2" class="border p-2">Position</th>
+                            <th rowspan="2" class="border p-2">Address</th>
+                            <th colspan="3" class="border p-2 text-center bg-blue-50">Compensation</th>
+                            <th colspan="3" class="border p-2 text-center bg-red-50">Deductions</th>
+                            <th colspan="2" class="border p-2 text-center bg-green-50">Community Tax Certificate</th>
+                            <th rowspan="2" class="border p-2 text-center bg-green-50">Net Amount Due</th>
+                            <th rowspan="2" class="border p-2">Signature</th>
+                        </tr>
 
-                            <!-- Header Row 2 (Sub-headers) -->
-                            <tr class="border-b text-xs">
-                                <!-- Compensation sub-headers -->
-                                <th class="border p-1 print-header">
-                                    <div>Monthly</div>
-                                    <div>Salaries</div>
-                                    <div>and Wages</div>
-                                </th>
-                                <th class="border p-1 print-header">
-                                    <div>Other</div>
-                                    <div>Compen-</div>
-                                    <div>sation</div>
-                                </th>
-                                <th class="border p-1 print-header">
-                                    <div>Gross</div>
-                                    <div>Amount</div>
-                                    <div>Earned</div>
-                                </th>
+                        <!-- Header Row 2 (Sub-headers) -->
+                        <tr class="border-b text-xs">
+                            <!-- Compensation sub-headers -->
+                            <th class="border p-1">Monthly Salaries and Wages</th>
+                            <th class="border p-1">Other Compensation</th>
+                            <th class="border p-1">Gross Amount Earned</th>
 
-                                <!-- Deductions sub-headers -->
-                                <th class="border p-1 print-header">
-                                    <div>With-</div>
-                                    <div>holding</div>
-                                    <div>Tax</div>
-                                </th>
-                                <th class="border p-1 print-header">
-                                    <div>SSS</div>
-                                    <div>Contri-</div>
-                                    <div>bution</div>
-                                </th>
-                                <th class="border p-1 print-header">
-                                    <div>Total</div>
-                                    <div>Deduc-</div>
-                                    <div>tions</div>
-                                </th>
+                            <!-- Deductions sub-headers -->
+                            <th class="border p-1">Withholding Tax</th>
+                            <th class="border p-1">SSS Contribution</th>
+                            <th class="border p-1">Total Deductions</th>
 
-                                <!-- Community Tax Certificate sub-headers -->
-                                <th class="border p-1 print-header">
-                                    <div>Number</div>
-                                </th>
-                                <th class="border p-1 print-header">
-                                    <div>Date</div>
-                                </th>
-                            </tr>
-                        </thead>
+                            <!-- Community Tax Certificate sub-headers -->
+                            <th class="border p-1">Number</th>
+                            <th class="border p-1">Date</th>
+                        </tr>
+                    </thead>
 
-                        <tbody>
-                            <!-- Row 1 -->
-                            <tr class="border-b hover:bg-gray-50">
-                                <td class="border p-2 text-center">1</td>
-                                <td class="border p-2">JASPER A. GARCIA</td>
-                                <td class="border p-2">MPIO Focal Person</td>
-                                <td class="border p-2">Paluan Occ. Mdo.</td>
+                    <tbody>
+                        <!-- Row 1 -->
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="border p-2 text-center">1</td>
+                            <td class="border p-2">JASPER A. GARCIA</td>
+                            <td class="border p-2">MPIO Focal Person</td>
+                            <td class="border p-2">Paluan Occ. Mdo.</td>
 
-                                <!-- Compensation -->
-                                <td class="border p-2 text-right">20,000.00</td>
-                                <td class="border p-2 text-right"></td>
-                                <td class="border p-2 text-right">10,000.00</td>
+                            <!-- Compensation -->
+                            <td class="border p-2 text-right">20,000.00</td>
+                            <td class="border p-2 text-right"></td>
+                            <td class="border p-2 text-right">10,000.00</td>
 
-                                <!-- Deductions -->
-                                <td class="border p-2 text-right"></td>
-                                <td class="border p-2 text-right">780.00</td>
-                                <td class="border p-2 text-right">780.00</td>
+                            <!-- Deductions -->
+                            <td class="border p-2 text-right"></td>
+                            <td class="border p-2 text-right">780.00</td>
+                            <td class="border p-2 text-right">780.00</td>
 
-                                <!-- Community Tax Cert -->
-                                <td class="border p-2 text-center">08411568</td>
-                                <td class="border p-2 text-center">9/29/2025</td>
+                            <!-- Community Tax Cert -->
+                            <td class="border p-2 text-center">08411568</td>
+                            <td class="border p-2 text-center">9/29/2025</td>
 
-                                <!-- Net Amount -->
-                                <td class="border p-2 text-right font-bold">19,220.00</td>
+                            <!-- Net Amount -->
+                            <td class="border p-2 text-right font-bold">19,220.00</td>
 
-                                <!-- Signature -->
-                                <td class="border p-2"></td>
-                            </tr>
+                            <!-- Signature -->
+                            <td class="border p-2"></td>
+                        </tr>
 
-                            <!-- Row 2 -->
-                            <tr class="border-b hover:bg-gray-50">
-                                <td class="border p-2 text-center">2</td>
-                                <td class="border p-2">APRIL V. AGUAVILLA</td>
-                                <td class="border p-2">MPIO Focal Person</td>
-                                <td class="border p-2">Paluan Occ. Mdo.</td>
+                        <!-- Row 2 -->
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="border p-2 text-center">2</td>
+                            <td class="border p-2">APRIL V. AGUAVILLA</td>
+                            <td class="border p-2">MPIO Focal Person</td>
+                            <td class="border p-2">Paluan Occ. Mdo.</td>
 
-                                <!-- Compensation -->
-                                <td class="border p-2 text-right">20,000.00</td>
-                                <td class="border p-2 text-right"></td>
-                                <td class="border p-2 text-right">10,000.00</td>
+                            <!-- Compensation -->
+                            <td class="border p-2 text-right">20,000.00</td>
+                            <td class="border p-2 text-right"></td>
+                            <td class="border p-2 text-right">10,000.00</td>
 
-                                <!-- Deductions -->
-                                <td class="border p-2 text-right"></td>
-                                <td class="border p-2 text-right">780.00</td>
-                                <td class="border p-2 text-right">780.00</td>
+                            <!-- Deductions -->
+                            <td class="border p-2 text-right"></td>
+                            <td class="border p-2 text-right">780.00</td>
+                            <td class="border p-2 text-right">780.00</td>
 
-                                <!-- Community Tax Cert -->
-                                <td class="border p-2 text-center">08411568</td>
-                                <td class="border p-2 text-center">9/29/2025</td>
+                            <!-- Community Tax Cert -->
+                            <td class="border p-2 text-center">08411568</td>
+                            <td class="border p-2 text-center">9/29/2025</td>
 
-                                <!-- Net Amount -->
-                                <td class="border p-2 text-right font-bold">19,220.00</td>
+                            <!-- Net Amount -->
+                            <td class="border p-2 text-right font-bold">19,220.00</td>
 
-                                <!-- Signature -->
-                                <td class="border p-2"></td>
-                            </tr>
+                            <!-- Signature -->
+                            <td class="border p-2"></td>
+                        </tr>
 
-                            <!-- Total Row -->
-                            <tr class="bg-gray-100 font-bold border-t-2">
-                                <td colspan="4" class="border p-2 text-right">TOTAL AMOUNT</td>
-                                <td class="border p-2 text-right">40,000.00</td>
-                                <td class="border p-2 text-right">0.00</td>
-                                <td class="border p-2 text-right">20,000.00</td>
-                                <td class="border p-2 text-right">0.00</td>
-                                <td class="border p-2 text-right">1,560.00</td>
-                                <td class="border p-2 text-right">1,560.00</td>
-                                <td class="border p-2"></td>
-                                <td class="border p-2"></td>
-                                <td class="border p-2 text-right">38,440.00</td>
-                                <td class="border p-2"></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                        <!-- Total Row -->
+                        <tr class="bg-gray-100 font-bold border-t-2">
+                            <td colspan="4" class="border p-2 text-right">TOTAL AMOUNT</td>
+                            <td class="border p-2 text-right">40,000.00</td>
+                            <td class="border p-2 text-right">0.00</td>
+                            <td class="border p-2 text-right">20,000.00</td>
+                            <td class="border p-2 text-right">0.00</td>
+                            <td class="border p-2 text-right">1,560.00</td>
+                            <td class="border p-2 text-right">1,560.00</td>
+                            <td class="border p-2"></td>
+                            <td class="border p-2"></td>
+                            <td class="border p-2 text-right">38,440.00</td>
+                            <td class="border p-2"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-                <div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 text-xs">
-                        <!-- Set A -->
-                        <div class="section-box border  border-gray-300 px-2">
-                            <p class="font-bold">A. CERTIFIED: Services duly rendered as stated.</p>
-                            <div class="flex flex-row mt-10 items-end justify-center w-full">
-                                <div class="">
-                                    <p class="font-bold text-center">JOREL B. VICENTE</p>
-                                    <p class="text-center  border-gray-600 italic text-[11px] ">Administrative Officer IV (HRMO II)</p>
-                                </div>
-                                <div class="flex flex-row  ml-4">
-                                    <p class="relative">Date</p>
-                                    <p class="border-b border-gray-600 min-w-[70px]"></p>
-                                </div>
-                            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 text-xs mb-8">
+                <!-- Set A -->
+                <div class="section-box border  border-gray-300 px-2">
+                    <p class="font-bold">A. CERTIFIED: Services duly rendered as stated.</p>
+                    <div class="flex flex-row mt-10 items-end justify-center w-full">
+                        <div class="">
+                            <p class="font-bold text-center">JOREL B. VICENTE</p>
+                            <p class="text-center  border-gray-600 italic text-[11px] ">Administrative Officer IV (HRMO II)</p>
                         </div>
-
-                        <!-- Set C -->
-                        <div class="section-box border border-gray-300 px-2">
-                            <div class="flex justify-between">
-                                <p class="font-bold">C. CERTIFIED: Cash available in the amount of</p>
-                                <p class="font-bold text-right border-b border-gray-600 min-w-[50px]"><span>₱ </span>2,250.00</p>
-                            </div>
-                            <div class="flex flex-row mt-10 items-end justify-between w-full">
-                                <div class="flex-1"></div> <!-- Empty spacer left -->
-                                <div class="mr-5">
-                                    <p class="font-bold text-center">ARLENE A. DE VEAS</p>
-                                    <p class="text-center border-gray-600 italic text-[11px]">Municipal Treasurer</p>
-                                </div>
-                                <div class="flex flex-row items-end">
-                                    <p class="relative">Date</p>
-                                    <p class="border-b border-gray-600 min-w-[70px] ml-2"></p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Set F -->
-                        <div class="section-box border border-gray-300 px-2">
-                            <div class="flex justify-between">
-                                <p class="font-bold">F. CERTIFIED: Each employee whose name appears on the payroll has been paid the amount as indicated opposite his/her name.</p>
-                            </div>
-                            <div class="mt-5">
-                                <p class="font-bold text-center">EVA V. DUEÑAS</p>
-                                <p class="text-center border-gray-600 italic text-[11px]">Disbursing Officer</p>
-                            </div>
+                        <div class="flex flex-row  ml-4">
+                            <p class="relative">Date</p>
+                            <p class="border-b border-gray-600 min-w-[70px]"></p>
                         </div>
                     </div>
+                </div>
 
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 text-xs">
-                        <!-- Set B -->
-                        <div class="section-box border  border-gray-300 px-2">
-                            <p class="font-bold">B. CERTIFIED: Supporting documents complete and proper.</p>
-                            <div class="flex flex-row mt-5 items-end justify-center w-full">
-                                <div class="">
-                                    <p class="font-bold text-center">JULIE ANNE T. VALLESTERO, CPA</p>
-                                    <p class="text-center  border-gray-600 italic text-[11px] ">Municipal Accountant</p>
-                                </div>
-                                <div class="flex flex-row  ml-4">
-                                    <p class="relative">Date</p>
-                                    <p class="border-b border-gray-600 min-w-[70px]"></p>
-                                </div>
-                            </div>
+                <!-- Set C -->
+                <div class="section-box border border-gray-300 px-2">
+                    <div class="flex justify-between">
+                        <p class="font-bold">C. CERTIFIED: Cash available in the amount of</p>
+                        <p class="font-bold text-right border-b border-gray-600 min-w-[50px]"><span>₱ </span>2,250.00</p>
+                    </div>
+                    <div class="flex flex-row mt-10 items-end justify-between w-full">
+                        <div class="flex-1"></div> <!-- Empty spacer left -->
+                        <div class="mr-5">
+                            <p class="font-bold text-center">ARLENE A. DE VEAS</p>
+                            <p class="text-center border-gray-600 italic text-[11px]">Municipal Treasurer</p>
                         </div>
-
-                        <!-- Set D -->
-                        <div class="section-box border  border-gray-300 px-2">
-                            <p class="font-bold">D. APPROVED: For payment</p>
-                            <div class="flex flex-row mt-10 items-end justify-center w-full">
-                                <div class="">
-                                    <p class="font-bold text-center">HON. MICHAEL D. DIAZ</p>
-                                    <p class="text-center  border-gray-600 italic text-[11px] ">Municipal Mayor</p>
-                                </div>
-                                <div class="flex flex-row  ml-4">
-                                    <p class="relative">Date</p>
-                                    <p class="border-b border-gray-600 min-w-[70px]"></p>
-                                </div>
-                            </div>
+                        <div class="flex flex-row items-end">
+                            <p class="relative">Date</p>
+                            <p class="border-b border-gray-600 min-w-[70px] ml-2"></p>
                         </div>
-
-                        <!-- Set E -->
-                        <div class="section-box border border-gray-300 p-2">
-                            <p class="font-bold">E.</p>
-                            <div class="flex justify-between">
-                                <p>ORS/BURS No. :</p>
-                                <p class="border-b border-gray-600 w-3/5"></p>
-                            </div>
-                            <div class="flex justify-between">
-                                <p>Date</p>
-                                <p class="border-b border-gray-600 w-3/5"></p>
-                            </div>
-                            <div class="flex justify-between">
-                                <p>Jev No. :</p>
-                                <p class="border-b border-gray-600 w-3/5"></p>
-                            </div>
-                            <div class="flex justify-between">
-                                <p>Date</p>
-                                <p class="border-b border-gray-600 w-3/5"></p>
-                            </div>
-                        </div>
-
                     </div>
                 </div>
+
+                <!-- Set F -->
+                <div class="section-box border border-gray-300 px-2">
+                    <div class="flex justify-between">
+                        <p class="font-bold">F. CERTIFIED: Each employee whose name appears on the payroll has been paid the amount as indicated opposite his/her name.</p>
+                    </div>
+                    <div class="mt-5">
+                        <p class="font-bold text-center">EVA V. DUEÑAS</p>
+                        <p class="text-center border-gray-600 italic text-[11px]">Disbursing Officer</p>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="grid grid-cols-1 md:grid-cols-3 text-xs">
+                <!-- Set B -->
+                <div class="section-box border  border-gray-300 px-2">
+                    <p class="font-bold">B. CERTIFIED: Supporting documents complete and proper.</p>
+                    <div class="flex flex-row mt-5 items-end justify-center w-full">
+                        <div class="">
+                            <p class="font-bold text-center">JULIE ANNE T. VALLESTERO, CPA</p>
+                            <p class="text-center  border-gray-600 italic text-[11px] ">Municipal Accountant</p>
+                        </div>
+                        <div class="flex flex-row  ml-4">
+                            <p class="relative">Date</p>
+                            <p class="border-b border-gray-600 min-w-[70px]"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Set D -->
+                <div class="section-box border  border-gray-300 px-2">
+                    <p class="font-bold">D. APPROVED: For payment</p>
+                    <div class="flex flex-row mt-10 items-end justify-center w-full">
+                        <div class="">
+                            <p class="font-bold text-center">HON. MICHAEL D. DIAZ</p>
+                            <p class="text-center  border-gray-600 italic text-[11px] ">Municipal Mayor</p>
+                        </div>
+                        <div class="flex flex-row  ml-4">
+                            <p class="relative">Date</p>
+                            <p class="border-b border-gray-600 min-w-[70px]"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Set E -->
+                <div class="section-box border border-gray-300 p-2">
+                    <p class="font-bold">E.</p>
+                    <div class="flex justify-between">
+                        <p>ORS/BURS No. :</p>
+                        <p class="border-b border-gray-600 w-3/5"></p>
+                    </div>
+                    <div class="flex justify-between">
+                        <p>Date</p>
+                        <p class="border-b border-gray-600 w-3/5"></p>
+                    </div>
+                    <div class="flex justify-between">
+                        <p>Jev No. :</p>
+                        <p class="border-b border-gray-600 w-3/5"></p>
+                    </div>
+                    <div class="flex justify-between">
+                        <p>Date</p>
+                        <p class="border-b border-gray-600 w-3/5"></p>
+                    </div>
+                </div>
+
             </div>
 
             <div class="mt-8 pt-4 border-t border-gray-200 print-hide">
@@ -1502,220 +1617,18 @@ if (isset($_GET['logout'])) {
             const printButton = document.getElementById('print-btn');
             if (printButton) {
                 printButton.addEventListener('click', function() {
-                    // Store original values
-                    const originalBodyOverflow = document.body.style.overflow;
-                    const originalBodyBackground = document.body.style.backgroundColor;
+                    // Store the current body overflow
+                    const originalOverflow = document.body.style.overflow;
 
-                    // Get the exact payroll container div
-                    const payrollContent = document.querySelector('.max-w-7xl.mx-auto.bg-white.shadow-lg.rounded-lg.p-2.mt-4');
+                    // Set body to hidden overflow to prevent scrollbars during print
+                    document.body.style.overflow = 'hidden';
 
-                    // Create a deep clone with all styles preserved
-                    const clone = payrollContent.cloneNode(true);
+                    // Trigger the print dialog
+                    window.print();
 
-                    // Remove any print-hide elements from the clone
-                    clone.querySelectorAll('.print-hide').forEach(el => {
-                        if (el.parentNode) {
-                            el.parentNode.removeChild(el);
-                        }
-                    });
-
-                    // Remove any buttons and navigation from the clone
-                    clone.querySelectorAll('button, a[href*="logout"], .mt-8.pt-4.border-t.border-gray-200').forEach(el => {
-                        if (el.parentNode) {
-                            el.parentNode.removeChild(el);
-                        }
-                    });
-
-                    // Create a clean print container
-                    const printContainer = document.createElement('div');
-                    printContainer.id = 'print-container';
-                    printContainer.style.cssText = `
-                        position: fixed !important;
-                        top: 0 !important;
-                        left: 0 !important;
-                        width: 100% !important;
-                        height: 100% !important;
-                        z-index: 99999 !important;
-                        background: white !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        overflow: visible !important;
-                        visibility: visible !important;
-                        display: block !important;
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    `;
-
-                    // Style the cloned content for printing
-                    clone.style.cssText = `
-                        max-width: 100% !important;
-                        margin: 0 auto !important;
-                        padding: 10mm !important;
-                        box-shadow: none !important;
-                        border-radius: 0 !important;
-                        border: 1px solid #000 !important;
-                        width: 100% !important;
-                        page-break-inside: avoid !important;
-                        page-break-after: avoid !important;
-                        background: white !important;
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    `;
-
-                    // Ensure all text is black for printing
-                    clone.querySelectorAll('*').forEach(el => {
-                        el.style.color = '#000000 !important';
-                        el.style.backgroundColor = 'transparent !important';
-                    });
-
-                    // Apply print-specific table styling
-                    const table = clone.querySelector('.payroll-table');
-                    if (table) {
-                        table.style.cssText = `
-                            width: 100% !important;
-                            font-size: 8px !important;
-                            table-layout: fixed !important;
-                            border-collapse: collapse !important;
-                            page-break-inside: avoid !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        `;
-
-                        // Style all table cells
-                        table.querySelectorAll('th, td').forEach(cell => {
-                            cell.style.cssText = `
-                                border: 0.5px solid #000000 !important;
-                                padding: 2px 3px !important;
-                                line-height: 1.1 !important;
-                                height: auto !important;
-                                min-height: 18px !important;
-                                vertical-align: middle !important;
-                                color: #000000 !important;
-                                background-color: transparent !important;
-                                -webkit-print-color-adjust: exact !important;
-                                print-color-adjust: exact !important;
-                                font-size: 8px !important;
-                            `;
-                        });
-
-                        // Style table headers
-                        table.querySelectorAll('thead th').forEach(th => {
-                            th.style.cssText = `
-                                background-color: #f0f0f0 !important;
-                                font-weight: bold !important;
-                                border: 0.5px solid #000000 !important;
-                                font-size: 8px !important;
-                                padding: 3px 4px !important;
-                                color: #000000 !important;
-                                -webkit-print-color-adjust: exact !important;
-                                print-color-adjust: exact !important;
-                            `;
-                        });
-                    }
-
-                    // Style section boxes
-                    clone.querySelectorAll('.section-box').forEach(box => {
-                            box.style.cssText = `
-                            page-break-inside: avoid !important;
-                            border: 0.5px solid #000000 !important;
-                            margin-bottom: 2mm !important;
-                            padding: 1.5mm !important;
-                            height: auto !important;
-                            min-height: 25mm !important;
-                            font-size: 9px !important;
-                            color: #000000 !important;
-                            background-color: transparent !important;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        `;
-                    });
-
-                    // Add the clone to print container
-                    printContainer.appendChild(clone);
-
-                    // Add print container to body
-                    document.body.appendChild(printContainer);
-
-                    // Hide all other elements
-                    const allElements = document.body.children;
-                    for (let element of allElements) {
-                        if (element.id !== 'print-container') {
-                            element.style.visibility = 'hidden';
-                            element.style.display = 'none';
-                        }
-                    }
-
-                    // Set body for printing
-                    document.body.style.cssText = `
-                        background: white !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        width: 100% !important;
-                        height: auto !important;
-                        overflow: visible !important;
-                        visibility: visible !important;
-                    `;
-
-                    // Set print page size and margins
-                    const style = document.createElement('style');
-                    style.innerHTML = `
-                    @page {
-                        size: landscape;
-                        margin: 0.25cm 0.5cm;
-                    }
-                    
-                    @media print {
-                        * {
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        
-                        body {
-                            background: white !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
-                        
-                        #print-container {
-                            position: absolute !important;
-                            left: 0 !important;
-                            top: 0 !important;
-                            width: 100% !important;
-                            height: auto !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            background: white !important;
-                            overflow: visible !important;
-                        }
-                    }
-                `;
-                    document.head.appendChild(style);
-
-                    // Wait a moment for styles to apply, then print
+                    // Restore the original overflow after a short delay
                     setTimeout(() => {
-                        window.print();
-
-                        // Clean up after printing
-                        setTimeout(() => {
-                            // Remove print container and style
-                            if (document.getElementById('print-container')) {
-                                document.body.removeChild(printContainer);
-                            }
-                            if (style.parentNode) {
-                                style.parentNode.removeChild(style);
-                            }
-
-                            // Restore visibility of all elements
-                            for (let element of allElements) {
-                                element.style.visibility = '';
-                                element.style.display = '';
-                            }
-
-                            // Restore original values
-                            document.body.style.overflow = originalBodyOverflow;
-                            document.body.style.backgroundColor = originalBodyBackground;
-                            document.body.style.background = '';
-                        }, 500);
+                        document.body.style.overflow = originalOverflow;
                     }, 100);
                 });
             }
