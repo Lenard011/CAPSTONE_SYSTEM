@@ -3,22 +3,22 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    // Redirect to login page
-    header('Location: login.php');
-    exit();
+  // Redirect to login page
+  header('Location: login.php');
+  exit();
 }
 
 // Logout functionality
 if (isset($_GET['logout'])) {
-    // Destroy all session data
-    session_destroy();
+  // Destroy all session data
+  session_destroy();
 
-    // Clear remember me cookie
-    setcookie('remember_user', '', time() - 3600, "/");
+  // Clear remember me cookie
+  setcookie('remember_user', '', time() - 3600, "/");
 
-    // Redirect to login page
-    header('Location: login.php');
-    exit();
+  // Redirect to login page
+  header('Location: login.php');
+  exit();
 }
 
 ?>
@@ -29,285 +29,40 @@ if (isset($_GET['logout'])) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Job Order Payroll</title>
-  <!-- Remove duplicate CSS imports -->
-  <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <title>Job Order Obligation Request</title>
+  <!-- Use consistent CSS imports -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
-
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <!-- Add Inter font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              "50": "#eff6ff",
+              "100": "#dbeafe",
+              "200": "#bfdbfe",
+              "300": "#93c5fd",
+              "400": "#60a5fa",
+              "500": "#3b82f6",
+              "600": "#2563eb",
+              "700": "#1d4ed8",
+              "800": "#1e40af",
+              "900": "#1e3a8a",
+              "950": "#172554"
+            }
+          },
+          fontFamily: {
+            'sans': ['Inter', 'system-ui', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
   <style>
-
-    /* Sidebar */
-        .sidebar-container {
-            position: fixed;
-            left: 0;
-            top: 70px;
-            width: 260px;
-            height: calc(100vh - 70px);
-            background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
-            z-index: 999;
-            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-        }
-
-        .sidebar-container::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .sidebar-container::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .sidebar-container::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 3px;
-        }
-
-        .sidebar {
-            height: 100%;
-            padding: 1.5rem 0;
-        }
-
-        .sidebar-content {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            padding: 0 1rem;
-        }
-
-        .sidebar-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.9rem 1.25rem;
-            color: rgba(255, 255, 255, 0.85);
-            text-decoration: none;
-            transition: all 0.3s ease;
-            border-radius: 12px;
-            margin-bottom: 0.25rem;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .sidebar-item::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            height: 100%;
-            width: 4px;
-            background: white;
-            transform: scaleY(0);
-            transition: transform 0.3s ease;
-            border-radius: 0 4px 4px 0;
-        }
-
-        .sidebar-item:hover {
-            background: rgba(255, 255, 255, 0.12);
-            color: white;
-            transform: translateX(4px);
-        }
-
-        .sidebar-item:hover::before {
-            transform: scaleY(1);
-        }
-
-        .sidebar-item.active {
-            background: rgba(255, 255, 255, 0.18);
-            color: white;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .sidebar-item.active::before {
-            transform: scaleY(1);
-        }
-
-        .sidebar-item i {
-            font-size: 1.2rem;
-            width: 24px;
-            text-align: center;
-        }
-
-        .sidebar-item span {
-            font-size: 0.95rem;
-            font-weight: 600;
-            flex: 1;
-        }
-
-        .sidebar-item.logout {
-            color: #fecaca;
-            margin-top: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            padding-top: 1rem;
-        }
-
-        .sidebar-item.logout:hover {
-            background: rgba(239, 68, 68, 0.15);
-            color: #fecaca;
-        }
-    /* Custom styles to achieve the precise border and typography look */
-    .form-container {
-      font-family: Arial, sans-serif;
-      border: 2px solid #000;
-      max-width: 1000px;
-      margin: 20px auto;
-      padding: 10px;
-      font-size: 12px;
-      background-color: white;
-    }
-
-    /* Styling for all table cells (th and td) for borders */
-    .form-table th,
-    .form-table td {
-      border: 1px solid #000;
-      padding: 4px;
-      line-height: 1.2;
-      vertical-align: top;
-    }
-
-    .header-cell {
-      background-color: #f0f0f0;
-      font-weight: bold;
-    }
-
-    .signature-line {
-      border-bottom: 1px solid #000;
-      margin: 5px 0 2px 0;
-      line-height: 1;
-      min-width: 150px;
-      display: inline-block;
-    }
-
-    .certification-box {
-      border: 1px solid #000;
-      padding: 8px;
-      margin: 10px 0;
-    }
-
-    /* Print styles to hide non-form elements when printing */
-    @media print {
-
-      /* Hide navigation, sidebar, breadcrumbs, and action buttons */
-      nav,
-      aside,
-      .breadcrumb-container,
-      .action-buttons,
-      .action-cell,
-      .sidebar-overlay,
-      .flowbite-modal {
-        display: none !important;
-      }
-
-      /* Reset main content margins for printing */
-      main {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 100% !important;
-      }
-
-      /* Ensure form container fits bond paper */
-      .form-container {
-        border: 2px solid #000;
-        margin: 0 auto;
-        padding: 10px;
-        width: 100%;
-        max-width: 100%;
-        box-shadow: none;
-        font-size: 12px;
-        page-break-inside: avoid;
-      }
-
-      /* Show all columns in print */
-      .mobile-hide {
-        display: table-cell !important;
-      }
-
-      body {
-        background: white;
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        font-size: 12px;
-      }
-
-      /* Ensure table cells are visible */
-      .form-table th,
-      .form-table td {
-        border: 1px solid #000;
-        padding: 4px;
-      }
-
-      /* Optimize for bond paper size */
-      @page {
-        size: portrait;
-        margin: 10mm;
-      }
-
-      /* Prevent elements from breaking across pages */
-      .certification-box,
-      .table-container {
-        page-break-inside: avoid;
-      }
-    }
-
-    /* Mobile responsive styles */
-    @media (max-width: 768px) {
-      .form-container {
-        font-size: 10px;
-        padding: 5px;
-        margin: 10px;
-        overflow-x: auto;
-      }
-
-      .form-table th,
-      .form-table td {
-        padding: 2px;
-      }
-
-      .signature-line {
-        min-width: 100px;
-      }
-
-      /* Make the table horizontally scrollable */
-      .table-container {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      /* Adjust main content for mobile */
-      main {
-        margin-top: 65px !important;
-        margin-left: 0 !important;
-        padding: 0 10px;
-      }
-
-      /* Adjust breadcrumb for mobile */
-      .breadcrumb-container {
-        margin-left: 0 !important;
-        padding: 0 10px;
-      }
-
-      /* Make action buttons stack on mobile */
-      .action-buttons {
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .action-buttons button {
-        width: 100%;
-      }
-
-      /* Hide less important columns on mobile */
-      .mobile-hide {
-        display: none;
-      }
-    }
-
-    /* Navbar and sidebar styles */
     :root {
       --primary: #1e40af;
       --secondary: #1e3a8a;
@@ -329,7 +84,7 @@ if (isset($_GET['logout'])) {
       color: #1f2937;
     }
 
-    /* IMPROVED NAVBAR - Matches Image */
+    /* NAVBAR - FIXED RESPONSIVE STYLES */
     .navbar {
       background: var(--gradient-nav);
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
@@ -337,7 +92,7 @@ if (isset($_GET['logout'])) {
       top: 0;
       left: 0;
       right: 0;
-      z-index: 100;
+      z-index: 1000;
       height: 70px;
       backdrop-filter: blur(10px);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -474,6 +229,8 @@ if (isset($_GET['logout'])) {
       padding: 0.4rem 0.8rem;
       cursor: pointer;
       transition: all 0.3s ease;
+      border: none;
+      outline: none;
     }
 
     .user-button:hover {
@@ -592,7 +349,7 @@ if (isset($_GET['logout'])) {
 
     /* Mobile Menu Toggle */
     .mobile-toggle {
-      display: none;
+      display: flex;
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 8px;
@@ -602,6 +359,8 @@ if (isset($_GET['logout'])) {
       justify-content: center;
       cursor: pointer;
       transition: all 0.3s ease;
+      border: none;
+      outline: none;
     }
 
     .mobile-toggle:hover {
@@ -614,43 +373,65 @@ if (isset($_GET['logout'])) {
       color: white;
     }
 
+    @media (min-width: 1024px) {
+      .mobile-toggle {
+        display: none;
+      }
+    }
+
     /* Sidebar Styles */
-    .sidebar-container {
+    .sidebar-overlay {
       position: fixed;
-      top: 70px;
+      top: 0;
       left: 0;
-      height: calc(100vh - 70px);
-      z-index: 90;
-      transform: translateX(-100%);
-      transition: transform 0.3s ease-in-out;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 999;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
     }
 
-    .sidebar-container.active {
-      transform: translateX(0);
-    }
-
-    @media (min-width: 768px) {
-      .sidebar-container {
-        transform: translateX(0);
-        top: 0;
-        height: 100vh;
-        padding-top: 70px;
-      }
-
-      .main-content {
-        margin-left: 16rem;
-        margin-top: 70px;
-      }
+    .sidebar-overlay.active {
+      opacity: 1;
+      visibility: visible;
     }
 
     .sidebar {
-      width: 16rem;
-      height: 100%;
+      position: fixed;
+      top: 70px;
+      left: -300px;
+      width: 250px;
+      height: calc(100vh - 70px);
       background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
-      box-shadow: 5px 0 25px rgba(0, 0, 0, 0.1);
-      overflow-y: auto;
+      z-index: 1000;
+      transition: left 0.3s ease;
       display: flex;
       flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar.active {
+      left: 0;
+    }
+
+    @media (min-width: 1024px) {
+      .sidebar {
+        left: 0;
+        top: 70px;
+        height: calc(100vh - 70px);
+      }
+
+      .sidebar-overlay {
+        display: none !important;
+      }
+
+      main {
+        margin-left: 250px;
+      }
     }
 
     .sidebar-content {
@@ -663,43 +444,8 @@ if (isset($_GET['logout'])) {
       padding: 1rem;
       border-top: 1px solid rgba(255, 255, 255, 0.1);
       text-align: center;
-    }
-
-    /* Sidebar Overlay for Mobile */
-    .sidebar-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(4px);
-      z-index: 89;
-      opacity: 0;
-      visibility: hidden;
-      transition: all 0.3s ease;
-    }
-
-    .sidebar-overlay.active {
-      opacity: 1;
-      visibility: visible;
-    }
-
-    /* Main Content */
-    .main-content {
-      margin-top: 70px;
-      padding: 1.5rem;
-      transition: all 0.3s ease;
-      min-height: calc(100vh - 70px);
-      width: 100%;
-    }
-
-    @media (min-width: 768px) {
-      .main-content {
-        margin-left: 16rem;
-        width: calc(100% - 16rem);
-        margin-top: 70px;
-      }
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.8rem;
     }
 
     /* Sidebar Menu Items */
@@ -712,7 +458,7 @@ if (isset($_GET['logout'])) {
       border-radius: 12px;
       margin-bottom: 0.5rem;
       transition: all 0.3s ease;
-      position: relative;
+      cursor: pointer;
     }
 
     .sidebar-item:hover {
@@ -735,37 +481,31 @@ if (isset($_GET['logout'])) {
     .sidebar-item span {
       flex: 1;
       font-weight: 500;
-    }
-
-    .sidebar-item .badge {
-      background: rgba(255, 255, 255, 0.2);
-      padding: 0.25rem 0.5rem;
-      border-radius: 1rem;
-      font-size: 0.75rem;
-      font-weight: 600;
+      font-size: 0.9rem;
     }
 
     .sidebar-item .chevron {
       transition: transform 0.3s ease;
+      font-size: 0.7rem;
     }
 
     .sidebar-item .chevron.rotated {
       transform: rotate(180deg);
     }
 
-    /* Dropdown Menu */
-    .sidebar-dropdown-menu {
+    /* Dropdown Menu in Sidebar */
+    .submenu {
       max-height: 0;
       overflow: hidden;
       transition: max-height 0.3s ease;
       margin-left: 2.5rem;
     }
 
-    .sidebar-dropdown-menu.open {
+    .submenu.open {
       max-height: 500px;
     }
 
-    .sidebar-dropdown-item {
+    .submenu-item {
       display: flex;
       align-items: center;
       padding: 0.5rem 1rem;
@@ -774,20 +514,21 @@ if (isset($_GET['logout'])) {
       border-radius: 8px;
       margin-bottom: 0.25rem;
       transition: all 0.3s ease;
+      font-size: 0.85rem;
     }
 
-    .sidebar-dropdown-item active {
-      background: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    }
-
-    .sidebar-dropdown-item:hover {
+    .submenu-item:hover {
       background: rgba(255, 255, 255, 0.1);
       color: white;
       transform: translateX(5px);
     }
 
-    .sidebar-dropdown-item i {
+    .submenu-item.active {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
+    .submenu-item i {
       font-size: 0.75rem;
       margin-right: 0.5rem;
     }
@@ -805,7 +546,7 @@ if (isset($_GET['logout'])) {
     }
 
     .mobile-brand-title {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 700;
       color: white;
       line-height: 1.2;
@@ -817,23 +558,199 @@ if (isset($_GET['logout'])) {
       font-weight: 500;
     }
 
-    /* Breadcrumb */
-    .breadcrumb-container {
-      margin-bottom: 1rem;
+    /* Main Content */
+    main {
+      margin-top: 70px;
+      padding: 1.5rem;
+      min-height: calc(100vh - 70px);
+      width: 100%;
+      transition: margin-left 0.3s ease;
     }
 
-    /* Action Buttons */
+    @media (min-width: 1024px) {
+      main {
+        margin-left: 250px;
+        width: calc(100% - 250px);
+      }
+    }
+
+    @media (max-width: 768px) {
+      main {
+        padding: 1rem;
+      }
+    }
+
+    /* FORM CONTAINER STYLES - Matching the Image */
+    .form-container {
+      max-width: 900px;
+      margin: 20px auto;
+      background-color: white;
+      font-size: 14px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      font-family: Arial, sans-serif;
+    }
+
+    /* Table styling for form */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .form-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .form-table th,
+    .form-table td {
+      border: 2px solid #000;
+      border-top: 0;
+      padding: 8px 10px;
+      line-height: 1.3;
+      height: 40px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .header-cell {
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .certification-box {
+      border: 1px solid #000;
+      border-top: 0;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      padding-left: 5px;
+      padding-right: 5px;
+      background-color: #fff;
+      font-size: 12px;
+    }
+
+    .signature-line {
+      border-bottom: 1px solid #000;
+      height: 20px;
+    }
+
+    /* Action buttons */
     .action-buttons {
       display: flex;
       justify-content: center;
       gap: 1rem;
-      margin-top: 1.5rem;
+      margin-top: 2rem;
       margin-bottom: 2rem;
+    }
+
+    /* Responsive styles */
+    @media (max-width: 768px) {
+      .form-container {
+        padding: 10px;
+        font-size: 12px;
+      }
+
+      .form-table th,
+      .form-table td {
+        padding: 6px 8px;
+        height: 35px;
+      }
+
+      .mobile-hide {
+        display: none !important;
+      }
+
+      .signature-line {
+        min-width: 100px;
+      }
+
+      .certification-box {
+        padding: 10px;
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .datetime-container {
+        display: none;
+      }
+
+      .user-info {
+        display: none;
+      }
+
+      .user-button {
+        padding: 0.4rem;
+      }
+
+      .navbar-container {
+        padding: 0 1rem;
+      }
+
+      .brand-text {
+        display: none;
+      }
+
+      .mobile-brand {
+        display: flex;
+      }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-brand {
+        display: none;
+      }
+
+      .brand-text {
+        display: flex;
+      }
+
+      .mobile-hide {
+        display: table-cell !important;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .action-buttons {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .action-buttons button {
+        width: 100%;
+      }
+
+      .form-table {
+        min-width: 800px;
+      }
+
+      .form-container {
+        font-size: 11px;
+      }
+    }
+
+    /* Breadcrumb improvements */
+    .breadcrumb-item {
+      position: relative;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      transition: all 0.3s ease;
+      text-decoration: none;
+    }
+
+    .breadcrumb-item:hover {
+      background-color: #eff6ff;
+    }
+
+    .breadcrumb-item.active {
+      background-color: #3b82f6;
+      color: white;
+      font-weight: 600;
     }
 
     /* Scrollbar Styling */
     ::-webkit-scrollbar {
       width: 6px;
+      height: 6px;
     }
 
     ::-webkit-scrollbar-track {
@@ -849,22 +766,151 @@ if (isset($_GET['logout'])) {
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(255, 255, 255, 0.4);
     }
+
+    /* Page Header */
+    .page-header {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (min-width: 768px) {
+      .page-header {
+        flex-direction: row;
+        align-items: center;
+      }
+    }
+
+    /* Print styles */
+    @media print {
+
+      .action-buttons,
+      .action-cell,
+      nav,
+      aside,
+      .sidebar,
+      .navbar,
+      .breadcrumb-container,
+      .print-hide {
+        display: none !important;
+      }
+
+      .form-container {
+        border: none;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        border-radius: 0;
+      }
+
+      body {
+        background: none;
+      }
+
+      main {
+        margin-left: 0 !important;
+        padding: 0 !important;
+        margin-top: 0 !important;
+      }
+    }
+
+    .breadcrumb-container {
+      margin-top: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Responsive utilities - NAVBAR SPECIFIC */
+    @media (max-width: 768px) {
+      .datetime-container {
+        display: none;
+      }
+
+      .user-info {
+        display: none;
+      }
+
+      .user-button {
+        padding: 0.4rem;
+      }
+
+      .user-dropdown {
+        position: fixed;
+        top: 70px;
+        right: 1rem;
+        left: 1rem;
+        width: auto;
+        max-width: 300px;
+      }
+
+      .navbar-container {
+        padding: 0 1rem;
+      }
+
+      .brand-text {
+        display: none;
+      }
+
+      .mobile-brand {
+        display: flex;
+      }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-brand {
+        display: none;
+      }
+
+      .brand-text {
+        display: flex;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .navbar {
+        height: 65px;
+      }
+
+      .sidebar {
+        top: 65px;
+        height: calc(100vh - 65px);
+      }
+
+      main {
+        margin-top: 65px;
+      }
+
+      .mobile-toggle {
+        width: 36px;
+        height: 36px;
+      }
+
+      .user-avatar {
+        width: 32px;
+        height: 32px;
+      }
+
+      .brand-logo {
+        width: 40px;
+        height: 40px;
+      }
+    }
   </style>
 </head>
 
 <body class="bg-gray-50">
   <!-- Navigation Header -->
-  <nav class="navbar">
+  <nav class="navbar print-hide">
     <div class="navbar-container">
       <!-- Left Section -->
       <div class="navbar-left">
         <!-- Mobile Menu Toggle -->
-        <button class="mobile-toggle" id="sidebar-toggle">
+        <button class="mobile-toggle" id="mobile-menu-toggle">
           <i class="fas fa-bars"></i>
         </button>
 
         <!-- Logo and Brand (Desktop) -->
-        <a href="../dashboard.php" class="navbar-brand hidden md:flex">
+        <a href="../dashboard.php" class="navbar-brand hidden lg:flex">
           <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
           <div class="brand-text">
             <span class="brand-title">HR Management System</span>
@@ -873,7 +919,7 @@ if (isset($_GET['logout'])) {
         </a>
 
         <!-- Logo and Brand (Mobile) -->
-        <div class="mobile-brand md:hidden">
+        <div class="mobile-brand lg:hidden">
           <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
           <div class="mobile-brand-text">
             <span class="mobile-brand-title">HRMS</span>
@@ -903,229 +949,271 @@ if (isset($_GET['logout'])) {
           </div>
         </div>
 
-       
+        <!-- User Menu -->
+        <div class="user-menu print-hide">
+          <button class="user-button" id="user-menu-button">
+            <img src="https://ui-avatars.com/api/?name=Admin+User&background=3b82f6&color=fff" alt="User" class="user-avatar">
+            <div class="user-info hidden md:block">
+              <span class="user-name">Admin User</span>
+              <span class="user-role">Administrator</span>
+            </div>
+            <i class="user-chevron fas fa-chevron-down"></i>
+          </button>
+
+          <!-- User Dropdown -->
+          <div class="user-dropdown" id="user-dropdown">
+            <div class="dropdown-header">
+              <h3>Admin User</h3>
+              <p>Administrator</p>
+            </div>
+            <div class="dropdown-menu">
+              <a href="../profile.php" class="dropdown-item">
+                <i class="fas fa-user-circle"></i>
+                <span>My Profile</span>
+              </a>
+              <a href="../settings.php" class="dropdown-item">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+              </a>
+              <a href="?logout=true" class="dropdown-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </nav>
 
   <!-- Sidebar Overlay for Mobile -->
-  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <div class="sidebar-overlay print-hide" id="sidebar-overlay"></div>
 
   <!-- Sidebar -->
-  <div class="sidebar-container" id="sidebar-container">
-    <div class="sidebar">
-      <div class="sidebar-content">
-        <ul class="space-y-1">
-          <!-- Dashboard -->
-          <li>
-            <a href="../dashboard.php" class="sidebar-item">
-              <i class="fas fa-chart-line"></i>
-              <span>Dashboard Analytics</span>
+  <div class="sidebar print-hide" id="sidebar">
+    <div class="sidebar-content">
+      <ul class="space-y-1">
+        <!-- Dashboard -->
+        <li>
+          <a href="../dashboard.php" class="sidebar-item">
+            <i class="fas fa-chart-line"></i>
+            <span>Dashboard Analytics</span>
+          </a>
+        </li>
+
+        <!-- Employees -->
+        <li>
+          <a href="../employees/Employee.php" class="sidebar-item">
+            <i class="fas fa-users"></i>
+            <span>Employees</span>
+          </a>
+        </li>
+
+        <!-- Attendance -->
+        <li>
+          <a href="../attendance.php" class="sidebar-item">
+            <i class="fas fa-calendar-check"></i>
+            <span>Attendance</span>
+          </a>
+        </li>
+
+        <!-- Payroll Dropdown -->
+        <li>
+          <a href="#" class="sidebar-item active" id="payroll-toggle">
+            <i class="fas fa-money-bill-wave"></i>
+            <span>Payroll</span>
+            <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
+          </a>
+          <div class="submenu" id="payroll-submenu">
+            <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item">
+              <i class="fas fa-circle text-xs"></i>
+              Contractual
             </a>
-          </li>
-
-          <!-- Employees -->
-          <li>
-            <a href="./Employee.php" class="sidebar-item ">
-              <i class="fas fa-users"></i>
-              <span>Employees</span>
+            <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="submenu-item active">
+              <i class="fas fa-circle text-xs"></i>
+              Job Order
             </a>
-          </li>
-
-          <!-- Attendance -->
-          <li>
-            <a href="../attendance.php" class="sidebar-item">
-              <i class="fas fa-calendar-check"></i>
-              <span>Attendance</span>
+            <a href="../Payrollmanagement/permanentpayrolltable1.php" class="submenu-item">
+              <i class="fas fa-circle text-xs"></i>
+              Permanent
             </a>
-          </li>
+          </div>
+        </li>
 
-          <!-- Payroll Dropdown -->
-          <li>
-            <a href="#" class="sidebar-item active" id="payroll-toggle">
-              <i class="fas fa-money-bill-wave"></i>
-              <span>Payroll</span>
-              <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
-            </a>
-            <div class="sidebar-dropdown-menu" id="payroll-dropdown">
-              <a href="../Payrollmanagement/contractualpayrolltable1.php" class="sidebar-dropdown-item">
-                <i class="fas fa-circle text-xs"></i>
-                Contractual
-              </a>
-              <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="sidebar-dropdown-item active">
-                <i class="fas fa-circle text-xs"></i>
-                Job Order
-              </a>
-              <a href="../Payrollmanagement/permanentpayrolltable1.php" class="sidebar-dropdown-item">
-                <i class="fas fa-circle text-xs"></i>
-                Permanent
-              </a>
-            </div>
-          </li>
+        <!-- Reports -->
+        <li>
+          <a href="../paysliplist.php" class="sidebar-item">
+            <i class="fas fa-file-alt"></i>
+            <span>Reports</span>
+          </a>
+        </li>
 
-          
+        <!-- Settings -->
+        <li>
+          <a href="../settings.php" class="sidebar-item">
+            <i class="fas fa-sliders-h"></i>
+            <span>Settings</span>
+          </a>
+        </li>
 
-          <!-- Reports -->
-          <li>
-            <a href="paysliplist.php" class="sidebar-item">
-              <i class="fas fa-file-alt"></i>
-              <span>Reports</span>
-            </a>
-          </li>
+        <!-- Logout -->
+        <a href="?logout=true" class="sidebar-item logout">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Logout</span>
+        </a>
+      </ul>
+    </div>
 
-          <!-- Settings -->
-          <li>
-            <a href="settings.php" class="sidebar-item">
-              <i class="fas fa-sliders-h"></i>
-              <span>Settings</span>
-            </a>
-          </li>
-
-           <!-- Logout -->
-                <a href="?logout=true" class="sidebar-item logout">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
-        </ul>
-      </div>
-
-      <!-- Sidebar Footer -->
-      <div class="sidebar-footer">
-        <div class="text-center text-white/60 text-sm">
-          <p>HRMS v2.0</p>
-          <p class="text-xs mt-1">© 2024 Paluan LGU</p>
-        </div>
+    <!-- Sidebar Footer -->
+    <div class="sidebar-footer">
+      <div class="text-center text-white/60 text-sm">
+        <p>HRMS v2.0</p>
+        <p class="text-xs mt-1">© 2024 Paluan LGU</p>
       </div>
     </div>
   </div>
 
-  <!-- MAIN CONTENT -->
+  <!-- MAIN CONTENT - APPLIED JOB ORDER OBLIGATION REQUEST STRUCTURE -->
   <main class="main-content">
-    <div class="breadcrumb-container">
-      <nav aria-label="Breadcrumb">
+    <!-- Breadcrumb navigation - PROPER HIERARCHY -->
+    <div class="breadcrumb-container print-hide">
+      <nav class="mt-4 flex" aria-label="Breadcrumb">
         <ol class="inline-flex items-center space-x-1 md:space-x-2">
           <li class="inline-flex items-center">
-            <a href="joboerderpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-blue-600 md:ml-2 breadcrumb-item">
+            <a href="joboerderpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
               <i class="fas fa-home mr-2"></i> Job Order Payroll
             </a>
           </li>
           <li>
             <div class="flex items-center">
               <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-              <a href="joborderpayroll.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-blue-700 breadcrumb-item">General Payroll</a>
+              <a href="joborderpayroll.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-primary-700">General Payroll</a>
             </div>
           </li>
-          <li>
+          <li aria-current="page">
             <div class="flex items-center">
               <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-              <a href="joborderobligationrequest.php" class="ml-1 text-sm font-medium text-blue-700 hover:text-blue-600 md:ml-2 breadcrumb-item"> Job Order Obligation Request</a>
+              <span class="ml-1 text-sm font-medium text-blue-700 md:ml-2">Job Order Obligation Request</span>
             </div>
           </li>
         </ol>
       </nav>
     </div>
 
-    <!-- FORM CONTAINER - MATCHING THE IMAGE -->
+    <!-- FORM CONTAINER - MATCHING THE JOB ORDER STRUCTURE -->
     <div class="form-container">
       <!-- HEADER -->
-      <div class="text-center font-bold text-lg mb-4">
-        <p>OBLIGATION REQUEST AND STATUS</p>
-        <p>LOCAL GOVERNMENT UNIT OF PALUAN</p>
-      </div>
+      <div class="flex  border-2 border-black w-full">
+        <div class="text-center font-bold text-sm w-[600px] ">
+          <p>OBLIGATION REQUEST AND STATUS</p>
+          <p>LOCAL GOVERNMENT UNIT OF PALUAN</p>
+        </div>
 
-      <!-- SERIAL NO, DATE, FUND CLUSTER -->
-      <div class="flex justify-end mb-4">
-        <div class="flex space-x-6">
-          <div>Serial No.: <span class="border-b border-black w-24 inline-block"></span></div>
-          <div>Date: <span class="border-b border-black w-24 inline-block"></span></div>
-          <div>Fund Cluster: <span class="border-b border-black w-24 inline-block"></span></div>
+        <!-- SERIAL NO, DATE, FUND CLUSTER -->
+        <div class="flex flex-col font-semibold text-xs border-l-[2px] border-black">
+          <div>Serial No.: <span class="border-b border-black w-[178px] inline-block"></span></div>
+          <div>Date: <span class="border-b border-black w-[208px] inline-block"></span></div>
+          <div>Fund Cluster: <span class="border-b border-black w-[160px] inline-block"></span></div>
         </div>
       </div>
 
       <!-- PAYEE INFORMATION TABLE -->
-      <div class="table-container mb-4">
-        <table class="w-full text-sm text-left text-gray-900 border-collapse form-table">
-          <tbody>
-            <tr>
-              <td class="w-[15%] header-cell">Payee</td>
-              <td class="w-[35%]">CHARLENE U. CAJAYON</td>
-              <td class="w-[15%] header-cell">Office</td>
-              <td class="w-[35%]">Office of the Municipal Assessor</td>
-            </tr>
-            <tr>
-              <td class="header-cell">Address</td>
-              <td colspan="3">Paluan, Occidental Mindoro</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- OBLIGATION ITEMS TABLE -->
-      <div class="table-container mb-4">
-        <table class="w-full text-sm text-left text-gray-900 border-collapse form-table">
+      <div class="table-container">
+        <table class="w-full text-xs text-left border-t-0 text-gray-900 border-collapse form-table">
           <thead>
             <tr>
-              <th class="w-[15%] text-center header-cell">Responsibility Center</th>
-              <th class="w-[45%] text-center header-cell">Particulars</th>
-              <th class="w-[10%] text-center header-cell mobile-hide">MFO/PAP</th>
-              <th class="w-[10%] text-center header-cell mobile-hide">UACS Object Code</th>
-              <th class="w-[10%] text-center header-cell">Amount</th>
+              <td class="w-[13.5%] header-cell">Payee</td>
+              <td colspan="4" class="font-bold uppercase">CHARLENE U. CAJAYON</td>
+            </tr>
+            <tr>
+              <td class="w-[13.5%] header-cell">Office</td>
+              <td colspan="4">Office of the Municipal Assessor</td>
+            </tr>
+            <tr>
+              <td class="w-[13.5%] header-cell">Address</td>
+              <td colspan="4">Paluan, Occidental Mindoro</td>
+            </tr>
+            <tr class="border-t-2 border-black">
+              <td class="w-[13.5%] header-cell">Responsibility Center</td>
+              <td class="text-center w-[30%]">Particulars</td>
+              <td class="text-center w-[7%]">MFO/PAP</td>
+              <td class="text-center w-[10%]">UACS Object Code</td>
+              <td class="text-center w-[20%]">Amount</td>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td class="text-center">A.</td>
-              <td>WAGES<br>September 1-15, 2025</td>
+            <tr class="">
+              <td class="text-center"></td>
+              <td class="font-bold text-center">
+                <div class="flex flex-col h-[300px] justify-between">
+                  <div class="flex flex-col">
+                    <div>WAGES</div>
+                    <div>September 1-15, 2025</div>
+                  </div>
+                  <div class="justify-end flex">Total</div>
+                </div>
+              </td>
               <td class="mobile-hide"></td>
               <td class="mobile-hide"></td>
-              <td class="text-right">2,250.00</td>
+              <td class="text-right font-bold">
+                <div class="flex flex-col h-[300px] justify-between">
+                  <div>
+                    2,250.00
+                  </div>
+                  <div class="flex flex-row justify-between">
+                    <div>
+                      ₱
+                    </div>
+                    <div>
+                      2,250.00
+                    </div>
+                  </div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <!-- CERTIFICATION SECTION A -->
-      <div class="certification-box">
-        <p class="font-bold">A.</p>
-        <p class="mb-4">Certified: Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal</p>
-
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Signature: <span class="signature-line"></span></div>
-          <div>Printed Name: <strong>MELODY V. PAGLICAWAN</strong></div>
-        </div>
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Position: <em>Municipal Assessor</em></div>
-          <div class="text-center font-bold">Head, Requesting</div>
-        </div>
-        <div class="mt-4">
-          Date: <span class="signature-line"></span>
-        </div>
-      </div>
 
       <!-- CERTIFICATION SECTION B -->
-      <div class="certification-box">
-        <p class="font-bold">B.</p>
-        <p class="mb-4">Certified: Allotment available and obligated for the purpose/adjustment necessary as indicated above</p>
+      <div class="flex flex-row w-full border-t-0 border border-black">
+        <!-- Set A  -->
+        <div class="certification-box w-[740px]">
+          <p class="mb-4 font-medium"><span class="font-bold">A. Certified:</span> Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal</p>
 
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Signature: <span class="signature-line"></span></div>
-          <div>Printed Name: <strong>EFIGENIA V. SAN AGUSTIN</strong></div>
+          <div class="flex flex-col font-semibold w-full">
+            <div class="w-full mb-[-3px]">Signature<span class="ml-[22px] mr-1">:</span><span class="border-b border-black w-[365px] inline-block"></span></div>
+            <div class="w-full mb-[-3px]">Printed Name: <span class="uppercase font-bold ml-[120px]">MELODY V. PAGLICAWAN</span></div>
+            <div class="w-full">Position <span class="ml-[27px]">:</span><span class="font-bold ml-[143px]">Municipal Assessor</span></div>
+          </div>
+          <div class="mt-3 text-center">Head, Requesting Office/Authorized Representative</div>
+          <div class="w-full font-semibold mt-2 mb-2">Date<span class="ml-[52px] mr-3">:</span><span class="border-b border-black w-[350px] inline-block "></span></div>
         </div>
-        <div class="grid grid-cols-2 gap-4 mb-2">
-          <div>Position: <em>Municipal Budget Officer</em></div>
-          <div></div>
-        </div>
-        <div class="mt-4">
-          Date: <span class="signature-line"></span>
+        <!-- Set B  -->
+        <div class="certification-box w-[685px]">
+          <p class="mb-4 font-medium"><span class="font-bold">B. Certified:</span> Allotment available and obligated for the purpose/adjustment necessary as indicated above</p>
+
+          <div class="flex flex-col font-semibold w-full">
+            <div class="w-full mb-[-3px]">Signature<span class="ml-[22px] mr-1">:</span><span class="border-b border-black w-[330px] inline-block"></span></div>
+            <div class="w-full mb-[-3px]">Printed Name: <span class="uppercase font-bold ml-[90px]">EFIGINIA V. SAN AGUSTIN</span></div>
+            <div class="w-full">Position <span class="ml-[27px]">:</span><span class="font-bold ml-[97px]">Municipal Budget Officer</span></div>
+          </div>
+          <div class="w-full font-semibold mt-9 mb-2">Date<span class="ml-[52px] mr-3">:</span><span class="border-b border-black w-[316px] inline-block "></span></div>
         </div>
       </div>
 
       <!-- STATUS OF OBLIGATION SECTION -->
-      <div class="mt-6">
-        <p class="font-bold border-b border-black px-1 py-1">C. STATUS OF OBLIGATION</p>
-        <div class="table-container mt-2">
+      <div class="">
+        <p class="font-bold border-2 border-t-0 border-black px-1 py-1">C. STATUS OF OBLIGATION</p>
+        <div class="table-container">
           <table class="w-full text-sm text-left text-gray-900 border-collapse form-table">
             <thead>
+              <tr class="font-bold">
+                <th class="text-center" colspan="3">Reference</th>
+                <th class="text-center" colspan="5">Amount</th>
+              </tr>
               <tr>
                 <th class="text-center header-cell" rowspan="2">Date</th>
                 <th class="text-center header-cell" rowspan="2">Particulars</th>
@@ -1169,7 +1257,7 @@ if (isset($_GET['logout'])) {
     </div>
 
     <!-- ACTION BUTTONS -->
-    <div class="action-buttons">
+    <div class="action-buttons print-hide">
       <button onclick="printForm()" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5">
         <svg class="w-4 h-4 inline-block mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2v-6a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm2 5V4h6v5H7zm-2 2h10v4H5v-4z" clip-rule="evenodd"></path>
@@ -1185,164 +1273,173 @@ if (isset($_GET['logout'])) {
     </div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
   <script>
-    // Sidebar Toggle
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    const sidebarContainer = document.getElementById('sidebar-container');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    document.addEventListener('DOMContentLoaded', function() {
+      // Update date and time
+      function updateDateTime() {
+        const now = new Date();
+        const dateOptions = {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        };
+        const timeOptions = {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        };
 
-    sidebarToggle.addEventListener('click', () => {
-      sidebarContainer.classList.toggle('active');
-      sidebarOverlay.classList.toggle('active');
-    });
+        const dateElement = document.getElementById('current-date');
+        const timeElement = document.getElementById('current-time');
 
-    sidebarOverlay.addEventListener('click', () => {
-      sidebarContainer.classList.remove('active');
-      sidebarOverlay.classList.remove('active');
-    });
-
-    // Payroll Dropdown Toggle
-    const payrollToggle = document.getElementById('payroll-toggle');
-    const payrollDropdown = document.getElementById('payroll-dropdown');
-
-    payrollToggle.addEventListener('click', (e) => {
-      e.preventDefault();
-      payrollDropdown.classList.toggle('open');
-      const chevron = payrollToggle.querySelector('.chevron');
-      chevron.classList.toggle('rotated');
-    });
-
-    // User Menu Toggle
-    const userMenuButton = document.getElementById('user-menu-button');
-    const userDropdown = document.getElementById('user-dropdown');
-
-    userMenuButton.addEventListener('click', () => {
-      userDropdown.classList.toggle('active');
-      userMenuButton.classList.toggle('active');
-    });
-
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!userMenuButton.contains(e.target) && !userDropdown.contains(e.target)) {
-        userDropdown.classList.remove('active');
-        userMenuButton.classList.remove('active');
-      }
-    });
-
-    // Date and Time Update
-    function updateDateTime() {
-      const now = new Date();
-
-      // Format date
-      const dateOptions = {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      };
-      const formattedDate = now.toLocaleDateString('en-US', dateOptions);
-      document.getElementById('current-date').textContent = formattedDate;
-
-      // Format time
-      const timeOptions = {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      };
-      const formattedTime = now.toLocaleTimeString('en-US', timeOptions);
-      document.getElementById('current-time').textContent = formattedTime;
-    }
-
-    // Update date/time immediately and every second
-    updateDateTime();
-    setInterval(updateDateTime, 1000);
-
-    /**
-     * Custom print function for bond paper
-     */
-    function printForm() {
-      // Create a print-friendly version of the form
-      const printContent = document.querySelector('.form-container').innerHTML;
-      const originalContent = document.body.innerHTML;
-
-      // Replace body content with just the form
-      document.body.innerHTML = `
-                <div class="form-container" style="border: 2px solid #000; max-width: 100%; margin: 0; padding: 10px; font-size: 12px; font-family: Arial, sans-serif;">
-                    ${printContent}
-                </div>
-            `;
-
-      // Set print options
-      const printSettings = `
-                <style>
-                    @media print {
-                        @page {
-                            size: portrait;
-                            margin: 10mm;
-                        }
-                        body {
-                            margin: 0;
-                            padding: 0;
-                            font-size: 12px;
-                        }
-                        .form-container {
-                            border: 2px solid #000;
-                            max-width: 100%;
-                            margin: 0 auto;
-                            padding: 10px;
-                            page-break-inside: avoid;
-                        }
-                        .form-table th,
-                        .form-table td {
-                            border: 1px solid #000;
-                            padding: 4px;
-                        }
-                        .mobile-hide {
-                            display: table-cell !important;
-                        }
-                        .signature-line {
-                            border-bottom: 1px solid #000;
-                            margin: 5px 0 2px 0;
-                            line-height: 1;
-                            min-width: 150px;
-                            display: inline-block;
-                        }
-                        .certification-box {
-                            border: 1px solid #000;
-                            padding: 8px;
-                            margin: 10px 0;
-                        }
-                    }
-                </style>
-            `;
-
-      // Add print settings to head
-      document.head.innerHTML += printSettings;
-
-      // Print the form
-      window.print();
-
-      // Restore original content
-      document.body.innerHTML = originalContent;
-
-      // Re-initialize any necessary scripts
-      window.location.reload();
-    }
-
-    // Global Action Button Logics
-    document.getElementById('save-button').addEventListener('click', () => {
-      alert('Saving Obligation Request Data...');
-    });
-
-    // Close sidebar on mobile when clicking a link
-    document.querySelectorAll('.sidebar-item, .sidebar-dropdown-item').forEach(link => {
-      link.addEventListener('click', () => {
-        if (window.innerWidth < 768) {
-          sidebarContainer.classList.remove('active');
-          sidebarOverlay.classList.remove('active');
+        if (dateElement) {
+          dateElement.textContent = now.toLocaleDateString('en-US', dateOptions);
         }
+        if (timeElement) {
+          timeElement.textContent = now.toLocaleTimeString('en-US', timeOptions);
+        }
+      }
+
+      updateDateTime();
+      setInterval(updateDateTime, 1000);
+
+      // User dropdown functionality
+      const userMenuButton = document.getElementById('user-menu-button');
+      const userDropdown = document.getElementById('user-dropdown');
+
+      if (userMenuButton && userDropdown) {
+        userMenuButton.addEventListener('click', function(e) {
+          e.stopPropagation();
+          userDropdown.classList.toggle('active');
+          userMenuButton.classList.toggle('active');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+          if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
+            userDropdown.classList.remove('active');
+            userMenuButton.classList.remove('active');
+          }
+        });
+      }
+
+      // Mobile sidebar toggle functionality
+      const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+      const sidebar = document.getElementById('sidebar');
+      const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+      if (mobileMenuToggle && sidebar && sidebarOverlay) {
+        mobileMenuToggle.addEventListener('click', function() {
+          sidebar.classList.toggle('active');
+          sidebarOverlay.classList.toggle('active');
+          // Prevent body scroll when sidebar is open
+          document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : '';
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+          sidebar.classList.remove('active');
+          sidebarOverlay.classList.remove('active');
+          document.body.style.overflow = '';
+        });
+
+        // Close sidebar when clicking on a link (for mobile)
+        const sidebarLinks = sidebar.querySelectorAll('a');
+        sidebarLinks.forEach(link => {
+          link.addEventListener('click', function() {
+            if (window.innerWidth < 1024) {
+              sidebar.classList.remove('active');
+              sidebarOverlay.classList.remove('active');
+              document.body.style.overflow = '';
+            }
+          });
+        });
+      }
+
+      // Payroll dropdown in sidebar
+      const payrollToggle = document.getElementById('payroll-toggle');
+      const payrollDropdown = document.getElementById('payroll-submenu');
+
+      if (payrollToggle && payrollDropdown) {
+        // Open payroll dropdown by default since we're on payroll page
+        payrollDropdown.classList.add('open');
+        const chevron = payrollToggle.querySelector('.chevron');
+        if (chevron) {
+          chevron.classList.add('rotated');
+        }
+
+        payrollToggle.addEventListener('click', function(e) {
+          e.preventDefault();
+          payrollDropdown.classList.toggle('open');
+          const chevron = this.querySelector('.chevron');
+          if (chevron) {
+            chevron.classList.toggle('rotated');
+          }
+        });
+      }
+
+      // Handle window resize
+      window.addEventListener('resize', function() {
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+        if (window.innerWidth >= 1024) {
+          // On desktop, ensure sidebar is visible and overlay is hidden
+          if (sidebar) sidebar.classList.remove('active');
+          if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+          document.body.style.overflow = '';
+        }
+      });
+
+      // Save button functionality
+      const saveButton = document.getElementById('save-button');
+      if (saveButton) {
+        saveButton.addEventListener('click', function() {
+          // Create a simple alert or modal for save confirmation
+          const modal = document.createElement('div');
+          modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+          modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+              <h3 class="text-lg font-semibold text-gray-900 mb-2">Save Obligation Request</h3>
+              <p class="text-gray-600 mb-4">Are you sure you want to save this job order obligation request data?</p>
+              <div class="flex justify-end space-x-3">
+                <button class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" id="cancel-save">Cancel</button>
+                <button class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700" id="confirm-save">Save</button>
+              </div>
+            </div>
+          `;
+
+          document.body.appendChild(modal);
+
+          document.getElementById('cancel-save').addEventListener('click', function() {
+            document.body.removeChild(modal);
+          });
+
+          document.getElementById('confirm-save').addEventListener('click', function() {
+            // Simulate save operation
+            console.log('Saving job order obligation request data...');
+            alert('Job order obligation request data has been saved successfully!');
+            document.body.removeChild(modal);
+          });
+
+          // Close modal when clicking outside
+          modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+              document.body.removeChild(modal);
+            }
+          });
+        });
+      }
+
+      // Print form function
+      window.printForm = function() {
+        window.print();
+      }
+
+      // After print event
+      window.addEventListener('afterprint', function() {
+        // Restore body overflow
+        document.body.style.overflow = '';
       });
     });
   </script>

@@ -8,6 +8,140 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
   exit();
 }
 
+// Create database connection directly (since config/database.php doesn't exist)
+$host = 'localhost';
+$dbname = 'hrms_paluan';
+$username = 'root';
+$password = '';
+
+try {
+  $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
+  $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+  $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+  // If database doesn't exist, try to create it
+  if ($e->getCode() == 1049) {
+    try {
+      $pdo = new PDO("mysql:host=$host;charset=utf8", $username, $password);
+      $pdo->exec("CREATE DATABASE IF NOT EXISTS $dbname");
+      $pdo->exec("USE $dbname");
+
+      // Create tables
+      createTables($pdo);
+    } catch (PDOException $e2) {
+      die("Database connection failed: " . $e2->getMessage());
+    }
+  } else {
+    die("Database connection failed: " . $e->getMessage());
+  }
+}
+
+// Function to create necessary tables
+function createTables($pdo)
+{
+  // Create employees table
+  $pdo->exec("
+        CREATE TABLE IF NOT EXISTS employees (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            employee_id VARCHAR(50) UNIQUE NOT NULL,
+            first_name VARCHAR(100) NOT NULL,
+            middle_name VARCHAR(100),
+            last_name VARCHAR(100) NOT NULL,
+            position VARCHAR(100),
+            monthly_salary DECIMAL(10,2) DEFAULT 0.00,
+            employment_type ENUM('Contractual', 'Job Order', 'Permanent', 'Regular') DEFAULT 'Contractual',
+            tax_id VARCHAR(50),
+            community_tax_cert VARCHAR(50),
+            gsis_no VARCHAR(50),
+            deduction_rate DECIMAL(5,2) DEFAULT 0.00,
+            status ENUM('Active', 'Inactive', 'Resigned') DEFAULT 'Active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB
+    ");
+
+  // Create attendance_records table
+  $pdo->exec("
+        CREATE TABLE IF NOT EXISTS attendance_records (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            date DATE NOT NULL,
+            employee_id VARCHAR(50) NOT NULL,
+            employee_name VARCHAR(100) NOT NULL,
+            department VARCHAR(150),
+            am_time_in TIME,
+            am_time_out TIME,
+            pm_time_in TIME,
+            pm_time_out TIME,
+            ot_hours DECIMAL(5,2) DEFAULT 0.00,
+            under_time DECIMAL(5,2) DEFAULT 0.00,
+            total_hours DECIMAL(5,2) DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_employee_date (employee_id, date),
+            INDEX idx_date (date)
+        ) ENGINE=InnoDB
+    ");
+
+  // Create joborder_payroll table
+  $pdo->exec("
+        CREATE TABLE IF NOT EXISTS joborder_payroll (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            employee_id INT NOT NULL,
+            payroll_period VARCHAR(7) NOT NULL,
+            rate_per_hour DECIMAL(10,2) DEFAULT 0.00,
+            hours_worked DECIMAL(5,2) DEFAULT 0.00,
+            amount_earned DECIMAL(10,2) DEFAULT 0.00,
+            gsis_deduction DECIMAL(10,2) DEFAULT 0.00,
+            net_amount DECIMAL(10,2) DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_employee_payroll (employee_id, payroll_period)
+        ) ENGINE=InnoDB
+    ");
+
+  // Insert sample data if tables are empty
+  $stmt = $pdo->query("SELECT COUNT(*) as count FROM employees");
+  $result = $stmt->fetch();
+
+  if ($result['count'] == 0) {
+    // Insert sample employees (including job order)
+    $sampleEmployees = [
+      ['EMP001', 'JASPER', 'A', 'GARCIA', 'MPIO Focal Person', 20000.00, 'Contractual', '123-456-789', '084/1398', 'GSIS001', 0.00, 'Active'],
+      ['EMP002', 'APRIL', 'V', 'AGUAVILLA', 'MPIO Focal Person', 20000.00, 'Contractual', '123-456-790', '084/1498', 'GSIS002', 0.00, 'Active'],
+      ['EMP005', 'CHARLENE', 'D', 'DIALATON', 'Clerk I', 256.00, 'Job Order', '123-456-793', '084/1798', '', 0.00, 'Active'],
+      ['EMP006', 'JUAN', 'B', 'DELA CRUZ', 'Utility Worker', 300.00, 'Job Order', '123-456-794', '084/1898', '', 0.00, 'Active'],
+      ['EMP007', 'MARIA', 'C', 'SANTOS', 'Janitor', 280.00, 'Job Order', '123-456-795', '084/1998', '', 0.00, 'Active'],
+    ];
+
+    $insertEmployee = $pdo->prepare("
+            INSERT INTO employees (employee_id, first_name, middle_name, last_name, position, monthly_salary, 
+                                  employment_type, tax_id, community_tax_cert, gsis_no, deduction_rate, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+
+    foreach ($sampleEmployees as $employee) {
+      $insertEmployee->execute($employee);
+    }
+
+    // Insert sample attendance records (for current month)
+    $currentMonth = date('Y-m');
+    $employees = $pdo->query("SELECT employee_id, CONCAT(first_name, ' ', last_name) as full_name FROM employees WHERE employment_type = 'Job Order'")->fetchAll();
+
+    $insertAttendance = $pdo->prepare("
+            INSERT INTO attendance_records (date, employee_id, employee_name, total_hours)
+            VALUES (?, ?, ?, 8.0)
+        ");
+
+    foreach ($employees as $emp) {
+      // Add 15 days of attendance for each employee (sample data)
+      for ($i = 1; $i <= 15; $i++) {
+        $date = date('Y-m-d', strtotime($currentMonth . '-' . str_pad($i, 2, '0', STR_PAD_LEFT)));
+        $insertAttendance->execute([$date, $emp['employee_id'], $emp['full_name']]);
+      }
+    }
+  }
+}
+
 // Logout functionality
 if (isset($_GET['logout'])) {
   // Destroy all session data
@@ -21,18 +155,191 @@ if (isset($_GET['logout'])) {
   exit();
 }
 
-?>
+// Fetch job order employees with attendance from attendance_records table
+$joborder_employees = [];
+$total_payroll = 0;
+$total_deductions = 0;
+$net_amount = 0;
 
+try {
+  $stmt = $pdo->prepare("
+        SELECT 
+            e.id,
+            e.employee_id,
+            e.first_name,
+            e.middle_name,
+            e.last_name,
+            e.position,
+            COALESCE(e.monthly_salary, 0) as rate_per_day,
+            e.employment_type,
+            e.tax_id,
+            e.community_tax_cert,
+            e.gsis_no,
+            COALESCE(e.deduction_rate, 0) as deduction_rate,
+            COALESCE(COUNT(DISTINCT a.date), 0) as days_worked,
+            COALESCE(SUM(a.total_hours), 0) as total_hours,
+            (COALESCE(e.monthly_salary, 0) * COALESCE(COUNT(DISTINCT a.date), 0)) as amount_earned
+        FROM employees e
+        LEFT JOIN attendance_records a ON e.employee_id = a.employee_id 
+            AND MONTH(a.date) = MONTH(CURRENT_DATE())
+            AND YEAR(a.date) = YEAR(CURRENT_DATE())
+            AND a.total_hours >= 4  -- Consider as present if at least 4 hours worked
+        WHERE e.employment_type = 'Job Order'
+            AND e.status = 'Active'
+        GROUP BY e.id, e.employee_id, e.first_name, e.middle_name, e.last_name, 
+                 e.position, e.monthly_salary, e.employment_type,
+                 e.tax_id, e.community_tax_cert, e.gsis_no, e.deduction_rate
+        ORDER BY e.last_name, e.first_name
+    ");
+  $stmt->execute();
+  $joborder_employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+  // Calculate totals
+  foreach ($joborder_employees as $employee) {
+    $amount_earned = floatval($employee['amount_earned']);
+    $total_payroll += $amount_earned;
+
+    // Calculate deductions (GSIS only for Job Order)
+    $gsis_deduction = 0;
+    if (!empty($employee['gsis_no'])) {
+      $gsis_deduction = $amount_earned * 0.09;
+    }
+
+    $total_deductions += $gsis_deduction;
+    $net_amount += ($amount_earned - $gsis_deduction);
+  }
+} catch (PDOException $e) {
+  error_log("Database error: " . $e->getMessage());
+  $joborder_employees = [];
+}
+
+// Function to calculate deductions for job order
+function calculateJobOrderDeductions($employee)
+{
+  $deductions = [
+    'gsis_deduction' => 0,
+    'total' => 0
+  ];
+
+  $amount_earned = floatval($employee['amount_earned']);
+
+  // Calculate GSIS (if applicable)
+  if (!empty($employee['gsis_no'])) {
+    $deductions['gsis_deduction'] = $amount_earned * 0.09;
+  }
+
+  // Calculate total
+  $deductions['total'] = $deductions['gsis_deduction'];
+
+  return $deductions;
+}
+
+// Handle form submission for saving payroll
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  if (isset($_POST['save_payroll'])) {
+    try {
+      $pdo->beginTransaction();
+
+      // Get current payroll period
+      $payroll_period = date('Y-m');
+
+      foreach ($_POST['employee_id'] as $index => $employee_id) {
+        $rate_per_hour = floatval($_POST['rate_per_hour'][$index] ?? 0);
+        $hours_worked = floatval($_POST['hours_worked'][$index] ?? 0);
+        $amount_earned = floatval($_POST['amount_earned'][$index] ?? 0);
+        $gsis_deduction = floatval($_POST['gsis_deduction'][$index] ?? 0);
+        $net_amount = floatval($_POST['net_amount'][$index] ?? 0);
+
+        // Check if payroll record exists
+        $check_stmt = $pdo->prepare("
+                    SELECT id FROM joborder_payroll 
+                    WHERE employee_id = ? AND payroll_period = ?
+                ");
+        $check_stmt->execute([$employee_id, $payroll_period]);
+
+        if ($check_stmt->rowCount() > 0) {
+          // Update existing record
+          $update_stmt = $pdo->prepare("
+                        UPDATE joborder_payroll 
+                        SET rate_per_hour = ?, hours_worked = ?, amount_earned = ?, 
+                            gsis_deduction = ?, net_amount = ?, updated_at = NOW()
+                        WHERE employee_id = ? AND payroll_period = ?
+                    ");
+          $update_stmt->execute([
+            $rate_per_hour,
+            $hours_worked,
+            $amount_earned,
+            $gsis_deduction,
+            $net_amount,
+            $employee_id,
+            $payroll_period
+          ]);
+        } else {
+          // Insert new record
+          $insert_stmt = $pdo->prepare("
+                        INSERT INTO joborder_payroll 
+                        (employee_id, payroll_period, rate_per_hour, hours_worked, 
+                         amount_earned, gsis_deduction, net_amount)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ");
+          $insert_stmt->execute([
+            $employee_id,
+            $payroll_period,
+            $rate_per_hour,
+            $hours_worked,
+            $amount_earned,
+            $gsis_deduction,
+            $net_amount
+          ]);
+        }
+      }
+
+      $pdo->commit();
+      $success_message = "Payroll saved successfully!";
+
+      // Refresh page to show updated data
+      header("Location: " . $_SERVER['PHP_SELF']);
+      exit();
+    } catch (PDOException $e) {
+      $pdo->rollBack();
+      $error_message = "Error saving payroll: " . $e->getMessage();
+    }
+  }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Job Order Payroll</title>
+  <title>Job Order Payroll | HR Management System</title>
   <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              "50": "#eff6ff",
+              "100": "#dbeafe",
+              "200": "#bfdbfe",
+              "300": "#93c5fd",
+              "400": "#60a5fa",
+              "500": "#3b82f6",
+              "600": "#2563eb",
+              "700": "#1d4ed8",
+              "800": "#1e40af",
+              "900": "#1e3a8a",
+              "950": "#172554"
+            }
+          }
+        }
+      }
+    }
+  </script>
   <style>
     :root {
       --primary: #1e40af;
@@ -55,7 +362,7 @@ if (isset($_GET['logout'])) {
       color: #1f2937;
     }
 
-    /* IMPROVED NAVBAR - Fixed Responsive */
+    /* NAVBAR - FIXED RESPONSIVE STYLES */
     .navbar {
       background: var(--gradient-nav);
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
@@ -184,138 +491,27 @@ if (isset($_GET['logout'])) {
       line-height: 1.3;
     }
 
-    /* User Menu */
-    .user-menu {
-      position: relative;
-    }
-
-    .user-button {
+    /* Logout Button */
+    .logout-btn {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(239, 68, 68, 0.9);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 50px;
-      padding: 0.4rem 0.8rem;
-      cursor: pointer;
+      padding: 0.5rem 1rem;
+      color: white;
+      text-decoration: none;
       transition: all 0.3s ease;
-      border: none;
-      outline: none;
+      font-weight: 500;
+      font-size: 0.9rem;
     }
 
-    .user-button:hover {
-      background: rgba(255, 255, 255, 0.25);
+    .logout-btn:hover {
+      background: rgba(220, 38, 38, 0.9);
       transform: translateY(-2px);
       box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    .user-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      object-fit: cover;
-    }
-
-    .user-info {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .user-name {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: white;
-      line-height: 1.2;
-    }
-
-    .user-role {
-      font-size: 0.7rem;
-      color: rgba(255, 255, 255, 0.8);
-      font-weight: 500;
-    }
-
-    .user-chevron {
-      font-size: 0.8rem;
-      color: white;
-      opacity: 0.8;
-      transition: transform 0.3s ease;
-    }
-
-    .user-button.active .user-chevron {
-      transform: rotate(180deg);
-    }
-
-    .user-dropdown {
-      position: absolute;
-      top: calc(100% + 10px);
-      right: 0;
-      width: 280px;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(-10px);
-      transition: all 0.3s ease;
-      z-index: 1000;
-      overflow: hidden;
-    }
-
-    .user-dropdown.active {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }
-
-    .dropdown-header {
-      padding: 1.25rem;
-      background: var(--gradient-nav);
-      color: white;
-    }
-
-    .dropdown-header h3 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 0.25rem;
-    }
-
-    .dropdown-header p {
-      font-size: 0.85rem;
-      opacity: 0.9;
-    }
-
-    .dropdown-menu {
-      padding: 0.5rem;
-    }
-
-    .dropdown-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      color: #4b5563;
-      text-decoration: none;
-      border-radius: 8px;
-      transition: all 0.2s ease;
-    }
-
-    .dropdown-item:hover {
-      background: #f3f4f6;
-      color: var(--primary);
-      transform: translateX(5px);
-    }
-
-    .dropdown-item i {
-      width: 20px;
-      text-align: center;
-      color: #9ca3af;
-    }
-
-    .dropdown-item:hover i {
-      color: var(--primary);
     }
 
     /* Mobile Menu Toggle */
@@ -372,7 +568,7 @@ if (isset($_GET['logout'])) {
 
     .sidebar {
       position: fixed;
-      top: 10px;
+      top: 70px;
       left: -300px;
       width: 250px;
       height: calc(100vh - 70px);
@@ -381,7 +577,7 @@ if (isset($_GET['logout'])) {
       transition: left 0.3s ease;
       display: flex;
       flex-direction: column;
-
+      overflow-y: auto;
       overflow-x: hidden;
     }
 
@@ -551,175 +747,98 @@ if (isset($_GET['logout'])) {
       }
     }
 
-    /* Payroll Container */
-    .payroll-container {
-      font-family: Arial, sans-serif;
-      border: 2px solid #000;
-      max-width: 1400px;
-      margin: 20px auto;
-      padding: 15px;
-      font-size: 10px;
-      background-color: white;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      border-radius: 8px;
+    /* Table responsive design */
+    .table-container {
       overflow-x: auto;
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+      -webkit-overflow-scrolling: touch;
     }
 
-    /* Table styling */
     .payroll-table {
+      min-width: 1400px;
       width: 100%;
       border-collapse: collapse;
-      min-width: 1200px;
     }
 
     .payroll-table th,
     .payroll-table td {
-      border: 1px solid #000;
-      padding: 6px 8px;
-      line-height: 1.3;
-      height: 30px;
-      vertical-align: middle;
+      padding: 0.75rem;
+      border: 1px solid #e5e7eb;
       white-space: nowrap;
+      text-align: left;
     }
 
-    .payroll-table thead th {
-      text-align: center;
-      vertical-align: middle;
+    .payroll-table th {
       background-color: #f8fafc;
       font-weight: 600;
+      color: #374151;
     }
 
-    /* Action buttons with icons */
-    .action-button {
-      display: inline-flex;
+    .payroll-table tbody tr:hover {
+      background-color: #f9fafb;
+    }
+
+    /* Action buttons */
+    .action-buttons {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      padding: 0.375rem 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      display: flex;
       align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 4px;
-      transition: all 0.2s ease;
-      margin: 0 2px;
-      cursor: pointer;
+      gap: 0.25rem;
       border: none;
-      outline: none;
+      cursor: pointer;
     }
 
-    .action-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    .action-btn:hover {
+      opacity: 0.9;
     }
 
-    .view-btn {
-      background-color: #3b82f6;
-      color: white;
-    }
-
-    .view-btn:hover {
-      background-color: #2563eb;
-    }
-
-    .edit-btn {
-      background-color: #f59e0b;
-      color: white;
-    }
-
-    .edit-btn:hover {
-      background-color: #d97706;
-    }
-
-    .delete-btn {
-      background-color: #ef4444;
-      color: white;
-    }
-
-    .delete-btn:hover {
-      background-color: #dc2626;
-    }
-
-    /* Enhanced button styles */
-    .nav-button {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0.75rem 1.5rem;
-      font-weight: 600;
+    /* Card design */
+    .card {
+      background: white;
       border-radius: 0.5rem;
-      transition: all 0.3s ease;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      cursor: pointer;
-      border: none;
-      outline: none;
-      text-decoration: none;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+      overflow: hidden;
     }
 
-    .nav-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    /* Breadcrumb styling */
+    .breadcrumb {
+      font-size: 0.8rem;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 0.5rem 0;
+      -webkit-overflow-scrolling: touch;
     }
 
-    .nav-button-primary {
-      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-      color: white;
-      border: none;
+    .breadcrumb ol {
+      display: flex;
+      align-items: center;
     }
 
-    .nav-button-primary:hover {
-      background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
-    }
-
-    .nav-button-success {
-      background: linear-gradient(135deg, #10b981 0%, #047857 100%);
-      color: white;
-      border: none;
-    }
-
-    .nav-button-success:hover {
-      background: linear-gradient(135deg, #047857 0%, #065f46 100%);
-    }
-
-    /* Print styles */
-    @media print {
-
-      .action-buttons,
-      .action-cell {
-        display: none !important;
-      }
-
-      .payroll-container {
-        border: none;
-        margin: 0;
-        padding: 0;
-        box-shadow: none;
-        border-radius: 0;
-      }
-
-      body {
-        background: none;
-      }
-
-      nav,
-      aside,
-      .sidebar,
-      .navbar,
-      .breadcrumb-container,
-      .action-buttons {
-        display: none !important;
-      }
-    }
-
-    /* RESPONSIVE STYLES */
-    @media (max-width: 1024px) {
+    /* Responsive utilities - NAVBAR SPECIFIC */
+    @media (max-width: 768px) {
       .datetime-container {
         display: none;
       }
 
-      .user-info {
+      .logout-btn span {
         display: none;
       }
 
-      .user-button {
-        padding: 0.4rem;
+      .logout-btn {
+        padding: 0.5rem;
+        width: 40px;
+        height: 40px;
+        justify-content: center;
       }
 
       .navbar-container {
@@ -733,23 +852,6 @@ if (isset($_GET['logout'])) {
       .mobile-brand {
         display: flex;
       }
-
-      .payroll-container {
-        margin: 10px auto;
-        padding: 10px;
-        font-size: 9px;
-      }
-
-      .payroll-table th,
-      .payroll-table td {
-        padding: 4px 6px;
-        height: 25px;
-      }
-
-      .action-button {
-        width: 28px;
-        height: 28px;
-      }
     }
 
     @media (min-width: 769px) {
@@ -760,22 +862,17 @@ if (isset($_GET['logout'])) {
       .brand-text {
         display: flex;
       }
-
-      /* Show all columns on desktop */
-      .mobile-hide {
-        display: table-cell !important;
-      }
-
-      .mobile-hide-extra {
-        display: table-cell !important;
-      }
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 640px) {
       .navbar {
         height: 65px;
       }
 
+      .sidebar {
+        top: 65px;
+        height: calc(100vh - 65px);
+      }
 
       main {
         margin-top: 65px;
@@ -786,106 +883,15 @@ if (isset($_GET['logout'])) {
         height: 36px;
       }
 
-      .user-avatar {
-        width: 32px;
-        height: 32px;
-      }
-
       .brand-logo {
         width: 40px;
         height: 40px;
       }
 
-      .payroll-container {
-        font-size: 8px;
-        padding: 8px;
+      .logout-btn {
+        width: 36px;
+        height: 36px;
       }
-
-      .payroll-table th,
-      .payroll-table td {
-        padding: 3px 4px;
-        height: 22px;
-      }
-
-      .action-button {
-        width: 24px;
-        height: 24px;
-        font-size: 0.7rem;
-      }
-
-      .nav-button {
-        padding: 0.6rem 1.2rem;
-        font-size: 0.875rem;
-      }
-
-      /* Hide some columns on mobile */
-      .mobile-hide {
-        display: none;
-      }
-
-      /* Reduce column widths on mobile */
-      .payroll-table th[rowspan="2"].mobile-hide,
-      .payroll-table td.mobile-hide {
-        display: none;
-      }
-    }
-
-    @media (max-width: 640px) {
-
-      /* Stack action buttons vertically on very small screens */
-      .action-buttons {
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-
-      .action-buttons .nav-button {
-        width: 100%;
-      }
-
-      /* Hide more columns on very small screens */
-      .mobile-hide-extra {
-        display: none;
-      }
-
-      .payroll-table th.mobile-hide-extra,
-      .payroll-table td.mobile-hide-extra {
-        display: none;
-      }
-
-      /* Reduce font size for mobile */
-      .payroll-container {
-        font-size: 7px;
-      }
-
-      .payroll-table th,
-      .payroll-table td {
-        padding: 2px 3px;
-      }
-
-      .action-button {
-        width: 20px;
-        height: 20px;
-        font-size: 0.6rem;
-      }
-    }
-
-    /* Breadcrumb improvements */
-    .breadcrumb-item {
-      position: relative;
-      padding: 0.5rem 1rem;
-      border-radius: 0.5rem;
-      transition: all 0.3s ease;
-      text-decoration: none;
-    }
-
-    .breadcrumb-item:hover {
-      background-color: #eff6ff;
-    }
-
-    .breadcrumb-item.active {
-      background-color: #3b82f6;
-      color: white;
-      font-weight: 600;
     }
 
     /* Scrollbar Styling */
@@ -908,18 +914,71 @@ if (isset($_GET['logout'])) {
       background: rgba(255, 255, 255, 0.4);
     }
 
-    /* Page Header */
-    .page-header {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      margin-bottom: 1.5rem;
+    /* Input field styling */
+    .payroll-input {
+      width: 100%;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 0.25rem;
+      font-size: 0.875rem;
+      text-align: right;
     }
 
-    @media (min-width: 768px) {
-      .page-header {
-        flex-direction: row;
-        align-items: center;
+    .payroll-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .payroll-input.readonly {
+      background-color: #f9fafb;
+      border-color: #e5e7eb;
+      color: #6b7280;
+      cursor: not-allowed;
+    }
+
+    /* Alert messages */
+    .alert {
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .alert-success {
+      background-color: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .alert-error {
+      background-color: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    /* Notification */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      color: white;
+      font-weight: 500;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
       }
     }
   </style>
@@ -938,9 +997,7 @@ if (isset($_GET['logout'])) {
 
         <!-- Logo and Brand (Desktop) -->
         <a href="../dashboard.php" class="navbar-brand hidden lg:flex">
-          <img class="brand-logo"
-            src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
-            alt="Logo" />
+          <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
           <div class="brand-text">
             <span class="brand-title">HR Management System</span>
             <span class="brand-subtitle">Paluan Occidental Mindoro</span>
@@ -949,9 +1006,7 @@ if (isset($_GET['logout'])) {
 
         <!-- Logo and Brand (Mobile) -->
         <div class="mobile-brand lg:hidden">
-          <img class="brand-logo"
-            src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
-            alt="Logo" />
+          <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
           <div class="mobile-brand-text">
             <span class="mobile-brand-title">HRMS</span>
             <span class="mobile-brand-subtitle">Dashboard</span>
@@ -1002,7 +1057,7 @@ if (isset($_GET['logout'])) {
 
         <!-- Employees -->
         <li>
-          <a href="./Employee.php" class="sidebar-item">
+          <a href="../employees/Employee.php" class="sidebar-item">
             <i class="fas fa-users"></i>
             <span>Employees</span>
           </a>
@@ -1016,6 +1071,7 @@ if (isset($_GET['logout'])) {
           </a>
         </li>
 
+        <!-- Payroll Dropdown -->
         <li>
           <a href="#" class="sidebar-item active" id="payroll-toggle">
             <i class="fas fa-money-bill-wave"></i>
@@ -1023,7 +1079,7 @@ if (isset($_GET['logout'])) {
             <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
           </a>
           <div class="submenu" id="payroll-submenu">
-            <a href="contractualpayrolltable1.php" class="submenu-item ">
+            <a href="contractualpayrolltable1.php" class="submenu-item">
               <i class="fas fa-circle text-xs"></i>
               Contractual
             </a>
@@ -1038,13 +1094,19 @@ if (isset($_GET['logout'])) {
           </div>
         </li>
 
-
-
         <!-- Reports -->
         <li>
-          <a href="../paysliplist.php" class="sidebar-item">
+          <a href="../paysliphistory.php" class="sidebar-item">
             <i class="fas fa-file-alt"></i>
             <span>Reports</span>
+          </a>
+        </li>
+
+        <!-- Salary -->
+        <li>
+          <a href="../sallarypayheads.php" class="sidebar-item">
+            <i class="fas fa-hand-holding-usd"></i>
+            <span>Salary Structure</span>
           </a>
         </li>
 
@@ -1055,6 +1117,7 @@ if (isset($_GET['logout'])) {
             <span>Settings</span>
           </a>
         </li>
+
         <!-- Logout -->
         <a href="?logout=true" class="sidebar-item logout">
           <i class="fas fa-sign-out-alt"></i>
@@ -1072,613 +1135,629 @@ if (isset($_GET['logout'])) {
     </div>
   </div>
 
-  <!-- MAIN -->
-  <main class="main-content">
+  <!-- Main Content -->
+  <main>
+    <!-- Alert Messages -->
+    <?php if (isset($success_message)): ?>
+      <div class="alert alert-success mb-4">
+        <i class="fas fa-check-circle mr-2"></i> <?php echo $success_message; ?>
+      </div>
+    <?php endif; ?>
+
+    <?php if (isset($error_message)): ?>
+      <div class="alert alert-error mb-4">
+        <i class="fas fa-exclamation-circle mr-2"></i> <?php echo $error_message; ?>
+      </div>
+    <?php endif; ?>
+
     <!-- Breadcrumb -->
-    <div class="mb-4">
-      <nav class="flex" aria-label="Breadcrumb">
-        <ol class="inline-flex items-center space-x-1 md:space-x-2">
-          <li class="inline-flex items-center">
-            <a href="joboerderpayrolltable1.php"
-              class="inline-flex items-center text-sm font-medium  text-blue-600  hover:text-blue-600">
-              <i class="fas fa-home mr-2"></i> Job Order Payroll
-            </a>
-          </li>
-          <li>
-            <div class="flex items-center">
-              <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-              <a href="joborderpayroll.php"
-                class="ml-1 text-sm font-medium text-gray-700 hover:text-blue-600 md:ml-2">General Payroll</a>
-            </div>
-          </li>
-          <li>
-            <div class="flex items-center">
-              <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-              <a href="joborderobligationrequest.php" class="ml-1 text-sm font-medium hover:text-blue-700">Job Order
-                Obligation Request</a>
-            </div>
-          </li>
-        </ol>
-      </nav>
-    </div>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <ol class="inline-flex items-center space-x-1 md:space-x-2">
+        <li class="inline-flex items-center">
+          <a href="joboerderpayrolltable1.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-primary-700">
+            <i class="fas fa-home mr-2"></i> Job Order Payroll
+          </a>
+        </li>
+        <li>
+          <div class="flex items-center">
+            <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
+            <a href="joborderpayroll.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">General Payroll</a>
+          </div>
+        </li>
+        <li>
+          <div class="flex items-center">
+            <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
+            <a href="joborderobligationrequest.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2"> Obligation Request</a>
+          </div>
+        </li>
+      </ol>
+    </nav>
 
     <!-- Page Header -->
-    <div class="page-header">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">Job Order Payroll</h1>
-        <p class="text-gray-600 mt-1">Manage and process job order employee payroll</p>
-      </div>
-      <div class="mt-4 md:mt-0">
-        <button id="add-payroll-btn" class="nav-button nav-button-primary">
-          <i class="fas fa-plus mr-2"></i> Add Payroll
-        </button>
+    <div class="mb-6 mt-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 class="text-xl md:text-2xl font-bold text-gray-900">Job Order Payroll</h1>
+          <p class="text-gray-600 mt-1 text-sm md:text-base">Manage and process job order employee payroll for <?php echo date('F Y'); ?></p>
+        </div>
+        <div class="flex gap-2">
+          <button id="calculate-all-btn" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center">
+            <i class="fas fa-calculator mr-2"></i> Calculate All
+          </button>
+          <button id="refresh-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center">
+            <i class="fas fa-sync-alt mr-2"></i> Refresh
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Payroll Container -->
-    <div class="payroll-container">
-      <!-- Header -->
-      <div class="mb-4">
-        <div class="text-center font-bold">
-          <h2 class="text-lg">PAYROLL</h2>
-          <p class="text-sm">For the period <strong>SEPTEMBER 1-15, 2015</strong></p>
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="card p-4">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+            <i class="fas fa-users text-lg"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600">Total Employees</p>
+            <p class="text-xl md:text-2xl font-bold text-gray-900"><?php echo count($joborder_employees); ?></p>
+          </div>
         </div>
       </div>
 
-      <!-- Payroll Table -->
-      <div class="table-container">
-        <table class="payroll-table">
-          <thead>
-            <tr>
-              <th rowspan="2" class="w-12">No.</th>
-              <th rowspan="2" class="min-w-[120px]">Name</th>
-              <th rowspan="2" class="mobile-hide">Designation</th>
-              <th rowspan="2" class="mobile-hide mobile-hide-extra">Address</th>
-              <th colspan="4">COMPENSATIONS</th>
-              <th colspan="2">DEDUCTIONS</th>
-              <th colspan="2" class="mobile-hide">COMMUNITY TAX CERTIFICATE</th>
-              <th rowspan="2" class="action-cell">Actions</th>
-            </tr>
-            <tr>
-              <th>Rate per hour/day</th>
-              <th>Number of hours/days</th>
-              <th>Rate per day/amount Earned</th>
-              <th>Total Amount Earned</th>
-              <th>GSIS Total Deductions</th>
-              <th>Total Net Amount Due</th>
-              <th class="mobile-hide">Number</th>
-              <th class="mobile-hide">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- Row 1 -->
-            <tr class="bg-white hover:bg-gray-50">
-              <td class="text-center font-medium text-gray-900">1</td>
-              <td class="font-medium text-gray-900">CHARLENE D. DIALATON</td>
-              <td class="text-center mobile-hide">Clerk I</td>
-              <td class="text-center mobile-hide mobile-hide-extra">Purok Ony</td>
-              <td class="text-right">256.00</td>
-              <td class="text-center">9 days</td>
-              <td class="text-right">2,256.00</td>
-              <td class="text-right">2,256.00</td>
-              <td class="text-right">84,950.00</td>
-              <td class="text-right">2,256.00</td>
-              <td class="text-center mobile-hide">10/1/2015</td>
-              <td class="text-center mobile-hide">10/1/2015</td>
-              <td class="action-cell">
-                <div class="flex justify-center space-x-1">
-                  <button data-modal-target="view-modal" data-modal-toggle="view-modal" type="button"
-                    class="action-button view-btn" title="View">
-                    <i class="fas fa-eye"></i>
-                  </button>
-                  <button data-modal-target="edit-modal" data-modal-toggle="edit-modal" type="button"
-                    class="action-button edit-btn" title="Edit" onclick="loadEditData(1)">
-                    <i class="fas fa-edit"></i>
-                  </button>
-                  <button data-modal-target="delete-modal" data-modal-toggle="delete-modal" type="button"
-                    class="action-button delete-btn" title="Delete" onclick="setDeleteId(1)">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
+      <div class="card p-4">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-green-100 text-green-600">
+            <i class="fas fa-money-bill-wave text-lg"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600">Total Amount Earned</p>
+            <p class="text-xl md:text-2xl font-bold text-gray-900" id="total-payroll-display">₱<?php echo number_format($total_payroll, 2); ?></p>
+          </div>
+        </div>
+      </div>
 
-            <!-- Additional rows will be generated by JavaScript -->
-          </tbody>
-        </table>
+      <div class="card p-4">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-purple-100 text-purple-600">
+            <i class="fas fa-hand-holding-usd text-lg"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600">Total Deductions</p>
+            <p class="text-xl md:text-2xl font-bold text-gray-900" id="total-deductions-display">₱<?php echo number_format($total_deductions, 2); ?></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-orange-100 text-orange-600">
+            <i class="fas fa-wallet text-lg"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600">Net Amount</p>
+            <p class="text-xl md:text-2xl font-bold text-gray-900" id="net-amount-display">₱<?php echo number_format($net_amount, 2); ?></p>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Action Buttons -->
-    <div
-      class="action-buttons flex flex-col md:flex-row justify-center md:justify-end space-y-3 md:space-y-0 md:space-x-4 mt-6 mb-10">
-      <button id="save-button" class="nav-button nav-button-success">
-        <i class="fas fa-save mr-2"></i> Save Data
-      </button>
-      <a href="joborderpayroll.php">
-        <button id="next-button" class="nav-button nav-button-primary">
-          Next Payroll <i class="fas fa-arrow-right ml-2"></i>
+    <!-- Payroll Table -->
+    <form method="POST" action="" id="payroll-form">
+      <input type="hidden" name="save_payroll" value="1">
+
+      <div class="card">
+        <div class="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <h2 class="text-lg font-semibold text-gray-900">Job Order Payroll Details for <?php echo date('F Y'); ?></h2>
+          <div class="flex items-center space-x-2 w-full md:w-auto">
+            <div class="relative flex-1 md:flex-none">
+              <input type="text" id="search-employees" placeholder="Search employees..." class="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 w-full text-sm">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-search text-gray-400"></i>
+              </div>
+            </div>
+            <button type="button" class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-300" id="filter-btn">
+              <i class="fas fa-filter"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="payroll-table">
+            <thead>
+              <tr>
+                <th rowspan="2" class="w-12">#</th>
+                <th rowspan="2" class="min-w-[120px]">Name</th>
+                <th rowspan="2" class="min-w-[90px]">Position</th>
+                <th colspan="4" class="text-center">COMPENSATIONS</th>
+                <th colspan="2" class="text-center">DEDUCTIONS</th>
+                <th colspan="2" class="text-center">NET AMOUNT</th>
+                <th rowspan="2" class="min-w-[100px]">Actions</th>
+              </tr>
+              <tr>
+                <th class="min-w-[90px]">Rate per day</th>
+                <th class="min-w-[70px]">Days Worked</th>
+                <th class="min-w-[90px]">Hours Worked</th>
+                <th class="min-w-[90px]">Amount Earned</th>
+                <th class="min-w-[70px]">GSIS</th>
+                <th class="min-w-[70px]">Total Deduction</th>
+                <th class="min-w-[90px]">Net Amount</th>
+                <th class="min-w-[70px]">Date</th>
+              </tr>
+            </thead>
+            <tbody id="payroll-tbody">
+              <?php if (empty($joborder_employees)): ?>
+                <tr>
+                  <td colspan="13" class="text-center py-8 text-gray-500">
+                    No job order employees found.
+                  </td>
+                </tr>
+              <?php else: ?>
+                <?php $counter = 1; ?>
+                <?php foreach ($joborder_employees as $employee): ?>
+                  <?php
+                  $deductions = calculateJobOrderDeductions($employee);
+                  $amount_earned = floatval($employee['amount_earned']);
+                  $net_amount_row = $amount_earned - $deductions['total'];
+                  ?>
+                  <tr class="bg-white border-b hover:bg-gray-50 payroll-row" data-employee-id="<?php echo $employee['id']; ?>">
+                    <td class="text-center"><?php echo $counter++; ?></td>
+                    <td class="font-medium">
+                      <?php echo htmlspecialchars($employee['last_name'] . ', ' . $employee['first_name'] . ' ' . ($employee['middle_name'] ? substr($employee['middle_name'], 0, 1) . '.' : '')); ?>
+                      <input type="hidden" name="employee_id[]" value="<?php echo $employee['id']; ?>">
+                    </td>
+                    <td><?php echo htmlspecialchars($employee['position']); ?></td>
+
+                    <!-- Compensations -->
+                    <td>
+                      <input type="number"
+                        name="rate_per_hour[]"
+                        class="payroll-input rate-per-hour"
+                        value="<?php echo $employee['rate_per_day']; ?>"
+                        min="0"
+                        step="0.01"
+                        data-employee-id="<?php echo $employee['id']; ?>">
+                    </td>
+                    <td class="text-center days-worked">
+                      <?php echo $employee['days_worked'] ?? 0; ?>
+                    </td>
+                    <td class="text-center hours-worked">
+                      <?php echo $employee['total_hours'] ?? 0; ?>
+                    </td>
+                    <td>
+                      <input type="text"
+                        name="amount_earned[]"
+                        class="payroll-input readonly amount-earned"
+                        value="₱<?php echo number_format($amount_earned, 2); ?>"
+                        readonly>
+                    </td>
+
+                    <!-- Deductions -->
+                    <td>
+                      <input type="number"
+                        name="gsis_deduction[]"
+                        class="payroll-input gsis-deduction"
+                        value="<?php echo $deductions['gsis_deduction']; ?>"
+                        min="0"
+                        step="0.01"
+                        data-employee-id="<?php echo $employee['id']; ?>">
+                    </td>
+                    <td>
+                      <input type="text"
+                        class="payroll-input readonly total-deduction"
+                        value="₱<?php echo number_format($deductions['total'], 2); ?>"
+                        readonly>
+                    </td>
+
+                    <!-- Net Amount -->
+                    <td>
+                      <input type="text"
+                        name="net_amount[]"
+                        class="payroll-input readonly net-amount"
+                        value="₱<?php echo number_format($net_amount_row, 2); ?>"
+                        readonly>
+                    </td>
+                    <td class="text-center">
+                      <?php echo date('m/d/Y'); ?>
+                    </td>
+                    <td>
+                      <div class="action-buttons">
+                        <button type="button" class="action-btn bg-blue-500 text-white hover:bg-blue-600 view-row" data-employee-id="<?php echo $employee['id']; ?>">
+                          <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
+                        </button>
+                        <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" data-employee-id="<?php echo $employee['id']; ?>">
+                          <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calculate</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+
+              <!-- Totals Row -->
+              <tr class="bg-gray-100 font-bold">
+                <td colspan="3" class="text-right">TOTAL AMOUNT</td>
+                <td class="text-right" id="total-rate-per-day">₱<?php echo number_format(array_sum(array_column($joborder_employees, 'rate_per_day')), 2); ?></td>
+                <td class="text-right" id="total-days-worked"><?php echo array_sum(array_column($joborder_employees, 'days_worked')); ?></td>
+                <td class="text-right" id="total-hours-worked"><?php echo number_format(array_sum(array_column($joborder_employees, 'total_hours')), 2); ?></td>
+                <td class="text-right" id="total-amount-earned">₱<?php echo number_format($total_payroll, 2); ?></td>
+                <td class="text-right" id="total-gsis">₱<?php echo number_format(array_sum(array_map(function ($emp) {
+                                                          $ded = calculateJobOrderDeductions($emp);
+                                                          return $ded['gsis_deduction'];
+                                                        }, $joborder_employees)), 2); ?></td>
+                <td class="text-right" id="total-deduction">₱<?php echo number_format($total_deductions, 2); ?></td>
+                <td class="text-right" id="total-net-amount">₱<?php echo number_format($net_amount, 2); ?></td>
+                <td></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Table Footer -->
+        <div class="p-4 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div class="text-sm text-gray-600">
+            Showing <span class="font-medium">1</span> to <span class="font-medium"><?php echo count($joborder_employees); ?></span> of <span class="font-medium"><?php echo count($joborder_employees); ?></span> employees
+          </div>
+          <div class="flex items-center space-x-2">
+            <button type="button" class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50" id="prev-btn">
+              Previous
+            </button>
+            <button type="button" class="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg hover:bg-primary-700" id="page-1">
+              1
+            </button>
+            <button type="button" class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50" id="next-btn">
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+        <button type="submit" class="px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 flex items-center justify-center">
+          <i class="fas fa-save mr-2"></i> Save Payroll
         </button>
-      </a>
-    </div>
+        <a href="joborderpayroll.php" class="w-full sm:w-auto">
+          <button type="button" class="w-full px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 flex items-center justify-center">
+            Next <i class="fas fa-arrow-right ml-2"></i>
+          </button>
+        </a>
+      </div>
+    </form>
   </main>
 
-  <!-- View Modal -->
-  <div id="view-modal" tabindex="-1" aria-hidden="true"
-    class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
-    <div class="relative p-4 w-full max-w-2xl max-h-full">
-      <div class="relative bg-white rounded-lg shadow">
-        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-          <h3 class="text-xl font-semibold text-gray-900">
-            View Employee Payroll Data
-          </h3>
-          <button type="button"
-            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center"
-            data-modal-hide="view-modal">
-            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-            </svg>
-            <span class="sr-only">Close modal</span>
-          </button>
-        </div>
-        <div class="p-4 md:p-5 space-y-4 text-sm" id="view-modal-content">
-          <p><strong>Name:</strong> <span id="view-name"></span></p>
-          <p><strong>Designation:</strong> <span id="view-designation"></span></p>
-          <hr>
-          <p><strong>Total Amount Earned:</strong> <span id="view-amount-earned"></span></p>
-          <p><strong>Total Net Amount Due:</strong> <span id="view-net-amount"></span></p>
-          <hr>
-          <p class="text-gray-500">Full details of the selected row would appear here.</p>
-        </div>
-        <div class="flex items-center p-4 md:p-5 border-t border-gray-200 rounded-b">
-          <button data-modal-hide="view-modal" type="button"
-            class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Edit Modal -->
-  <div id="edit-modal" tabindex="-1" aria-hidden="true"
-    class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
-    <div class="relative p-4 w-full max-w-3xl max-h-full">
-      <div class="relative bg-white rounded-lg shadow">
-        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-          <h3 class="text-xl font-semibold text-gray-900">
-            Edit Payroll Entry (Row <span id="edit-row-id"></span>)
-          </h3>
-          <button type="button"
-            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center"
-            data-modal-hide="edit-modal">
-            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-            </svg>
-            <span class="sr-only">Close modal</span>
-          </button>
-        </div>
-        <form class="p-4 md:p-5" id="edit-form">
-          <div class="grid gap-4 mb-4 grid-cols-1 md:grid-cols-2">
-            <div class="col-span-2 md:col-span-1">
-              <label for="name" class="block mb-2 text-sm font-medium text-gray-900">Name</label>
-              <input type="text" name="name" id="edit-name"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-600 focus:border-blue-600 block w-full p-2.5"
-                placeholder="Employee Name" required>
-            </div>
-            <div class="col-span-2 md:col-span-1">
-              <label for="designation" class="block mb-2 text-sm font-medium text-gray-900">Designation</label>
-              <input type="text" name="designation" id="edit-designation"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-600 focus:border-blue-600 block w-full p-2.5"
-                placeholder="Designation">
-            </div>
-            <div class="col-span-2 md:col-span-1">
-              <label for="amount" class="block mb-2 text-sm font-medium text-gray-900">Total Amount Earned</label>
-              <input type="number" name="amount" id="edit-amount"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-600 focus:border-blue-600 block w-full p-2.5"
-                step="0.01" required>
-            </div>
-            <div class="col-span-2 md:col-span-1">
-              <label for="net-amount" class="block mb-2 text-sm font-medium text-gray-900">Total Net Amount Due</label>
-              <input type="number" name="net-amount" id="edit-net-amount"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-600 focus:border-blue-600 block w-full p-2.5"
-                step="0.01" required>
-            </div>
-          </div>
-          <button type="submit"
-            class="text-white inline-flex items-center bg-yellow-400 hover:bg-yellow-500 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-            <i class="fas fa-edit mr-2"></i> Update Entry
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Delete Modal -->
-  <div id="delete-modal" tabindex="-1"
-    class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
-    <div class="relative p-4 w-full max-w-md max-h-full">
-      <div class="relative bg-white rounded-lg shadow">
-        <button type="button"
-          class="absolute top-3 end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center"
-          data-modal-hide="delete-modal">
-          <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
-          </svg>
-          <span class="sr-only">Close modal</span>
-        </button>
-        <div class="p-4 md:p-5 text-center">
-          <i class="fas fa-exclamation-triangle text-red-500 text-5xl mb-4"></i>
-          <h3 class="mb-5 text-lg font-normal text-gray-500">Are you sure you want to delete this payroll entry for Row
-            <span id="delete-row-id" class="font-bold"></span>?
-          </h3>
-          <button onclick="confirmDelete()" data-modal-hide="delete-modal" type="button"
-            class="text-white bg-red-600 hover:bg-red-800 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm inline-flex items-center px-5 py-2.5 text-center">
-            Yes, I'm sure
-          </button>
-          <button data-modal-hide="delete-modal" type="button"
-            class="py-2.5 px-5 ms-3 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100">No,
-            cancel</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
+  <!-- JavaScript -->
   <script>
-    let selectedRowId = null;
+    // Initialize states
+    let sidebarOpen = false;
+    let payrollMenuOpen = true;
 
-    /** Dummy Data Structure (In a real app, this would come from a database/API) */
-    const payrollData = {
-      1: { name: "CHARLENE D. DIALATON", designation: "Clerk I", address: "Purok Ony", amountEarned: "2,256.00", netAmountDue: "2,256.00" },
-      2: { name: "John Doe", designation: "Staff", address: "Sample St", amountEarned: "1,500.00", netAmountDue: "1,500.00" },
-      3: { name: "Jane Smith", designation: "Manager", address: "Another Ave", amountEarned: "5,000.00", netAmountDue: "4,800.00" },
-    };
-
-    /**
-     * JavaScript to dynamically generate empty rows
-     */
-    document.addEventListener('DOMContentLoaded', () => {
-      // Update date and time
-      function updateDateTime() {
-        const now = new Date();
-        const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-
-        const dateElement = document.getElementById('current-date');
-        const timeElement = document.getElementById('current-time');
-
-        if (dateElement) {
-          dateElement.textContent = now.toLocaleDateString('en-US', dateOptions);
-        }
-        if (timeElement) {
-          timeElement.textContent = now.toLocaleTimeString('en-US', timeOptions);
-        }
-      }
-
-      updateDateTime();
-      setInterval(updateDateTime, 1000);
-
-      // Generate additional rows
-      const tableBody = document.querySelector('.payroll-table tbody');
-      for (let i = 2; i <= 10; i++) {
-        const row = document.createElement('tr');
-        row.className = 'bg-white hover:bg-gray-50';
-        row.innerHTML = `
-          <td class="text-center font-medium text-gray-900">${i}</td>
-          <td></td>
-          <td class="mobile-hide"></td>
-          <td class="mobile-hide mobile-hide-extra"></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td class="mobile-hide"></td>
-          <td class="mobile-hide"></td>
-          <td class="action-cell">
-            <div class="flex justify-center space-x-1">
-              <button data-modal-target="view-modal" data-modal-toggle="view-modal" type="button" class="action-button view-btn" title="View">
-                <i class="fas fa-eye"></i>
-              </button>
-              <button data-modal-target="edit-modal" data-modal-toggle="edit-modal" type="button" class="action-button edit-btn" title="Edit" onclick="loadEditData(${i})">
-                <i class="fas fa-edit"></i>
-              </button>
-              <button data-modal-target="delete-modal" data-modal-toggle="delete-modal" type="button" class="action-button delete-btn" title="Delete" onclick="setDeleteId(${i})">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          </td>
-        `;
-        tableBody.appendChild(row);
-      }
-
-      // Mobile sidebar toggle functionality
-      const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    // Toggle mobile sidebar
+    document.getElementById('mobile-menu-toggle').addEventListener('click', function() {
       const sidebar = document.getElementById('sidebar');
-      const sidebarOverlay = document.getElementById('sidebar-overlay');
+      const overlay = document.getElementById('sidebar-overlay');
 
-      if (mobileMenuToggle && sidebar && sidebarOverlay) {
-        mobileMenuToggle.addEventListener('click', function () {
-          sidebar.classList.toggle('active');
-          sidebarOverlay.classList.toggle('active');
-          // Prevent body scroll when sidebar is open
-          document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : '';
-        });
+      sidebarOpen = !sidebarOpen;
+      sidebar.classList.toggle('active');
+      overlay.classList.toggle('active');
 
-        sidebarOverlay.addEventListener('click', function () {
-          sidebar.classList.remove('active');
-          sidebarOverlay.classList.remove('active');
-          document.body.style.overflow = '';
-        });
-
-        // Close sidebar when clicking on a link (for mobile)
-        const sidebarLinks = sidebar.querySelectorAll('a');
-        sidebarLinks.forEach(link => {
-          link.addEventListener('click', function () {
-            if (window.innerWidth < 1024) {
-              sidebar.classList.remove('active');
-              sidebarOverlay.classList.remove('active');
-              document.body.style.overflow = '';
-            }
-          });
-        });
+      if (window.innerWidth < 1024) {
+        document.body.style.overflow = sidebarOpen ? 'hidden' : '';
       }
-
-      // User dropdown functionality
-      const userMenuButton = document.getElementById('user-menu-button');
-      const userDropdown = document.getElementById('user-dropdown');
-
-      if (userMenuButton && userDropdown) {
-        userMenuButton.addEventListener('click', function (e) {
-          e.stopPropagation();
-          userDropdown.classList.toggle('active');
-          userMenuButton.classList.toggle('active');
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function (event) {
-          if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
-            userDropdown.classList.remove('active');
-            userMenuButton.classList.remove('active');
-          }
-        });
-      }
-
-      // Payroll dropdown in sidebar
-      const payrollToggle = document.getElementById('payroll-toggle');
-      const payrollDropdown = document.getElementById('payroll-submenu');
-
-      if (payrollToggle && payrollDropdown) {
-        // Open payroll dropdown by default since we're on payroll page
-        payrollDropdown.classList.add('open');
-        const chevron = payrollToggle.querySelector('.chevron');
-        if (chevron) {
-          chevron.classList.add('rotated');
-        }
-
-        payrollToggle.addEventListener('click', function (e) {
-          e.preventDefault();
-          payrollDropdown.classList.toggle('open');
-          const chevron = this.querySelector('.chevron');
-          if (chevron) {
-            chevron.classList.toggle('rotated');
-          }
-        });
-      }
-
-      // Add this to your existing JavaScript in each payroll page:
-
-      // Payroll dropdown toggle
-      document.addEventListener('DOMContentLoaded', function () {
-        const payrollToggle = document.getElementById('payroll-toggle');
-        const payrollDropdown = document.getElementById('payroll-dropdown');
-
-        if (payrollToggle && payrollDropdown) {
-          // Open dropdown by default on payroll pages
-          payrollDropdown.classList.add('show');
-          const chevron = payrollToggle.querySelector('.chevron');
-          if (chevron) {
-            chevron.classList.add('rotate');
-          }
-
-          payrollToggle.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            // Toggle the 'show' class
-            payrollDropdown.classList.toggle('show');
-
-            // Toggle chevron rotation
-            const chevron = this.querySelector('.chevron');
-            if (chevron) {
-              chevron.classList.toggle('rotate');
-            }
-          });
-        }
-      });
-
-      // Handle window resize
-      window.addEventListener('resize', function () {
-        const sidebar = document.getElementById('sidebar');
-        const sidebarOverlay = document.getElementById('sidebar-overlay');
-
-        if (window.innerWidth >= 1024) {
-          // On desktop, ensure sidebar is visible and overlay is hidden
-          if (sidebar) sidebar.classList.remove('active');
-          if (sidebarOverlay) sidebarOverlay.classList.remove('active');
-          document.body.style.overflow = '';
-        }
-      });
-
-      // Add event listeners for view modal buttons
-      document.querySelectorAll('[data-modal-target="view-modal"]').forEach(button => {
-        button.addEventListener('click', (e) => {
-          const row = e.target.closest('tr');
-          const rowId = parseInt(row.querySelector('td:first-child').textContent);
-          const data = payrollData[rowId];
-
-          if (data) {
-            document.getElementById('view-name').textContent = data.name;
-            document.getElementById('view-designation').textContent = data.designation;
-            document.getElementById('view-amount-earned').textContent = data.amountEarned;
-            document.getElementById('view-net-amount').textContent = data.netAmountDue;
-          } else {
-            document.getElementById('view-name').textContent = 'N/A';
-            document.getElementById('view-designation').textContent = 'N/A';
-            document.getElementById('view-amount-earned').textContent = 'N/A';
-            document.getElementById('view-net-amount').textContent = 'N/A';
-          }
-        });
-      });
     });
 
-    /**
-     * Load data into the Edit modal form
-     * @param {number} id - The row ID to edit.
-     */
-    function loadEditData(id) {
-      selectedRowId = id;
-      const data = payrollData[id];
+    // Close sidebar when overlay is clicked
+    document.getElementById('sidebar-overlay').addEventListener('click', function() {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.remove('active');
+      this.classList.remove('active');
+      sidebarOpen = false;
+      document.body.style.overflow = '';
+    });
 
-      document.getElementById('edit-row-id').textContent = id;
-
-      if (data) {
-        // Remove commas and convert to number for input fields
-        document.getElementById('edit-name').value = data.name;
-        document.getElementById('edit-designation').value = data.designation;
-        document.getElementById('edit-amount').value = parseFloat(data.amountEarned.replace(/,/g, ''));
-        document.getElementById('edit-net-amount').value = parseFloat(data.netAmountDue.replace(/,/g, ''));
-      } else {
-        // Clear or set default values if no data exists
-        document.getElementById('edit-name').value = '';
-        document.getElementById('edit-designation').value = '';
-        document.getElementById('edit-amount').value = 0.00;
-        document.getElementById('edit-net-amount').value = 0.00;
-      }
-    }
-
-    /**
-     * Handle Edit Form Submission
-     */
-    document.getElementById('edit-form').addEventListener('submit', function (e) {
+    // Toggle payroll dropdown in sidebar
+    document.getElementById('payroll-toggle').addEventListener('click', function(e) {
       e.preventDefault();
-      // In a real application, you would send this data to a server
+      e.stopPropagation();
 
-      const updatedData = {
-        name: document.getElementById('edit-name').value,
-        designation: document.getElementById('edit-designation').value,
-        amountEarned: parseFloat(document.getElementById('edit-amount').value).toFixed(2),
-        netAmountDue: parseFloat(document.getElementById('edit-net-amount').value).toFixed(2),
-      };
+      const dropdown = document.getElementById('payroll-submenu');
+      const chevron = this.querySelector('.chevron');
 
-      console.log(`Updating Row ${selectedRowId} with:`, updatedData);
-
-      // Close modal manually since the form submit was prevented
-      const editModalElement = document.getElementById('edit-modal');
-      const editModal = Flowbite.getModal(editModalElement);
-      if (editModal) editModal.hide();
-
-      alert(`Row ${selectedRowId} updated! (Check console for data)`);
-      // **TO-DO:** Update the table row visually here.
+      payrollMenuOpen = !payrollMenuOpen;
+      dropdown.classList.toggle('open');
+      chevron.classList.toggle('rotated');
     });
 
-    /**
-     * Set the ID for the Delete confirmation modal
-     * @param {number} id - The row ID to delete.
-     */
-    function setDeleteId(id) {
-      selectedRowId = id;
-      document.getElementById('delete-row-id').textContent = id;
-    }
-
-    /**
-     * Handle Delete confirmation
-     */
-    function confirmDelete() {
-      // In a real application, you would send a delete request to a server
-      console.log(`Confirmed delete for Row ${selectedRowId}`);
-
-      // **TO-DO:** Remove the corresponding row from the table (using the selectedRowId) and update total.
-
-      alert(`Row ${selectedRowId} successfully deleted.`);
-    }
-
-    // Global Action Button Logics
-    document.getElementById('save-button').addEventListener('click', () => {
-      alert('Saving all payroll data... (In a real app, this would persist the entire form data)');
-    });
-
-    document.getElementById('next-button').addEventListener('click', () => {
-      alert('Navigating to the next payroll period or blank form.');
-      // window.location.href = '/new-payroll-form';
-    });
-
-    // Add Payroll Button
-    document.getElementById('add-payroll-btn').addEventListener('click', () => {
-      alert('Add new payroll functionality would open a form here.');
-    });
-
-    // Payroll Dropdown Management
-    document.addEventListener('DOMContentLoaded', function () {
-      const payrollToggle = document.getElementById('payroll-toggle');
-      const payrollDropdown = document.getElementById('payroll-dropdown');
-
-      if (payrollToggle && payrollDropdown) {
-        // Check if we're on a payroll page
-        const currentPath = window.location.pathname;
-        const isPayrollPage = currentPath.includes('contractual') ||
-          currentPath.includes('joborder') ||
-          currentPath.includes('permanent') ||
-          currentPath.includes('Payrollmanagement');
-
-        // Auto-open dropdown on payroll pages
-        if (isPayrollPage) {
-          payrollToggle.classList.add('active');
-          payrollDropdown.style.display = 'block';
-          const chevron = payrollToggle.querySelector('.chevron');
-          if (chevron) {
-            chevron.classList.add('rotate');
-          }
-        }
-
-        // Toggle dropdown on click
-        payrollToggle.addEventListener('click', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-
-          if (payrollDropdown.style.display === 'block') {
-            payrollDropdown.style.display = 'none';
-            this.classList.remove('active');
-            const chevron = this.querySelector('.chevron');
-            if (chevron) {
-              chevron.classList.remove('rotate');
-            }
-          } else {
-            payrollDropdown.style.display = 'block';
-            this.classList.add('active');
-            const chevron = this.querySelector('.chevron');
-            if (chevron) {
-              chevron.classList.add('rotate');
-            }
-          }
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function (e) {
-          if (!payrollToggle.contains(e.target) && !payrollDropdown.contains(e.target)) {
-            payrollDropdown.style.display = 'none';
-            payrollToggle.classList.remove('active');
-            const chevron = payrollToggle.querySelector('.chevron');
-            if (chevron) {
-              chevron.classList.remove('rotate');
-            }
-          }
-        });
+    // Open payroll dropdown by default
+    document.addEventListener('DOMContentLoaded', function() {
+      const payrollDropdown = document.getElementById('payroll-submenu');
+      const payrollChevron = document.getElementById('payroll-toggle').querySelector('.chevron');
+      if (payrollDropdown) {
+        payrollDropdown.classList.add('open');
+        payrollChevron.classList.add('rotated');
       }
     });
+
+    // Close sidebar when clicking on a sidebar link (mobile only)
+    document.querySelectorAll('.sidebar-item, .submenu-item').forEach(item => {
+      item.addEventListener('click', function(e) {
+        if (window.innerWidth < 1024) {
+          const sidebar = document.getElementById('sidebar');
+          const overlay = document.getElementById('sidebar-overlay');
+
+          sidebar.classList.remove('active');
+          overlay.classList.remove('active');
+          sidebarOpen = false;
+          document.body.style.overflow = '';
+        }
+      });
+    });
+
+    // Update date and time
+    function updateDateTime() {
+      const now = new Date();
+
+      // Format date
+      const dateOptions = {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      };
+      const dateString = now.toLocaleDateString('en-US', dateOptions);
+
+      // Format time
+      const timeOptions = {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      };
+      const timeString = now.toLocaleTimeString('en-US', timeOptions);
+
+      const dateElement = document.getElementById('current-date');
+      const timeElement = document.getElementById('current-time');
+
+      if (dateElement) dateElement.textContent = dateString;
+      if (timeElement) timeElement.textContent = timeString;
+    }
+
+    // Update date/time immediately and every second
+    updateDateTime();
+    setInterval(updateDateTime, 1000);
+
+    // Payroll Calculation Functions for Job Order
+    function calculateRow(row) {
+      const ratePerHour = parseFloat(row.querySelector('.rate-per-hour').value) || 0;
+      const daysWorked = parseInt(row.querySelector('.days-worked').textContent) || 0;
+      const hoursWorked = parseFloat(row.querySelector('.hours-worked').textContent) || 0;
+      const gsisDeduction = parseFloat(row.querySelector('.gsis-deduction').value) || 0;
+
+      // Calculate amount earned (rate per hour * days worked)
+      const amountEarned = ratePerHour * daysWorked;
+
+      // Calculate total deduction
+      const totalDeduction = gsisDeduction;
+
+      // Calculate net amount
+      const netAmount = amountEarned - totalDeduction;
+
+      // Update row values
+      row.querySelector('.amount-earned').value = '₱' + amountEarned.toFixed(2);
+      row.querySelector('.total-deduction').value = '₱' + totalDeduction.toFixed(2);
+      row.querySelector('.net-amount').value = '₱' + netAmount.toFixed(2);
+
+      return {
+        amountEarned,
+        totalDeduction,
+        netAmount,
+        gsisDeduction
+      };
+    }
+
+    function calculateAll() {
+      let totalRatePerDay = 0;
+      let totalDaysWorked = 0;
+      let totalHoursWorked = 0;
+      let totalAmountEarned = 0;
+      let totalGsis = 0;
+      let totalDeduction = 0;
+      let totalNetAmount = 0;
+
+      document.querySelectorAll('.payroll-row').forEach(row => {
+        const result = calculateRow(row);
+        const ratePerHour = parseFloat(row.querySelector('.rate-per-hour').value) || 0;
+        const daysWorked = parseInt(row.querySelector('.days-worked').textContent) || 0;
+        const hoursWorked = parseFloat(row.querySelector('.hours-worked').textContent) || 0;
+
+        totalRatePerDay += ratePerHour;
+        totalDaysWorked += daysWorked;
+        totalHoursWorked += hoursWorked;
+        totalAmountEarned += result.amountEarned;
+        totalGsis += result.gsisDeduction;
+        totalDeduction += result.totalDeduction;
+        totalNetAmount += result.netAmount;
+      });
+
+      // Update total displays
+      document.getElementById('total-rate-per-day').textContent = '₱' + totalRatePerDay.toFixed(2);
+      document.getElementById('total-days-worked').textContent = totalDaysWorked;
+      document.getElementById('total-hours-worked').textContent = totalHoursWorked.toFixed(2);
+      document.getElementById('total-amount-earned').textContent = '₱' + totalAmountEarned.toFixed(2);
+      document.getElementById('total-gsis').textContent = '₱' + totalGsis.toFixed(2);
+      document.getElementById('total-deduction').textContent = '₱' + totalDeduction.toFixed(2);
+      document.getElementById('total-net-amount').textContent = '₱' + totalNetAmount.toFixed(2);
+
+      // Update stat cards
+      document.getElementById('total-payroll-display').textContent = '₱' + totalAmountEarned.toFixed(2);
+      document.getElementById('total-deductions-display').textContent = '₱' + totalDeduction.toFixed(2);
+      document.getElementById('net-amount-display').textContent = '₱' + totalNetAmount.toFixed(2);
+
+      return {
+        totalAmountEarned,
+        totalDeduction,
+        totalNetAmount
+      };
+    }
+
+    // Event Listeners for Calculations
+    document.querySelectorAll('.rate-per-hour, .gsis-deduction').forEach(input => {
+      input.addEventListener('input', function() {
+        const row = this.closest('.payroll-row');
+        calculateRow(row);
+        calculateAll();
+      });
+    });
+
+    // Calculate all button
+    document.getElementById('calculate-all-btn').addEventListener('click', function() {
+      calculateAll();
+      showNotification('All calculations updated successfully!', 'success');
+    });
+
+    // Calculate individual row
+    document.querySelectorAll('.calculate-row').forEach(button => {
+      button.addEventListener('click', function() {
+        const row = this.closest('.payroll-row');
+        calculateRow(row);
+        calculateAll();
+        showNotification('Row calculation updated!', 'success');
+      });
+    });
+
+    // View row details
+    document.querySelectorAll('.view-row').forEach(button => {
+      button.addEventListener('click', function() {
+        const employeeId = this.dataset.employeeId;
+        const row = this.closest('.payroll-row');
+        const name = row.querySelector('.font-medium').textContent.trim();
+        const position = row.querySelector('td:nth-child(3)').textContent;
+        const ratePerHour = row.querySelector('.rate-per-hour').value;
+        const amountEarned = row.querySelector('.amount-earned').value;
+        const netAmount = row.querySelector('.net-amount').value;
+
+        const details = `
+                    Employee: ${name}
+                    Position: ${position}
+                    Rate per Day: ₱${ratePerHour}
+                    Amount Earned: ${amountEarned}
+                    Net Amount: ${netAmount}
+                `;
+
+        alert(details);
+      });
+    });
+
+    // Search functionality
+    const searchInput = document.getElementById('search-employees');
+    if (searchInput) {
+      searchInput.addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('.payroll-row');
+
+        rows.forEach(row => {
+          const name = row.querySelector('.font-medium').textContent.toLowerCase();
+          if (name.includes(searchTerm)) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+      });
+    }
+
+    // Refresh button
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+      location.reload();
+    });
+
+    // Form submission
+    document.getElementById('payroll-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      // Validate all inputs
+      let isValid = true;
+      document.querySelectorAll('.payroll-input:not(.readonly)').forEach(input => {
+        if (input.value === '' || isNaN(parseFloat(input.value))) {
+          isValid = false;
+          input.style.borderColor = '#ef4444';
+        } else {
+          input.style.borderColor = '#d1d5db';
+        }
+      });
+
+      if (!isValid) {
+        showNotification('Please check all inputs. They must be valid numbers.', 'error');
+        return;
+      }
+
+      // Calculate final totals
+      calculateAll();
+
+      // Show confirmation
+      if (confirm('Are you sure you want to save the job order payroll data?')) {
+        this.submit();
+      }
+    });
+
+    // Notification function
+    function showNotification(message, type = 'info') {
+      // Remove existing notifications
+      const existingNotifications = document.querySelectorAll('.notification');
+      existingNotifications.forEach(notification => notification.remove());
+
+      // Create notification element
+      const notification = document.createElement('div');
+      notification.className = `notification ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`;
+      notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} mr-2"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+
+      // Add to document
+      document.body.appendChild(notification);
+
+      // Remove after 5 seconds
+      setTimeout(() => {
+        notification.remove();
+      }, 5000);
+    }
+
+    // Initialize calculations on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      calculateAll();
+    });
+
+    // Close sidebar on window resize
+    window.addEventListener('resize', function() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+
+      if (window.innerWidth >= 1024) {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+        sidebarOpen = false;
+        document.body.style.overflow = '';
+      }
+    });
+
+    // Initialize sidebar state
+    function initSidebarState() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+
+      if (window.innerWidth >= 1024) {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+        sidebarOpen = false;
+      }
+    }
+
+    // Initialize on page load
+    initSidebarState();
   </script>
 </body>
 

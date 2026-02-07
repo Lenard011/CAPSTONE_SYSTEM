@@ -62,118 +62,6 @@ if (isset($_GET['logout'])) {
     }
   </script>
   <style>
-    /* Sidebar */
-    .sidebar-container {
-      position: fixed;
-      left: 0;
-      top: 70px;
-      width: 260px;
-      height: calc(100vh - 70px);
-      background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
-      z-index: 999;
-      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
-      overflow-y: auto;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-    }
-
-    .sidebar-container::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .sidebar-container::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .sidebar-container::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 3px;
-    }
-
-    .sidebar {
-      height: 100%;
-      padding: 1.5rem 0;
-    }
-
-    .sidebar-content {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      padding: 0 1rem;
-    }
-
-    .sidebar-item {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 0.9rem 1.25rem;
-      color: rgba(255, 255, 255, 0.85);
-      text-decoration: none;
-      transition: all 0.3s ease;
-      border-radius: 12px;
-      margin-bottom: 0.25rem;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .sidebar-item::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      height: 100%;
-      width: 4px;
-      background: white;
-      transform: scaleY(0);
-      transition: transform 0.3s ease;
-      border-radius: 0 4px 4px 0;
-    }
-
-    .sidebar-item:hover {
-      background: rgba(255, 255, 255, 0.12);
-      color: white;
-      transform: translateX(4px);
-    }
-
-    .sidebar-item:hover::before {
-      transform: scaleY(1);
-    }
-
-    .sidebar-item.active {
-      background: rgba(255, 255, 255, 0.18);
-      color: white;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-
-    .sidebar-item.active::before {
-      transform: scaleY(1);
-    }
-
-    .sidebar-item i {
-      font-size: 1.2rem;
-      width: 24px;
-      text-align: center;
-    }
-
-    .sidebar-item span {
-      font-size: 0.95rem;
-      font-weight: 600;
-      flex: 1;
-    }
-
-    .sidebar-item.logout {
-      color: #fecaca;
-      margin-top: 1rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      padding-top: 1rem;
-    }
-
-    .sidebar-item.logout:hover {
-      background: rgba(239, 68, 68, 0.15);
-      color: #fecaca;
-    }
-
     :root {
       --primary: #1e40af;
       --secondary: #1e3a8a;
@@ -195,7 +83,7 @@ if (isset($_GET['logout'])) {
       color: #1f2937;
     }
 
-    /* IMPROVED NAVBAR - Fixed Responsive */
+    /* NAVBAR - FIXED RESPONSIVE STYLES */
     .navbar {
       background: var(--gradient-nav);
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
@@ -905,7 +793,8 @@ if (isset($_GET['logout'])) {
       aside,
       .sidebar,
       .navbar,
-      .breadcrumb-container {
+      .breadcrumb-container,
+      .print-hide {
         display: none !important;
       }
 
@@ -928,32 +817,92 @@ if (isset($_GET['logout'])) {
       }
     }
 
-    .sidebar-item.active {
-      background: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    }
-
-    .submenu-item:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-      transform: translateX(5px);
-    }
-
-    .submenu-item.active {
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-    }
-
     .breadcrumb-container {
       margin-top: 1rem;
       margin-bottom: 1.5rem;
+    }
+
+    /* Responsive utilities - NAVBAR SPECIFIC */
+    @media (max-width: 768px) {
+      .datetime-container {
+        display: none;
+      }
+
+      .user-info {
+        display: none;
+      }
+
+      .user-button {
+        padding: 0.4rem;
+      }
+
+      .user-dropdown {
+        position: fixed;
+        top: 70px;
+        right: 1rem;
+        left: 1rem;
+        width: auto;
+        max-width: 300px;
+      }
+
+      .navbar-container {
+        padding: 0 1rem;
+      }
+
+      .brand-text {
+        display: none;
+      }
+
+      .mobile-brand {
+        display: flex;
+      }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-brand {
+        display: none;
+      }
+
+      .brand-text {
+        display: flex;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .navbar {
+        height: 65px;
+      }
+
+      .sidebar {
+        top: 65px;
+        height: calc(100vh - 65px);
+      }
+
+      main {
+        margin-top: 65px;
+      }
+
+      .mobile-toggle {
+        width: 36px;
+        height: 36px;
+      }
+
+      .user-avatar {
+        width: 32px;
+        height: 32px;
+      }
+
+      .brand-logo {
+        width: 40px;
+        height: 40px;
+      }
     }
   </style>
 </head>
 
 <body class="bg-gray-50">
   <!-- Navigation Header -->
-  <nav class="navbar">
+  <nav class="navbar print-hide">
     <div class="navbar-container">
       <!-- Left Section -->
       <div class="navbar-left">
@@ -1003,15 +952,47 @@ if (isset($_GET['logout'])) {
         </div>
 
         <!-- User Menu -->
+        <div class="user-menu print-hide">
+          <button class="user-button" id="user-menu-button">
+            <img src="https://ui-avatars.com/api/?name=Admin+User&background=3b82f6&color=fff" alt="User" class="user-avatar">
+            <div class="user-info hidden md:block">
+              <span class="user-name">Admin User</span>
+              <span class="user-role">Administrator</span>
+            </div>
+            <i class="user-chevron fas fa-chevron-down"></i>
+          </button>
+
+          <!-- User Dropdown -->
+          <div class="user-dropdown" id="user-dropdown">
+            <div class="dropdown-header">
+              <h3>Admin User</h3>
+              <p>Administrator</p>
+            </div>
+            <div class="dropdown-menu">
+              <a href="../profile.php" class="dropdown-item">
+                <i class="fas fa-user-circle"></i>
+                <span>My Profile</span>
+              </a>
+              <a href="../settings.php" class="dropdown-item">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+              </a>
+              <a href="?logout=true" class="dropdown-item">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </nav>
 
   <!-- Sidebar Overlay for Mobile -->
-  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <div class="sidebar-overlay print-hide" id="sidebar-overlay"></div>
 
   <!-- Sidebar -->
-  <div class="sidebar" id="sidebar">
+  <div class="sidebar print-hide" id="sidebar">
     <div class="sidebar-content">
       <ul class="space-y-1">
         <!-- Dashboard -->
@@ -1063,7 +1044,7 @@ if (isset($_GET['logout'])) {
 
         <!-- Reports -->
         <li>
-          <a href="../paysliphistory.php" class="sidebar-item">
+          <a href="../paysliplist.php" class="sidebar-item">
             <i class="fas fa-file-alt"></i>
             <span>Reports</span>
           </a>
@@ -1096,24 +1077,25 @@ if (isset($_GET['logout'])) {
 
   <!-- MAIN CONTENT - APPLIED JOB ORDER STRUCTURE -->
   <main class="main-content">
-    <div class="breadcrumb-container">
-      <nav aria-label="Breadcrumb">
+    <!-- Breadcrumb navigation - PROPER HIERARCHY -->
+    <div class="breadcrumb-container print-hide">
+      <nav class="mt-4 flex" aria-label="Breadcrumb">
         <ol class="inline-flex items-center space-x-1 md:space-x-2">
           <li class="inline-flex items-center">
-            <a href="contractualpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-blue-600 md:ml-2 breadcrumb-item">
+            <a href="contractualpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
               <i class="fas fa-home mr-2"></i> Contractual Payroll
             </a>
           </li>
           <li>
             <div class="flex items-center">
               <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-              <a href="contractualpayroll.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-blue-700 breadcrumb-item">General Payroll</a>
+              <a href="contractualpayroll.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-primary-700">General Payroll</a>
             </div>
           </li>
-          <li>
+          <li aria-current="page">
             <div class="flex items-center">
               <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-              <a href="contractualobligationrequest.php" class="ml-1 text-sm font-medium text-blue-700 hover:text-blue-600 md:ml-2 breadcrumb-item"> Contractual Obligation Request</a>
+              <span class="ml-1 text-sm font-medium text-blue-700 md:ml-2">Contractual Obligation Request</span>
             </div>
           </li>
         </ol>
@@ -1298,77 +1280,33 @@ if (isset($_GET['logout'])) {
       // Update date and time
       function updateDateTime() {
         const now = new Date();
-
-        // Format date
         const dateOptions = {
           weekday: 'long',
           year: 'numeric',
           month: 'long',
           day: 'numeric'
         };
-        const dateString = now.toLocaleDateString('en-US', dateOptions);
-
-        // Format time
         const timeOptions = {
           hour: '2-digit',
           minute: '2-digit',
-          second: '2-digit',
-          hour12: true
+          second: '2-digit'
         };
-        const timeString = now.toLocaleTimeString('en-US', timeOptions);
 
         const dateElement = document.getElementById('current-date');
         const timeElement = document.getElementById('current-time');
 
-        if (dateElement) dateElement.textContent = dateString;
-        if (timeElement) timeElement.textContent = timeString;
+        if (dateElement) {
+          dateElement.textContent = now.toLocaleDateString('en-US', dateOptions);
+        }
+        if (timeElement) {
+          timeElement.textContent = now.toLocaleTimeString('en-US', timeOptions);
+        }
       }
 
-      // Update date/time immediately and every second
       updateDateTime();
       setInterval(updateDateTime, 1000);
 
-      // Mobile menu toggle functionality
-      const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-      const sidebar = document.getElementById('sidebar');
-      const sidebarOverlay = document.getElementById('sidebar-overlay');
-
-      if (mobileMenuToggle && sidebar && sidebarOverlay) {
-        mobileMenuToggle.addEventListener('click', function() {
-          sidebar.classList.toggle('active');
-          sidebarOverlay.classList.toggle('active');
-
-          // Prevent body scroll when sidebar is open on mobile
-          if (window.innerWidth < 768) {
-            if (sidebar.classList.contains('active')) {
-              document.body.style.overflow = 'hidden';
-            } else {
-              document.body.style.overflow = '';
-            }
-          }
-        });
-
-        // Close sidebar when overlay is clicked
-        sidebarOverlay.addEventListener('click', function() {
-          sidebar.classList.remove('active');
-          this.classList.remove('active');
-          document.body.style.overflow = '';
-        });
-
-        // Close sidebar when clicking on a sidebar link (for mobile)
-        const sidebarLinks = sidebar.querySelectorAll('a');
-        sidebarLinks.forEach(link => {
-          link.addEventListener('click', function() {
-            if (window.innerWidth < 768) {
-              sidebar.classList.remove('active');
-              sidebarOverlay.classList.remove('active');
-              document.body.style.overflow = '';
-            }
-          });
-        });
-      }
-
-      // User dropdown toggle
+      // User dropdown functionality
       const userMenuButton = document.getElementById('user-menu-button');
       const userDropdown = document.getElementById('user-dropdown');
 
@@ -1379,60 +1317,79 @@ if (isset($_GET['logout'])) {
           userMenuButton.classList.toggle('active');
         });
 
-        // Close user dropdown when clicking outside
+        // Close dropdown when clicking outside
         document.addEventListener('click', function(event) {
-          if (userDropdown && userMenuButton) {
-            if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
-              userDropdown.classList.remove('active');
-              userMenuButton.classList.remove('active');
-            }
+          if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
+            userDropdown.classList.remove('active');
+            userMenuButton.classList.remove('active');
           }
         });
       }
 
-      // Payroll dropdown toggle in sidebar - FIXED VERSION
-      const payrollToggle = document.getElementById('payroll-toggle');
-      const payrollSubmenu = document.getElementById('payroll-submenu');
+      // Mobile sidebar toggle functionality
+      const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+      const sidebar = document.getElementById('sidebar');
+      const sidebarOverlay = document.getElementById('sidebar-overlay');
 
-      if (payrollToggle && payrollSubmenu) {
-        payrollToggle.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-
-          const chevron = this.querySelector('.chevron');
-          if (payrollSubmenu.classList.contains('open')) {
-            payrollSubmenu.classList.remove('open');
-            chevron.classList.remove('rotated');
-          } else {
-            payrollSubmenu.classList.add('open');
-            chevron.classList.add('rotated');
-          }
+      if (mobileMenuToggle && sidebar && sidebarOverlay) {
+        mobileMenuToggle.addEventListener('click', function() {
+          sidebar.classList.toggle('active');
+          sidebarOverlay.classList.toggle('active');
+          // Prevent body scroll when sidebar is open
+          document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : '';
         });
 
-        // Open payroll submenu by default since Contractual is active
-        payrollSubmenu.classList.add('open');
-        payrollToggle.querySelector('.chevron').classList.add('rotated');
+        sidebarOverlay.addEventListener('click', function() {
+          sidebar.classList.remove('active');
+          sidebarOverlay.classList.remove('active');
+          document.body.style.overflow = '';
+        });
+
+        // Close sidebar when clicking on a link (for mobile)
+        const sidebarLinks = sidebar.querySelectorAll('a');
+        sidebarLinks.forEach(link => {
+          link.addEventListener('click', function() {
+            if (window.innerWidth < 1024) {
+              sidebar.classList.remove('active');
+              sidebarOverlay.classList.remove('active');
+              document.body.style.overflow = '';
+            }
+          });
+        });
+      }
+
+      // Payroll dropdown in sidebar
+      const payrollToggle = document.getElementById('payroll-toggle');
+      const payrollDropdown = document.getElementById('payroll-submenu');
+
+      if (payrollToggle && payrollDropdown) {
+        // Open payroll dropdown by default since we're on payroll page
+        payrollDropdown.classList.add('open');
+        const chevron = payrollToggle.querySelector('.chevron');
+        if (chevron) {
+          chevron.classList.add('rotated');
+        }
+
+        payrollToggle.addEventListener('click', function(e) {
+          e.preventDefault();
+          payrollDropdown.classList.toggle('open');
+          const chevron = this.querySelector('.chevron');
+          if (chevron) {
+            chevron.classList.toggle('rotated');
+          }
+        });
       }
 
       // Handle window resize
       window.addEventListener('resize', function() {
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
         if (window.innerWidth >= 1024) {
           // On desktop, ensure sidebar is visible and overlay is hidden
-          if (sidebar) {
-            sidebar.classList.add('active');
-          }
-          if (sidebarOverlay) {
-            sidebarOverlay.classList.remove('active');
-          }
+          if (sidebar) sidebar.classList.remove('active');
+          if (sidebarOverlay) sidebarOverlay.classList.remove('active');
           document.body.style.overflow = '';
-        } else {
-          // On mobile, hide sidebar by default
-          if (sidebar) {
-            sidebar.classList.remove('active');
-          }
-          if (sidebarOverlay) {
-            sidebarOverlay.classList.remove('active');
-          }
         }
       });
 
@@ -1476,46 +1433,16 @@ if (isset($_GET['logout'])) {
         });
       }
 
-      // Initialize sidebar based on current page
-      const currentPath = window.location.pathname;
-      const sidebarLinks = document.querySelectorAll('.sidebar-item, .submenu-item');
-
-      sidebarLinks.forEach(link => {
-        // Remove all active classes first
-        link.classList.remove('active');
-
-        // Check if this link matches current page
-        const href = link.getAttribute('href');
-        if (href && href !== '#' && currentPath.includes(href)) {
-          link.classList.add('active');
-
-          // If it's a submenu item, ensure parent menu is open
-          if (link.classList.contains('submenu-item')) {
-            if (payrollSubmenu) {
-              payrollSubmenu.classList.add('open');
-              if (payrollToggle) {
-                payrollToggle.querySelector('.chevron').classList.add('rotated');
-              }
-            }
-          }
-        }
-      });
-
-      // Initialize on page load
-      if (window.innerWidth >= 1024) {
-        if (sidebar) {
-          sidebar.classList.add('active');
-        }
-      } else {
-        if (sidebar) {
-          sidebar.classList.remove('active');
-        }
-      }
-
       // Print form function
       window.printForm = function() {
         window.print();
       }
+
+      // After print event
+      window.addEventListener('afterprint', function() {
+        // Restore body overflow
+        document.body.style.overflow = '';
+      });
     });
   </script>
 </body>
