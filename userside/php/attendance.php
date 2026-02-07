@@ -1,5 +1,67 @@
+<?php
+// homepage.php - SIMPLE WORKING VERSION
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set EXACTLY the same session configuration as login.php
+$cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
+
+session_name('HRMS_SESSION');
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => $cookiePath,
+    'domain' => '',
+    'secure' => false,
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Add debug output as HTML comment (view page source to see)
+echo "<!-- =========== HOMEPAGE SESSION DEBUG =========== -->\n";
+echo "<!-- Session ID: " . session_id() . " -->\n";
+echo "<!-- Cookie Path: " . $cookiePath . " -->\n";
+echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
+echo "<!-- ============================================= -->\n";
+
+// SIMPLE SESSION CHECK
+if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+    // Redirect to login with error
+    header('Location: login.php?error=session_missing');
+    exit();
+}
+
+// Update last activity
+$_SESSION['last_activity'] = time();
+
+// User is logged in - get variables
+$user_id = $_SESSION['user_id'];
+$username = $_SESSION['username'];
+$email = $_SESSION['email'] ?? '';
+$first_name = $_SESSION['first_name'] ?? '';
+$last_name = $_SESSION['last_name'] ?? '';
+$full_name = $_SESSION['full_name'] ?? ($first_name . ' ' . $last_name);
+$role = $_SESSION['role'] ?? 'employee';
+$access_level = $_SESSION['access_level'] ?? 1;
+$employee_id = $_SESSION['employee_id'] ?? '';
+$profile_image = $_SESSION['profile_image'] ?? '';
+
+// Check for forced password change
+if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
+    header('Location: change_password.php');
+    exit();
+}
+
+// Log successful access
+error_log("User " . $username . " accessed homepage successfully");
+?>
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -25,7 +87,7 @@
             --gray-light: #e5e7eb;
             --card-bg: #ffffff;
             --sidebar-bg: linear-gradient(180deg, #1e40af 0%, #1e3a8a 100%);
-             --footer-bg: linear-gradient(180deg, #111827 0%, #1f2937 100%);
+            --footer-bg: linear-gradient(180deg, #111827 0%, #1f2937 100%);
             --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
             --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
@@ -1006,15 +1068,16 @@
         .footer-bottom-links a:hover {
             color: white;
         }
+
         /* Responsive Design */
-        
+
         /* Large Desktop (1200px and up) */
         @media (min-width: 1200px) {
             .overview-cards {
                 grid-template-columns: repeat(4, 1fr);
             }
         }
-        
+
         /* Desktop (1024px to 1199px) */
         @media (min-width: 1024px) and (max-width: 1199px) {
             .overview-cards {
@@ -1028,50 +1091,50 @@
                 transform: translateX(-100%);
                 width: 280px;
             }
-            
+
             .sidebar.active {
                 transform: translateX(0);
             }
-            
+
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding: 1rem;
             }
-            
+
             .mobile-menu-btn {
                 display: block;
             }
-            
+
             .overview-cards {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
+
             .top-bar {
                 flex-direction: row;
                 align-items: center;
             }
-            
+
             .page-header h1 {
                 font-size: 1.5rem;
             }
-            
+
             .filter-header {
                 flex-direction: column;
                 align-items: stretch;
             }
-            
+
             .filter-controls {
                 flex-direction: column;
                 align-items: stretch;
             }
-            
+
             .date-range-container {
                 flex-direction: column;
                 align-items: stretch;
                 gap: 0.5rem;
             }
-            
+
             .date-input-wrapper {
                 min-width: 100%;
             }
@@ -1082,59 +1145,59 @@
             .overview-cards {
                 grid-template-columns: 1fr;
             }
-            
+
             .top-bar {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 1rem;
             }
-            
+
             .top-bar-actions {
                 width: 100%;
                 justify-content: space-between;
             }
-            
+
             .table-header {
                 padding: 1rem;
             }
-            
+
             .table-title {
                 font-size: 1.1rem;
             }
-            
+
             .attendance-table {
                 min-width: 1000px;
             }
-            
-            .attendance-table th, 
+
+            .attendance-table th,
             .attendance-table td {
                 padding: 0.75rem 0.5rem;
                 font-size: 0.85rem;
             }
-            
+
             .btn {
                 padding: 0.5rem 1rem;
                 font-size: 0.85rem;
                 flex: 1;
                 justify-content: center;
             }
-            
+
             .table-footer {
                 flex-direction: column;
                 gap: 1rem;
                 align-items: flex-start;
             }
-            
+
             .summary-stats {
                 width: 100%;
                 justify-content: space-between;
             }
-            
+
             /* Show mobile cards, hide table */
             .table-responsive {
                 display: none;
             }
-            
+
             .mobile-card-view {
                 display: grid;
                 grid-template-columns: 1fr;
@@ -1146,34 +1209,34 @@
             .main-content {
                 padding: 0.75rem;
             }
-            
+
             .card-info .value {
                 font-size: 1.5rem;
             }
-            
+
             .overview-card {
                 padding: 1rem;
                 gap: 1rem;
             }
-            
+
             .card-icon {
                 width: 50px;
                 height: 50px;
                 font-size: 1.25rem;
             }
-            
+
             .filter-section {
                 padding: 1rem;
             }
-            
+
             .btn-icon {
                 padding: 0.5rem;
             }
-            
+
             .table-footer {
                 padding: 1rem;
             }
-            
+
             .footer {
                 padding: 2rem 0 1rem;
             }
@@ -1186,26 +1249,26 @@
                 text-align: center;
                 gap: 1rem;
             }
-            
+
             .card-icon {
                 width: 60px;
                 height: 60px;
             }
-            
+
             .filter-controls {
                 gap: 0.75rem;
             }
-            
+
             .btn {
                 width: 100%;
             }
-            
+
             .summary-stats {
                 flex-direction: column;
                 gap: 1rem;
                 align-items: flex-start;
             }
-            
+
             .stat-item {
                 flex-direction: row;
                 align-items: center;
@@ -1213,40 +1276,41 @@
                 width: 100%;
                 justify-content: space-between;
             }
-            
+
             .pagination {
                 flex-direction: column;
                 align-items: flex-start;
             }
-            
+
             .pagination-controls {
                 width: 100%;
                 justify-content: center;
             }
-            
+
             .logo-title {
                 font-size: 1rem;
             }
-            
+
             .logo-subtitle {
                 font-size: 0.75rem;
             }
-            
+
             .user-details h4 {
                 font-size: 0.85rem;
             }
-            
+
             .user-details p {
                 font-size: 0.75rem;
             }
-            
+
             .footer-grid {
                 grid-template-columns: 1fr;
             }
         }
-        
+
         /* Print Styles */
         @media print {
+
             .sidebar,
             .top-bar-actions,
             .filter-section,
@@ -1254,23 +1318,24 @@
             .footer {
                 display: none !important;
             }
-             .stat-footer {
+
+            .stat-footer {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 0.75rem;
             }
-            
+
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding: 0;
             }
-            
+
             .table-container {
                 box-shadow: none;
                 border: 1px solid #000;
             }
-            
+
             body {
                 background: white;
                 color: black;
@@ -1298,23 +1363,25 @@
         }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Overlay for mobile sidebar -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
-        
+
         <!-- Sidebar Navigation -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <a href="homepage.php" class="logo-container">
-                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="logo-img">
+                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" class="logo-img">
                     <div class="logo-text">
                         <div class="logo-title">HR Management Office</div>
                         <div class="logo-subtitle">Occidental Mindoro</div>
                     </div>
                 </a>
             </div>
-            
+
             <nav class="nav-menu">
                 <div class="nav-item">
                     <a href="homepage.php" class="nav-link">
@@ -1328,7 +1395,7 @@
                         <span>Attendance History</span>
                     </a>
                 </div>
-               
+
                 <div class="nav-item">
                     <a href="paysliphistory.php" class="nav-link">
                         <i class="fas fa-file-invoice-dollar"></i>
@@ -1347,8 +1414,14 @@
                         <span>Settings</span>
                     </a>
                 </div>
+                <div class="nav-item">
+                    <a href="logout.php" class="nav-link" onclick="return confirm('Are you sure you want to logout?');">
+                        <i class="fas fa-power-off"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
             </nav>
-            
+
             <div class="user-profile">
                 <div class="user-info">
                     <div class="user-avatar">JA</div>
@@ -1359,7 +1432,7 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content -->
         <main class="main-content">
             <!-- Top Bar -->
@@ -1378,7 +1451,7 @@
                     </button>
                 </div>
             </div>
-            
+
             <!-- Overview Cards -->
             <div class="overview-cards">
                 <div class="overview-card">
@@ -1390,7 +1463,7 @@
                         <div class="value">18</div>
                     </div>
                 </div>
-                
+
                 <div class="overview-card">
                     <div class="card-icon">
                         <i class="fas fa-clock"></i>
@@ -1400,7 +1473,7 @@
                         <div class="value">4</div>
                     </div>
                 </div>
-                
+
                 <div class="overview-card">
                     <div class="card-icon">
                         <i class="fas fa-ban"></i>
@@ -1410,7 +1483,7 @@
                         <div class="value">2</div>
                     </div>
                 </div>
-                
+
                 <div class="overview-card">
                     <div class="card-icon">
                         <i class="fas fa-chart-line"></i>
@@ -1421,7 +1494,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Filter Section -->
             <div class="filter-section">
                 <div class="filter-header">
@@ -1438,38 +1511,40 @@
                                 <input type="text" class="date-input" placeholder="End Date" id="endDate" readonly>
                             </div>
                         </div>
-                        
+
                         <button class="btn btn-primary" id="applyFiltersBtn">
                             <i class="fas fa-filter"></i> Apply Filters
                         </button>
-                        
+
                         <button class="btn btn-secondary" id="resetFiltersBtn">
                             <i class="fas fa-redo"></i> Reset
                         </button>
-                        
+
                         <button class="btn-icon" id="exportBtn" title="Export Data">
                             <i class="fas fa-download"></i>
                         </button>
-                        
+
                         <button class="btn-icon" id="printBtn" title="Print Report">
                             <i class="fas fa-print"></i>
                         </button>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Attendance Table Container -->
             <div class="table-container">
                 <div class="table-header">
                     <h2 class="table-title">Detailed Attendance Records</h2>
                     <div class="table-actions">
-                        <select class="date-input" id="departmentFilter" style="width: auto; padding: 0.5rem 1rem; min-width: 150px;">
+                        <select class="date-input" id="departmentFilter"
+                            style="width: auto; padding: 0.5rem 1rem; min-width: 150px;">
                             <option value="all">All Departments</option>
                             <option value="hr">HR Office</option>
                             <option value="budget">Budget Office</option>
                             <option value="accounting">Accounting</option>
                         </select>
-                        <select class="date-input" id="statusFilter" style="width: auto; padding: 0.5rem 1rem; min-width: 120px;">
+                        <select class="date-input" id="statusFilter"
+                            style="width: auto; padding: 0.5rem 1rem; min-width: 120px;">
                             <option value="all">All Status</option>
                             <option value="present">Present</option>
                             <option value="late">Late</option>
@@ -1477,7 +1552,7 @@
                         </select>
                     </div>
                 </div>
-                
+
                 <!-- Desktop Table View -->
                 <div class="table-responsive">
                     <table class="attendance-table">
@@ -1498,12 +1573,12 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 <!-- Mobile Card View -->
                 <div class="mobile-card-view" id="mobileCardView">
                     <!-- Mobile cards will be populated by JavaScript -->
                 </div>
-                
+
                 <!-- Summary Footer -->
                 <div class="table-footer">
                     <div class="summary-info" id="summaryInfo">
@@ -1524,7 +1599,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Pagination -->
                 <div class="pagination">
                     <div class="pagination-info" id="paginationInfo">
@@ -1537,14 +1612,15 @@
             </div>
         </main>
     </div>
-    
+
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-grid">
                 <div class="footer-col">
                     <div class="footer-logo">
-                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="footer-logo-img">
+                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                            alt="Logo" class="footer-logo-img">
                         <div>
                             <div class="footer-title">HR Management Office</div>
                             <div>Occidental Mindoro</div>
@@ -1555,7 +1631,7 @@
                         All content is in the public domain unless otherwise stated.
                     </p>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>About GOVPH</h4>
@@ -1567,7 +1643,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Quick Links</h4>
@@ -1579,7 +1655,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Connect With Us</h4>
@@ -1603,7 +1679,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="footer-bottom">
                 <p>© 2024 <strong>Human Resource Management Office</strong>. All Rights Reserved.</p>
             </div>
@@ -1696,7 +1772,7 @@
             }
         ];
 
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // DOM Elements
             const mobileMenuBtn = document.getElementById('mobileMenuBtn');
             const sidebar = document.getElementById('sidebar');
@@ -1722,7 +1798,7 @@
             flatpickr(startDateInput, {
                 dateFormat: "Y-m-d",
                 maxDate: "today",
-                onChange: function(selectedDates, dateStr) {
+                onChange: function (selectedDates, dateStr) {
                     if (dateStr) {
                         endDatePicker.set('minDate', dateStr);
                     }
@@ -1735,7 +1811,7 @@
             });
 
             // Toggle sidebar on mobile
-            mobileMenuBtn.addEventListener('click', function() {
+            mobileMenuBtn.addEventListener('click', function () {
                 sidebar.classList.toggle('active');
                 sidebarOverlay.classList.toggle('active');
                 document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : 'auto';
@@ -1744,7 +1820,7 @@
             });
 
             // Close sidebar when clicking on overlay
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('active');
                 sidebarOverlay.classList.remove('active');
                 document.body.style.overflow = 'auto';
@@ -1753,7 +1829,7 @@
             });
 
             // Close sidebar when window is resized to desktop size
-            window.addEventListener('resize', function() {
+            window.addEventListener('resize', function () {
                 if (window.innerWidth > 1023 && sidebar.classList.contains('active')) {
                     sidebar.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
@@ -1768,42 +1844,42 @@
             setupPagination(attendanceData.length, 4);
 
             // Filter button functionality
-            applyFiltersBtn.addEventListener('click', function() {
+            applyFiltersBtn.addEventListener('click', function () {
                 const startDate = startDateInput.value;
                 const endDate = endDateInput.value;
                 const department = departmentFilter.value;
                 const status = statusFilter.value;
-                
+
                 // Show loading state
                 const originalText = this.innerHTML;
                 this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
                 this.disabled = true;
-                
+
                 // Simulate filtering
                 setTimeout(() => {
                     // In a real app, this would be an API call
                     let filteredData = [...attendanceData];
-                    
+
                     // Apply date filters
                     if (startDate || endDate) {
                         showNotification('Date filter applied!', 'success');
                     }
-                    
+
                     // Apply status filter
                     if (status !== 'all') {
-                        filteredData = filteredData.filter(item => 
+                        filteredData = filteredData.filter(item =>
                             item.status.toLowerCase().includes(status)
                         );
                     }
-                    
+
                     // Update display
                     renderAttendanceData(filteredData);
                     setupPagination(filteredData.length, 4);
-                    
+
                     // Restore button
                     this.innerHTML = originalText;
                     this.disabled = false;
-                    
+
                     if (filteredData.length === 0) {
                         showNotification('No records found for the selected filters.', 'warning');
                     }
@@ -1811,25 +1887,25 @@
             });
 
             // Reset button functionality
-            resetFiltersBtn.addEventListener('click', function() {
+            resetFiltersBtn.addEventListener('click', function () {
                 startDateInput.value = '';
                 endDateInput.value = '';
                 departmentFilter.value = 'all';
                 statusFilter.value = 'all';
-                
+
                 renderAttendanceData(attendanceData);
                 setupPagination(attendanceData.length, 4);
                 showNotification('Filters cleared!', 'info');
             });
 
             // Export button functionality
-            exportBtn.addEventListener('click', function() {
+            exportBtn.addEventListener('click', function () {
                 showNotification('Exporting data to CSV...', 'info');
                 // In a real app, this would trigger a CSV download
             });
 
             // Print button functionality
-            printBtn.addEventListener('click', function() {
+            printBtn.addEventListener('click', function () {
                 window.print();
             });
 
@@ -1838,22 +1914,22 @@
                 // Clear existing content
                 attendanceTableBody.innerHTML = '';
                 mobileCardView.innerHTML = '';
-                
+
                 // Update summary
                 const totalRecords = data.length;
                 summaryInfo.textContent = `Showing 1-${Math.min(4, totalRecords)} of ${totalRecords} attendance records`;
-                
+
                 // Calculate totals
                 let otTotal = 0;
                 let utTotal = 0;
                 let hoursTotal = 0;
-                
+
                 data.forEach((record, index) => {
                     // Add to totals
                     otTotal += parseFloat(record.otHours);
                     utTotal += parseFloat(record.underTime);
                     hoursTotal += parseFloat(record.totalHours);
-                    
+
                     // Create table row for desktop
                     const row = document.createElement('tr');
                     row.innerHTML = `
@@ -1881,7 +1957,7 @@
                     `;
                     row.addEventListener('click', () => showAttendanceDetails(record));
                     attendanceTableBody.appendChild(row);
-                    
+
                     // Create card for mobile view
                     const card = document.createElement('div');
                     card.className = 'attendance-card';
@@ -1927,7 +2003,7 @@
                     card.addEventListener('click', () => showAttendanceDetails(record));
                     mobileCardView.appendChild(card);
                 });
-                
+
                 // Update totals
                 totalOT.textContent = `${otTotal.toFixed(2)} hrs`;
                 totalUT.textContent = `${utTotal.toFixed(2)} hrs`;
@@ -1937,17 +2013,17 @@
             function setupPagination(totalItems, itemsPerPage) {
                 const totalPages = Math.ceil(totalItems / itemsPerPage);
                 paginationInfo.textContent = `Page 1 of ${totalPages}`;
-                
+
                 // Clear existing controls
                 paginationControls.innerHTML = '';
-                
+
                 // Previous button
                 const prevBtn = document.createElement('button');
                 prevBtn.className = 'pagination-btn';
                 prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
                 prevBtn.addEventListener('click', () => changePage(0));
                 paginationControls.appendChild(prevBtn);
-                
+
                 // Page number buttons
                 for (let i = 1; i <= totalPages; i++) {
                     const pageBtn = document.createElement('button');
@@ -1956,7 +2032,7 @@
                     pageBtn.addEventListener('click', () => changePage(i));
                     paginationControls.appendChild(pageBtn);
                 }
-                
+
                 // Next button
                 const nextBtn = document.createElement('button');
                 nextBtn.className = 'pagination-btn';
@@ -1968,7 +2044,7 @@
             function changePage(pageNum) {
                 // In a real app, this would fetch new data from the server
                 showNotification(`Loading page ${pageNum}...`, 'info');
-                
+
                 // Update active button
                 document.querySelectorAll('.pagination-btn').forEach((btn, index) => {
                     btn.classList.remove('active');
@@ -2076,19 +2152,19 @@
                         </div>
                     </div>
                 `;
-                
+
                 document.body.insertAdjacentHTML('beforeend', modalHtml);
             }
 
             function showNotification(message, type = 'info') {
                 const notification = document.createElement('div');
-                const bgColor = type === 'success' ? 'bg-green-600' : 
-                               type === 'warning' ? 'bg-yellow-600' : 
-                               type === 'danger' ? 'bg-red-600' : 'bg-blue-600';
-                const icon = type === 'success' ? 'check-circle' : 
-                            type === 'warning' ? 'exclamation-triangle' : 
-                            type === 'danger' ? 'times-circle' : 'info-circle';
-                
+                const bgColor = type === 'success' ? 'bg-green-600' :
+                    type === 'warning' ? 'bg-yellow-600' :
+                        type === 'danger' ? 'bg-red-600' : 'bg-blue-600';
+                const icon = type === 'success' ? 'check-circle' :
+                    type === 'warning' ? 'exclamation-triangle' :
+                        type === 'danger' ? 'times-circle' : 'info-circle';
+
                 notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform translate-x-0`;
                 notification.innerHTML = `
                     <div class="flex items-center">
@@ -2096,20 +2172,20 @@
                         <span>${message}</span>
                     </div>
                 `;
-                
+
                 document.body.appendChild(notification);
-                
+
                 // Remove existing notifications
                 const existingNotifications = document.querySelectorAll('.fixed.top-4.right-4');
                 existingNotifications.forEach((notif, index) => {
                     if (index > 0) notif.remove();
                 });
-                
+
                 // Animate in
                 requestAnimationFrame(() => {
                     notification.classList.remove('translate-x-0');
                     notification.classList.add('translate-x-full');
-                    
+
                     // Remove after animation
                     setTimeout(() => {
                         notification.remove();
@@ -2118,13 +2194,13 @@
             }
 
             // Add keyboard shortcuts
-            document.addEventListener('keydown', function(e) {
+            document.addEventListener('keydown', function (e) {
                 // Close modal with Escape key
                 if (e.key === 'Escape') {
                     const modal = document.querySelector('.fixed.inset-0.bg-black');
                     if (modal) modal.remove();
                 }
-                
+
                 // Close sidebar with Escape key on mobile
                 if (e.key === 'Escape' && window.innerWidth <= 1023 && sidebar.classList.contains('active')) {
                     sidebar.classList.remove('active');
@@ -2137,4 +2213,5 @@
         });
     </script>
 </body>
+
 </html>

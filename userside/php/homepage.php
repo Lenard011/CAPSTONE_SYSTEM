@@ -1,5 +1,67 @@
+<?php
+// homepage.php - SIMPLE WORKING VERSION
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set EXACTLY the same session configuration as login.php
+$cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
+
+session_name('HRMS_SESSION');
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => $cookiePath,
+    'domain' => '',
+    'secure' => false,
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Add debug output as HTML comment (view page source to see)
+echo "<!-- =========== HOMEPAGE SESSION DEBUG =========== -->\n";
+echo "<!-- Session ID: " . session_id() . " -->\n";
+echo "<!-- Cookie Path: " . $cookiePath . " -->\n";
+echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
+echo "<!-- ============================================= -->\n";
+
+// SIMPLE SESSION CHECK
+if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+    // Redirect to login with error
+    header('Location: login.php?error=session_missing');
+    exit();
+}
+
+// Update last activity
+$_SESSION['last_activity'] = time();
+
+// User is logged in - get variables
+$user_id = $_SESSION['user_id'];
+$username = $_SESSION['username'];
+$email = $_SESSION['email'] ?? '';
+$first_name = $_SESSION['first_name'] ?? '';
+$last_name = $_SESSION['last_name'] ?? '';
+$full_name = $_SESSION['full_name'] ?? ($first_name . ' ' . $last_name);
+$role = $_SESSION['role'] ?? 'employee';
+$access_level = $_SESSION['access_level'] ?? 1;
+$employee_id = $_SESSION['employee_id'] ?? '';
+$profile_image = $_SESSION['profile_image'] ?? '';
+
+// Check for forced password change
+if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
+    header('Location: change_password.php');
+    exit();
+}
+
+// Log successful access
+error_log("User " . $username . " accessed homepage successfully");
+?>
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -834,14 +896,14 @@
         }
 
         /* --- Responsive Design --- */
-        
+
         /* Large Desktop (1200px and up) */
         @media (min-width: 1200px) {
             .stats-grid {
                 grid-template-columns: repeat(4, 1fr);
             }
         }
-        
+
         /* Desktop (1024px to 1199px) */
         @media (min-width: 1024px) and (max-width: 1199px) {
             .stats-grid {
@@ -855,35 +917,35 @@
                 transform: translateX(-100%);
                 width: 280px;
             }
-            
+
             .sidebar.active {
                 transform: translateX(0);
             }
-            
+
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding: 1rem;
             }
-            
+
             .footer {
                 margin-left: 0;
                 width: 100%;
             }
-            
+
             .mobile-menu-btn {
                 display: block;
             }
-            
+
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
+
             .top-bar {
                 flex-direction: row;
                 align-items: center;
             }
-            
+
             .page-title h1 {
                 font-size: 1.5rem;
             }
@@ -894,50 +956,51 @@
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .top-bar {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 1rem;
             }
-            
+
             .top-bar-actions {
                 width: 100%;
                 justify-content: space-between;
             }
-            
+
             .section-header {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 1rem;
             }
-            
-            .data-table th, .data-table td {
+
+            .data-table th,
+            .data-table td {
                 padding: 0.75rem 0.5rem;
                 font-size: 0.85rem;
             }
-            
+
             .stat-value {
                 font-size: 2rem;
             }
-            
+
             .pagination {
                 flex-direction: column;
                 gap: 1rem;
                 align-items: flex-start;
             }
-            
+
             .pagination-controls {
                 width: 100%;
                 justify-content: center;
             }
-            
+
             .footer-bottom {
                 flex-direction: column;
                 text-align: center;
                 gap: 1rem;
             }
-            
+
             .footer-bottom-links {
                 justify-content: center;
             }
@@ -948,33 +1011,33 @@
             .main-content {
                 padding: 0.75rem;
             }
-            
+
             .stat-value {
                 font-size: 1.75rem;
             }
-            
+
             .table-title {
                 font-size: 1.1rem;
             }
-            
+
             .section-title {
                 font-size: 1.25rem;
             }
-            
+
             .footer-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .footer {
                 padding: 2rem 0 1rem;
             }
-            
+
             .footer-logo {
                 flex-direction: column;
                 text-align: center;
                 gap: 0.75rem;
             }
-            
+
             .footer-logo-text {
                 align-items: center;
             }
@@ -985,49 +1048,49 @@
             .stat-card {
                 padding: 1rem;
             }
-            
+
             .stat-icon {
                 width: 40px;
                 height: 40px;
                 font-size: 1rem;
             }
-            
+
             .stat-value {
                 font-size: 1.5rem;
             }
-            
+
             .stat-footer {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 0.75rem;
             }
-            
+
             .action-btn {
                 padding: 0.4rem 0.75rem;
                 font-size: 0.85rem;
             }
-            
+
             .status-badge {
                 font-size: 0.75rem;
                 padding: 0.2rem 0.5rem;
             }
-            
+
             .logo-title {
                 font-size: 1rem;
             }
-            
+
             .logo-subtitle {
                 font-size: 0.75rem;
             }
-            
+
             .user-details h4 {
                 font-size: 0.85rem;
             }
-            
+
             .user-details p {
                 font-size: 0.75rem;
             }
-            
+
             .social-link {
                 width: 36px;
                 height: 36px;
@@ -1040,6 +1103,7 @@
                 opacity: 0;
                 transform: translateY(20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1051,29 +1115,42 @@
             opacity: 0;
         }
 
-        .stat-card:nth-child(1) { animation-delay: 0.1s; }
-        .stat-card:nth-child(2) { animation-delay: 0.2s; }
-        .stat-card:nth-child(3) { animation-delay: 0.3s; }
-        .stat-card:nth-child(4) { animation-delay: 0.4s; }
+        .stat-card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .stat-card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .stat-card:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .stat-card:nth-child(4) {
+            animation-delay: 0.4s;
+        }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Overlay for mobile sidebar -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
-        
+
         <!-- Sidebar Navigation -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <a href="#" class="logo-container">
-                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="logo-img">
+                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" class="logo-img">
                     <div class="logo-text">
                         <div class="logo-title">HR Management Office</div>
                         <div class="logo-subtitle">Occidental Mindoro</div>
                     </div>
                 </a>
             </div>
-            
+
             <nav class="nav-menu">
                 <div class="nav-item">
                     <a href="homepage.php" class="nav-link active">
@@ -1105,8 +1182,14 @@
                         <span>Settings</span>
                     </a>
                 </div>
+                <div class="nav-item">
+                    <a href="logout.php" class="nav-link" onclick="return confirm('Are you sure you want to logout?');">
+                        <i class="fas fa-power-off"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
             </nav>
-            
+
             <div class="user-profile">
                 <div class="user-info">
                     <div class="user-avatar">JA</div>
@@ -1117,7 +1200,7 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content -->
         <main class="main-content">
             <!-- Top Bar -->
@@ -1126,7 +1209,7 @@
                     <h1>Employee Dashboard</h1>
                     <p>Welcome back! Here's your HR overview</p>
                 </div>
-                <div class="top-bar-actions">
+                <!-- <div class="top-bar-actions">
                     <button class="notification-btn">
                         <i class="fas fa-bell"></i>
                         <span class="notification-badge">3</span>
@@ -1134,9 +1217,9 @@
                     <button class="mobile-menu-btn" id="mobileMenuBtn">
                         <i class="fas fa-bars"></i>
                     </button>
-                </div>
+                </div> -->
             </div>
-            
+
             <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card total-attendance">
@@ -1162,7 +1245,7 @@
                         </a>
                     </div>
                 </div>
-                
+
                 <div class="stat-card on-time-days">
                     <div class="stat-header">
                         <div class="stat-title">On Time Days</div>
@@ -1186,7 +1269,7 @@
                         </a>
                     </div>
                 </div>
-                
+
                 <div class="stat-card late-days">
                     <div class="stat-header">
                         <div class="stat-title">Late Days</div>
@@ -1210,7 +1293,7 @@
                         </a>
                     </div>
                 </div>
-                
+
                 <div class="stat-card total-working-days">
                     <div class="stat-header">
                         <div class="stat-title">Total Working Days</div>
@@ -1235,7 +1318,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Recent Payslips Section -->
             <div class="section-header">
                 <h2 class="section-title">Recent Payslips</h2>
@@ -1243,13 +1326,13 @@
                     View All <i class="fas fa-arrow-right"></i>
                 </a>
             </div>
-            
+
             <!-- Table Container -->
             <div class="table-container">
                 <div class="table-header">
                     <h3 class="table-title">Payslip History</h3>
                 </div>
-                
+
                 <div class="table-responsive">
                     <table class="data-table">
                         <thead>
@@ -1318,7 +1401,7 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 <!-- Pagination -->
                 <div class="pagination">
                     <div class="pagination-info">
@@ -1338,7 +1421,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Recent Attendance Section -->
             <div class="section-header">
                 <h2 class="section-title">Recent Attendance</h2>
@@ -1346,7 +1429,7 @@
                     View All <i class="fas fa-arrow-right"></i>
                 </a>
             </div>
-            
+
             <!-- Attendance Cards -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -1367,7 +1450,7 @@
                         <div>Date: Nov 20, 2023</div>
                     </div>
                 </div>
-                
+
                 <div class="stat-card">
                     <div class="stat-header">
                         <div class="stat-title">Yesterday</div>
@@ -1389,14 +1472,15 @@
             </div>
         </main>
     </div>
-    
+
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-grid">
                 <div class="footer-col">
                     <div class="footer-logo">
-                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="footer-logo-img">
+                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                            alt="Logo" class="footer-logo-img">
                         <div class="footer-logo-text">
                             <div class="footer-title">HR Management Office</div>
                             <div class="footer-subtitle">Occidental Mindoro</div>
@@ -1406,7 +1490,7 @@
                         Republic of the Philippines<br>
                         All content is in the public domain unless otherwise stated.
                     </p>
-                    
+
                     <div class="contact-info">
                         <div class="contact-item">
                             <i class="fas fa-map-marker-alt"></i>
@@ -1421,7 +1505,7 @@
                             <span>hrmo@occidentalmindoro.gov.ph</span>
                         </div>
                     </div>
-                    
+
                     <div class="social-links">
                         <a href="#" class="social-link" title="Facebook">
                             <i class="fab fa-facebook-f"></i>
@@ -1440,7 +1524,7 @@
                         </a>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>About GOVPH</h4>
@@ -1454,7 +1538,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Quick Links</h4>
@@ -1467,7 +1551,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Connect With Us</h4>
@@ -1475,7 +1559,7 @@
                             Occidental Mindoro Public Information Office<br>
                             Stay updated with the latest announcements and news.
                         </p>
-                        
+
                         <div class="contact-info">
                             <div class="contact-item">
                                 <i class="fas fa-clock"></i>
@@ -1486,14 +1570,14 @@
                                 <span>HR Hotline: (043) 987-6543</span>
                             </div>
                         </div>
-                        
+
                         <a href="#" class="stat-action" style="margin-top: 1rem; color: white;">
                             <i class="fas fa-headset"></i> Contact Support
                         </a>
                     </div>
                 </div>
             </div>
-            
+
             <div class="footer-bottom">
                 <div class="copyright">
                     © 2023 <strong>Human Resource Management Office</strong>. All Rights Reserved.
@@ -1507,52 +1591,52 @@
             </div>
         </div>
     </footer>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // DOM Elements
             const mobileMenuBtn = document.getElementById('mobileMenuBtn');
             const sidebar = document.getElementById('sidebar');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
             const mainContent = document.querySelector('.main-content');
             const footer = document.querySelector('.footer');
-            
+
             // Toggle sidebar on mobile
-            mobileMenuBtn.addEventListener('click', function() {
+            mobileMenuBtn.addEventListener('click', function () {
                 sidebar.classList.toggle('active');
                 sidebarOverlay.classList.toggle('active');
                 document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : 'auto';
             });
-            
+
             // Close sidebar when clicking on overlay
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('active');
                 sidebarOverlay.classList.remove('active');
                 document.body.style.overflow = 'auto';
             });
-            
+
             // Close sidebar when clicking outside on mobile
-            document.addEventListener('click', function(event) {
+            document.addEventListener('click', function (event) {
                 const isClickInsideSidebar = sidebar.contains(event.target);
                 const isClickInsideMenuBtn = mobileMenuBtn.contains(event.target);
                 const isClickOnOverlay = sidebarOverlay.contains(event.target);
-                
+
                 if (window.innerWidth <= 1023 && !isClickInsideSidebar && !isClickInsideMenuBtn && !isClickOnOverlay && sidebar.classList.contains('active')) {
                     sidebar.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
                     document.body.style.overflow = 'auto';
                 }
             });
-            
+
             // Close sidebar when window is resized to desktop size
-            window.addEventListener('resize', function() {
+            window.addEventListener('resize', function () {
                 if (window.innerWidth > 1023 && sidebar.classList.contains('active')) {
                     sidebar.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
                     document.body.style.overflow = 'auto';
                 }
-                
+
                 // Adjust footer margin based on sidebar
                 if (window.innerWidth > 1023) {
                     footer.style.marginLeft = '260px';
@@ -1562,19 +1646,19 @@
                     footer.style.width = '100%';
                 }
             });
-            
+
             // Initialize tooltips
             const tooltipTriggerList = document.querySelectorAll('[data-tooltip-target]');
             tooltipTriggerList.forEach(tooltipTriggerEl => {
                 new Flowbite.Tooltip(tooltipTriggerEl);
             });
-            
+
             // Animate stat cards on scroll
             const observerOptions = {
                 threshold: 0.1,
                 rootMargin: '0px 0px -50px 0px'
             };
-            
+
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
@@ -1582,40 +1666,43 @@
                     }
                 });
             }, observerOptions);
-            
+
             document.querySelectorAll('.stat-card').forEach(card => {
                 card.style.animationPlayState = 'paused';
                 observer.observe(card);
             });
-            
+
             // Add click events for pagination buttons
             document.querySelectorAll('.pagination-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     // Remove active class from all buttons
                     document.querySelectorAll('.pagination-btn').forEach(b => {
                         b.classList.remove('active');
                     });
-                    
+
                     // Add active class to clicked button if it's a number button
                     if (!this.querySelector('i')) {
                         this.classList.add('active');
                     }
                 });
             });
-            
+
             // Add click events for action buttons
             document.querySelectorAll('.action-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     alert('View details functionality would open here in a real application.');
                 });
             });
-            
+
             // Initialize footer margin on page load
             if (window.innerWidth > 1023) {
                 footer.style.marginLeft = '260px';
                 footer.style.width = 'calc(100% - 260px)';
             }
         });
+
+        
     </script>
 </body>
+
 </html>

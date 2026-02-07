@@ -1,3 +1,563 @@
+<?php
+// ==============================================
+// SIMPLE WORKING LOGIN SYSTEM
+// ==============================================
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set the correct cookie path for your setup
+$cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
+
+// Configure session
+session_name('HRMS_SESSION');
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => $cookiePath,
+    'domain' => '',
+    'secure' => false, // false for localhost
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// DEBUG: Show session info in HTML comment
+echo "<!-- SESSION DEBUG: ID=" . session_id() . " Path=" . $cookiePath . " -->\n";
+
+// Handle AJAX login request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
+    // Clear output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header('Content-Type: application/json');
+    
+    $response = [
+        'success' => false,
+        'message' => '',
+        'redirect' => null
+    ];
+    
+    try {
+        $username = trim($_POST['username']);
+        $password = $_POST['password'];
+        
+        if (empty($username) || empty($password)) {
+            throw new Exception('Username and password are required');
+        }
+        
+        // Database connection
+        $host = 'localhost';
+        $user = 'root';
+        $pass = '';
+        $dbname = 'hrms_paluan';
+        
+        $conn = new mysqli($host, $user, $pass, $dbname);
+        
+        if ($conn->connect_error) {
+            throw new Exception('Database connection failed');
+        }
+        
+        $conn->set_charset("utf8mb4");
+        
+        // Query to find user
+        $sql = "SELECT id, username, email, password_hash, first_name, last_name, 
+                       full_name, role, access_level, employee_id, profile_image,
+                       password_is_temporary
+                FROM users 
+                WHERE (username = ? OR email = ?) 
+                AND account_status = 'ACTIVE'
+                AND is_active = 1
+                AND is_verified = 1
+                AND status = 'approved'";
+        
+        $stmt = $conn->prepare($sql);
+        
+        if (!$stmt) {
+            throw new Exception('Database query error');
+        }
+        
+        $stmt->bind_param("ss", $username, $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $user = $result->fetch_assoc();
+        $stmt->close();
+        
+        if (!$user) {
+            throw new Exception('Invalid username or email');
+        }
+        
+        // Verify password
+        if (!password_verify($password, $user['password_hash'])) {
+            throw new Exception('Invalid password');
+        }
+        
+        // SUCCESS - Set session variables
+        $_SESSION['user_id'] = (int)$user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['email'] = $user['email'];
+        $_SESSION['first_name'] = $user['first_name'];
+        $_SESSION['last_name'] = $user['last_name'];
+        $_SESSION['full_name'] = $user['full_name'];
+        $_SESSION['role'] = $user['role'];
+        $_SESSION['access_level'] = (int)$user['access_level'];
+        $_SESSION['employee_id'] = $user['employee_id'];
+        $_SESSION['profile_image'] = $user['profile_image'];
+        $_SESSION['login_time'] = time();
+        $_SESSION['created'] = time();
+        $_SESSION['last_activity'] = time();
+        
+        // Check for temporary password
+        if ($user['password_is_temporary'] == 1) {
+            $_SESSION['must_change_password'] = true;
+            $response['temp_password'] = true;
+            $response['redirect'] = 'change_password.php';
+            $response['message'] = 'Temporary password detected. Please create a new password.';
+        } else {
+            $response['redirect'] = 'homepage.php';
+            $response['message'] = 'Login successful!';
+        }
+        
+        $response['success'] = true;
+        
+        // Update last login
+        $updateStmt = $conn->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
+        if ($updateStmt) {
+            $updateStmt->bind_param("i", $user['id']);
+            $updateStmt->execute();
+            $updateStmt->close();
+        }
+        
+        $conn->close();
+        
+        // Force session write
+        session_write_close();
+        
+        // Log success
+        error_log("Login successful for user: " . $user['username']);
+        
+    } catch (Exception $e) {
+        $response['message'] = $e->getMessage();
+        error_log("Login error: " . $e->getMessage());
+    }
+    
+    echo json_encode($response);
+    exit();
+}
+
+// Check if already logged in
+if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id'])) {
+    header('Location: homepage.php');
+    exit();
+}
+
+// Handle session messages
+$sessionExpired = isset($_GET['session']) && $_GET['session'] == 'expired';
+$logoutSuccess = isset($_GET['logout']) && $_GET['logout'] == 'success';
+
+// Check if user is already logged in - REDIRECT TO HOMEPAGE
+if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && !empty($_SESSION['user_id'])) {
+    // Check if this is a login POST request
+    $isLoginRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']);
+    
+    if (!$isLoginRequest) {
+        // Update last activity
+        $_SESSION['last_activity'] = time();
+        
+        // Check for forced password change
+        if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
+            header('Location: change_password.php');
+            exit();
+        }
+        
+        // Clear output buffer
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Redirect to homepage
+        header('Location: homepage.php');
+        exit();
+    }
+}
+
+// Check for remember me cookie (only if not already logged in)
+if ((!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) && isset($_COOKIE['remember_me'])) {
+    try {
+        error_log("Checking remember me cookie...");
+        $cookieValue = $_COOKIE['remember_me'];
+        $parts = explode(':', $cookieValue);
+
+        if (count($parts) === 2) {
+            $selector = $parts[0];
+            $token = $parts[1];
+
+            // Database configuration
+            $host = 'localhost';
+            $user = 'root';
+            $pass = '';
+            $dbname = 'hrms_paluan';
+
+            // Connect to database
+            $conn = new mysqli($host, $user, $pass, $dbname);
+
+            if (!$conn->connect_error) {
+                $conn->set_charset("utf8mb4");
+
+                // Check if remember_tokens table exists
+                $checkTable = $conn->query("SHOW TABLES LIKE 'remember_tokens'");
+                if ($checkTable && $checkTable->num_rows > 0) {
+                    $stmt = $conn->prepare("
+                        SELECT rt.user_id, rt.hashed_token, rt.expires, 
+                               u.id, u.username, u.email, u.first_name, u.last_name, u.full_name,
+                               u.role, u.access_level, u.employee_id, u.profile_image,
+                               u.employment_type, u.department, u.position,
+                               u.password_is_temporary, u.is_verified, u.is_active, u.status
+                        FROM remember_tokens rt
+                        JOIN users u ON rt.user_id = u.id
+                        WHERE rt.selector = ? 
+                        AND rt.expires > NOW()
+                        AND u.account_status = 'ACTIVE'
+                        AND u.is_active = 1
+                        AND u.is_verified = 1
+                        AND u.status = 'approved'
+                    ");
+
+                    if ($stmt) {
+                        $stmt->bind_param("s", $selector);
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+                        $tokenData = $result->fetch_assoc();
+                        $stmt->close();
+
+                        if ($tokenData && password_verify($token, $tokenData['hashed_token'])) {
+                            error_log("Remember me token valid for user: " . $tokenData['username']);
+                            
+                            // Regenerate session ID for security
+                            session_regenerate_id(true);
+                            
+                            // IMPORTANT: Don't clear session, just set/update variables
+                            $_SESSION['user_id'] = $tokenData['id'];
+                            $_SESSION['username'] = $tokenData['username'];
+                            $_SESSION['email'] = $tokenData['email'];
+                            $_SESSION['first_name'] = $tokenData['first_name'];
+                            $_SESSION['last_name'] = $tokenData['last_name'];
+                            $_SESSION['full_name'] = $tokenData['full_name'];
+                            $_SESSION['role'] = $tokenData['role'];
+                            $_SESSION['access_level'] = $tokenData['access_level'];
+                            $_SESSION['employee_id'] = $tokenData['employee_id'];
+                            $_SESSION['profile_image'] = $tokenData['profile_image'];
+                            $_SESSION['employment_type'] = $tokenData['employment_type'];
+                            $_SESSION['department'] = $tokenData['department'];
+                            $_SESSION['position'] = $tokenData['position'];
+                            $_SESSION['last_activity'] = time();
+                            $_SESSION['login_time'] = time();
+                            $_SESSION['created'] = time();
+                            $_SESSION['remember_login'] = true;
+
+                            // Check for temporary password
+                            if ($tokenData['password_is_temporary'] == 1) {
+                                $_SESSION['must_change_password'] = true;
+                                $_SESSION['temp_password_login'] = true;
+                                
+                                // Clear output buffer
+                                while (ob_get_level()) {
+                                    ob_end_clean();
+                                }
+                                
+                                header('Location: change_password.php');
+                                exit();
+                            }
+
+                            // Update last login in database
+                            $updateStmt = $conn->prepare("
+                                UPDATE users 
+                                SET last_login = NOW(), 
+                                    login_attempts = 0,
+                                    last_login_attempt = NULL
+                                WHERE id = ?
+                            ");
+
+                            if ($updateStmt) {
+                                $updateStmt->bind_param("i", $tokenData['id']);
+                                $updateStmt->execute();
+                                $updateStmt->close();
+                            }
+
+                            // Force session write
+                            session_write_close();
+                            
+                            // Restart session immediately
+                            session_start();
+                            
+                            // Clear output buffer
+                            while (ob_get_level()) {
+                                ob_end_clean();
+                            }
+
+                            // Redirect to homepage
+                            error_log("Remember me login successful, redirecting to homepage");
+                            header('Location: homepage.php');
+                            exit();
+                        } else {
+                            error_log("Invalid remember me token");
+                            // Invalid token, clear the cookie
+                            setcookie('remember_me', '', time() - 3600, '/', '', true, true);
+                        }
+                    }
+                }
+                $conn->close();
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Remember me error: " . $e->getMessage());
+    }
+}
+
+// Check if this is an AJAX login request
+$isLoginRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']);
+
+if ($isLoginRequest) {
+    // Clear ALL output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    // Set JSON response headers
+    header('Content-Type: application/json');
+
+    // Initialize response
+    $response = [
+        'success' => false,
+        'message' => '',
+        'redirect' => null,
+        'temp_password' => false,
+        'debug' => [] // Added for debugging
+    ];
+
+    try {
+        // Validate inputs
+        if (empty($_POST['username']) || empty($_POST['password'])) {
+            throw new Exception('Username and password are required');
+        }
+
+        $identifier = trim($_POST['username']);
+        $password = $_POST['password'];
+        $rememberMe = isset($_POST['remember_me']) && $_POST['remember_me'] === 'true';
+
+        // Database configuration
+        $host = 'localhost';
+        $user = 'root';
+        $pass = '';
+        $dbname = 'hrms_paluan';
+
+        // Connect to database
+        $conn = new mysqli($host, $user, $pass, $dbname);
+
+        if ($conn->connect_error) {
+            throw new Exception('Database connection failed.');
+        }
+
+        $conn->set_charset("utf8mb4");
+
+        // Build SELECT query with all necessary fields
+        $sql = "SELECT 
+                    id, username, email, password_hash, first_name, last_name, full_name,
+                    role, access_level, account_status, employee_id, profile_image,
+                    password_is_temporary, must_change_password,
+                    is_verified, is_active, status,
+                    employment_type, department, position
+                FROM users 
+                WHERE (username = ? OR email = ?) 
+                AND account_status = 'ACTIVE'
+                AND is_active = 1";
+
+        $stmt = $conn->prepare($sql);
+
+        if (!$stmt) {
+            throw new Exception('Database query error: ' . $conn->error);
+        }
+
+        $stmt->bind_param("ss", $identifier, $identifier);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $user = $result->fetch_assoc();
+        $stmt->close();
+
+        if (!$user) {
+            throw new Exception('Invalid username or email');
+        }
+
+        // Check if user is verified
+        if ($user['is_verified'] != 1) {
+            throw new Exception('Your account is not verified. Please check your email.');
+        }
+
+        // Check user status
+        if ($user['status'] !== 'approved') {
+            $statusMessage = match($user['status']) {
+                'pending' => 'Your account is pending approval.',
+                'rejected' => 'Your account has been rejected.',
+                'suspended' => 'Your account is suspended.',
+                default => 'Your account is not approved.'
+            };
+            throw new Exception($statusMessage);
+        }
+
+        // Verify password
+        if (!password_verify($password, $user['password_hash'])) {
+            // Increment failed login attempts
+            $updateStmt = $conn->prepare("
+                UPDATE users 
+                SET login_attempts = COALESCE(login_attempts, 0) + 1, 
+                    last_login_attempt = NOW() 
+                WHERE id = ?
+            ");
+            
+            if ($updateStmt) {
+                $updateStmt->bind_param("i", $user['id']);
+                $updateStmt->execute();
+                $updateStmt->close();
+            }
+            
+            throw new Exception('Invalid password');
+        }
+
+        // Check for temporary password
+        $isTemporaryPassword = $user['password_is_temporary'] == 1;
+
+        // Regenerate session ID for security
+        session_regenerate_id(true);
+        
+        // Set all session variables
+        $_SESSION['user_id'] = (int)$user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['email'] = $user['email'];
+        $_SESSION['first_name'] = $user['first_name'];
+        $_SESSION['last_name'] = $user['last_name'];
+        $_SESSION['full_name'] = $user['full_name'];
+        $_SESSION['role'] = $user['role'];
+        $_SESSION['access_level'] = (int)$user['access_level'];
+        $_SESSION['employee_id'] = $user['employee_id'];
+        $_SESSION['profile_image'] = $user['profile_image'];
+        $_SESSION['employment_type'] = $user['employment_type'];
+        $_SESSION['department'] = $user['department'];
+        $_SESSION['position'] = $user['position'];
+        $_SESSION['last_activity'] = time();
+        $_SESSION['login_time'] = time();
+        $_SESSION['created'] = time();
+        $_SESSION['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? '';
+        $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+        // Add debug info
+        $response['debug']['session_id'] = session_id();
+        $response['debug']['user_id'] = $_SESSION['user_id'];
+        $response['debug']['cookie_path'] = ini_get('session.cookie_path');
+
+        // Handle temporary password
+        if ($isTemporaryPassword) {
+            $_SESSION['must_change_password'] = true;
+            $response['temp_password'] = true;
+            $response['redirect'] = 'change_password.php';
+            $response['message'] = 'Temporary password detected. Please create a new password.';
+        } else {
+            $response['redirect'] = 'homepage.php';
+            $response['message'] = 'Login successful! Redirecting...';
+        }
+
+        $response['success'] = true;
+
+        // Update last login and reset attempts
+        $updateStmt = $conn->prepare("
+            UPDATE users 
+            SET last_login = NOW(), 
+                login_attempts = 0,
+                last_login_attempt = NULL
+            WHERE id = ?
+        ");
+
+        if ($updateStmt) {
+            $updateStmt->bind_param("i", $user['id']);
+            $updateStmt->execute();
+            $updateStmt->close();
+        }
+
+        // Remember me functionality
+        if ($rememberMe) {
+            $token = bin2hex(random_bytes(32));
+            $selector = bin2hex(random_bytes(16));
+            $expires = time() + (30 * 24 * 60 * 60); // 30 days
+
+            $hashedToken = password_hash($token, PASSWORD_BCRYPT);
+
+            $checkTable = $conn->query("SHOW TABLES LIKE 'remember_tokens'");
+            if ($checkTable && $checkTable->num_rows > 0) {
+                // Delete any existing tokens for this user
+                $deleteStmt = $conn->prepare("DELETE FROM remember_tokens WHERE user_id = ?");
+                if ($deleteStmt) {
+                    $deleteStmt->bind_param("i", $user['id']);
+                    $deleteStmt->execute();
+                    $deleteStmt->close();
+                }
+
+                // Insert new token
+                $stmt = $conn->prepare("
+                    INSERT INTO remember_tokens 
+                    (user_id, selector, hashed_token, expires) 
+                    VALUES (?, ?, ?, FROM_UNIXTIME(?))
+                ");
+
+                if ($stmt) {
+                    $stmt->bind_param("issi", $user['id'], $selector, $hashedToken, $expires);
+                    $stmt->execute();
+                    $stmt->close();
+
+                    $cookieValue = $selector . ':' . $token;
+                    setcookie(
+                        'remember_me',
+                        $cookieValue,
+                        $expires,
+                        '/CAPSTONE_SYSTEM/userside/php/', // Same path as session
+                        $_SERVER['HTTP_HOST'] ?? '',
+                        isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+                        true
+                    );
+                }
+            }
+        }
+
+        $conn->close();
+
+        // Force session write
+        session_write_close();
+        
+        // Don't restart session - let homepage.php start it fresh
+        error_log("Login successful for user: " . $user['username']);
+        error_log("Session ID after login: " . session_id());
+
+    } catch (Exception $e) {
+        $response['message'] = $e->getMessage();
+        error_log("Login error: " . $e->getMessage());
+    }
+
+    echo json_encode($response);
+    exit();
+}
+
+// Check for logout success
+$logoutSuccess = isset($_GET['logout']) && $_GET['logout'] == 'success';
+
+// Check for session expired
+$sessionExpired = isset($_GET['session']) && $_GET['session'] == 'expired';
+
+// Check if redirected
+$redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -8,13 +568,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <style>
         /* Modern Color Palette - Updated to match image */
         :root {
-            --navy-blue: #0235a2ff;        /* Main header color from image */
-            --button-blue: #2c6bc4;      /* Button blue from image */
-            --button-hover: #1e4a8a;     /* Button hover state */
+            --navy-blue: #0235a2ff;
+            --button-blue: #2c6bc4;
+            --button-hover: #1e4a8a;
             --primary-blue: #2563eb;
             --primary-dark: #1d4ed8;
             --primary-light: #60a5fa;
@@ -37,7 +598,6 @@
             --shadow-blue: 0 10px 25px -3px rgba(44, 107, 196, 0.15);
         }
 
-        /* Base Styles */
         * {
             margin: 0;
             padding: 0;
@@ -53,7 +613,6 @@
             overflow-x: hidden;
         }
 
-        /* Animated Background */
         .bg-animation {
             position: fixed;
             top: 0;
@@ -105,9 +664,8 @@
             }
         }
 
-        /* Header Styles - Updated to match image */
         .header {
-            background: var(--navy-blue); /* Solid navy blue from image */
+            background: var(--navy-blue);
             box-shadow: var(--shadow-md);
             position: relative;
             overflow: hidden;
@@ -121,11 +679,7 @@
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(90deg,
-                    var(--primary-light),
-                    #ffffff,
-                    var(--accent-teal),
-                    var(--primary-light));
+            background: linear-gradient(90deg, var(--primary-light), #ffffff, var(--accent-teal), var(--primary-light));
             background-size: 400% 100%;
             animation: shimmer 3s infinite linear;
         }
@@ -195,7 +749,6 @@
             color: rgba(255, 255, 255, 0.8);
         }
 
-        /* About Us Button - Updated to match image */
         .about-btn a {
             display: flex;
             align-items: center;
@@ -217,7 +770,6 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
-        /* Main Container */
         .main-container {
             display: flex;
             min-height: calc(100vh - 120px);
@@ -226,7 +778,6 @@
             justify-content: center;
         }
 
-        /* Login Card */
         .login-card {
             width: 100%;
             max-width: 1000px;
@@ -244,8 +795,7 @@
 
         .login-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.2),
-                0 20px 40px -8px rgba(44, 107, 196, 0.3);
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.2), 0 20px 40px -8px rgba(44, 107, 196, 0.3);
         }
 
         .login-card::before {
@@ -255,15 +805,11 @@
             left: 0;
             right: 0;
             height: 6px;
-            background: linear-gradient(90deg,
-                    var(--button-blue),
-                    var(--accent-teal),
-                    var(--button-blue));
+            background: linear-gradient(90deg, var(--button-blue), var(--accent-teal), var(--button-blue));
             background-size: 300% 100%;
             animation: shimmer 2s infinite linear;
         }
 
-        /* Form Section */
         .form-section {
             flex: 1;
             padding: 3rem;
@@ -281,13 +827,9 @@
             transform: translateY(-50%);
             width: 1px;
             height: 80%;
-            background: linear-gradient(to bottom,
-                    transparent,
-                    var(--border-light),
-                    transparent);
+            background: linear-gradient(to bottom, transparent, var(--border-light), transparent);
         }
 
-        /* Form Header */
         .form-header {
             text-align: center;
             margin-bottom: 2.5rem;
@@ -328,10 +870,7 @@
             left: -100%;
             width: 300%;
             height: 300%;
-            background: linear-gradient(45deg,
-                    transparent,
-                    rgba(255, 255, 255, 0.2),
-                    transparent);
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
             transform: rotate(45deg);
             transition: transform 0.8s ease;
         }
@@ -356,7 +895,6 @@
             font-weight: 500;
         }
 
-        /* Form Elements */
         .form-group {
             margin-bottom: 1.75rem;
             position: relative;
@@ -431,7 +969,6 @@
             }
         }
 
-        /* Password Toggle */
         .password-toggle {
             position: absolute;
             right: 1.3rem;
@@ -450,7 +987,6 @@
             color: var(--button-blue);
         }
 
-        /* Form Options */
         .form-options {
             display: flex;
             justify-content: space-between;
@@ -540,11 +1076,10 @@
             width: 100%;
         }
 
-        /* Submit Button - Updated to match image color */
         .submit-btn {
             width: 100%;
             padding: 1.1rem;
-            background: var(--button-blue); /* Solid button blue from image */
+            background: var(--button-blue);
             color: white;
             border: none;
             border-radius: 14px;
@@ -600,7 +1135,6 @@
             gap: 0.75rem;
         }
 
-        /* Welcome Section */
         .welcome-section {
             flex: 1;
             background: linear-gradient(135deg, rgba(44, 107, 196, 0.03) 0%, rgba(13, 148, 136, 0.03) 100%);
@@ -672,7 +1206,6 @@
             flex-shrink: 0;
         }
 
-        /* Image Container */
         .image-container {
             width: 100%;
             max-width: 320px;
@@ -712,7 +1245,6 @@
             opacity: 0.9;
         }
 
-        /* Messages */
         .alert-message {
             display: none;
             padding: 1rem 1.5rem;
@@ -734,7 +1266,16 @@
             color: white;
         }
 
-        /* Loader */
+        .alert-message.warning {
+            background: linear-gradient(135deg, var(--warning), #fbbf24);
+            color: white;
+        }
+
+        .alert-message.info {
+            background: linear-gradient(135deg, var(--button-blue), var(--navy-blue));
+            color: white;
+        }
+
         .loader-overlay {
             position: absolute;
             top: 0;
@@ -770,7 +1311,6 @@
             animation: pulse 2s infinite;
         }
 
-        /* Animations */
         @keyframes spin {
             0% {
                 transform: rotate(0deg);
@@ -815,7 +1355,6 @@
             }
         }
 
-        /* Responsive Design */
         @media (max-width: 1024px) {
             .login-card {
                 max-width: 900px;
@@ -889,7 +1428,6 @@
             }
         }
 
-        /* Footer */
         .footer {
             text-align: center;
             padding: 1.5rem;
@@ -900,7 +1438,6 @@
             border-top: 1px solid rgba(0, 0, 0, 0.05);
         }
 
-        /* Additional Utility Classes */
         .shake {
             animation: shake 0.5s ease-in-out;
         }
@@ -985,10 +1522,26 @@
                     <span id="alertText"></span>
                 </div>
 
+                <!-- Show session expired message if applicable -->
+                <?php if ($sessionExpired): ?>
+                    <div class="alert-message info visible" id="sessionExpiredAlert">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Your session has expired. Please login again.</span>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Show logout message if applicable -->
+                <?php if (isset($_GET['logout']) && $_GET['logout'] == 'success'): ?>
+                    <div class="alert-message success visible" id="logoutAlert">
+                        <i class="fas fa-check-circle"></i>
+                        <span>You have been successfully logged out.</span>
+                    </div>
+                <?php endif; ?>
+
                 <!-- Form Header -->
                 <div class="form-header">
                     <div class="form-logo">
-                        <img  src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
                             alt="HR Management System" />
                     </div>
                     <h2 class="form-title">HR Management System</h2>
@@ -1000,13 +1553,8 @@
                     <!-- Username Input -->
                     <div class="form-group">
                         <div class="input-wrapper">
-                            <input type="text"
-                                id="username"
-                                name="username"
-                                class="form-input"
-                                placeholder="Enter your username or email"
-                                required
-                                autocomplete="username">
+                            <input type="text" id="username" name="username" class="form-input"
+                                placeholder="Enter your username or email" required autocomplete="username">
                             <i class="fas fa-user input-icon"></i>
                         </div>
                         <div class="error-message-text" id="usernameError"></div>
@@ -1015,13 +1563,8 @@
                     <!-- Password Input -->
                     <div class="form-group">
                         <div class="input-wrapper">
-                            <input type="password"
-                                id="password"
-                                name="password"
-                                class="form-input"
-                                placeholder="Enter your password"
-                                required
-                                autocomplete="current-password">
+                            <input type="password" id="password" name="password" class="form-input"
+                                placeholder="Enter your password" required autocomplete="current-password">
                             <i class="fas fa-lock input-icon"></i>
                             <button type="button" class="password-toggle" id="passwordToggle">
                                 <i class="fas fa-eye"></i>
@@ -1035,11 +1578,12 @@
                         <label class="remember-label" id="rememberLabel">
                             <div class="remember-checkbox" id="rememberCheckbox"></div>
                             <span>Remember me</span>
+                            <input type="hidden" id="rememberMeInput" name="remember_me" value="false">
                         </label>
                         <a href="#" class="forgot-link" id="forgotPasswordLink">Forgot password?</a>
                     </div>
 
-                    <!-- Submit Button - Updated to match image color -->
+                    <!-- Submit Button -->
                     <button type="submit" class="submit-btn" id="submitBtn">
                         <div class="btn-content">
                             <i class="fas fa-sign-in-alt"></i>
@@ -1053,7 +1597,8 @@
             <div class="welcome-section">
                 <div class="welcome-content">
                     <h3 class="welcome-title">Welcome Back!</h3>
-                    <p class="welcome-text">We're glad to see you again. Sign in to access your HR Account and manage your information.</p>
+                    <p class="welcome-text">We're glad to see you again. Sign in to access your HR Account and manage
+                        your information.</p>
 
                     <div class="features-list">
                         <div class="feature-item">
@@ -1085,9 +1630,8 @@
                     <!-- Image Container -->
                     <div class="image-container">
                         <img id="welcomeImage" class="welcome-image"
-                            src="image.jpg"
-                            alt="HR Management Dashboard"
-                            onerror="handleImageError(this)">
+                            src="https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80"
+                            alt="HR Management Dashboard" onerror="handleImageError(this)">
 
                         <div id="imagePlaceholder" class="image-placeholder hidden">
                             <i class="fas fa-users"></i>
@@ -1108,7 +1652,7 @@
     </footer>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // DOM Elements
             const loginForm = document.getElementById('loginForm');
             const usernameInput = document.getElementById('username');
@@ -1122,14 +1666,11 @@
             const passwordError = document.getElementById('passwordError');
             const rememberCheckbox = document.getElementById('rememberCheckbox');
             const rememberLabel = document.getElementById('rememberLabel');
+            const rememberMeInput = document.getElementById('rememberMeInput');
             const forgotPasswordLink = document.getElementById('forgotPasswordLink');
             const submitBtn = document.getElementById('submitBtn');
             const welcomeImage = document.getElementById('welcomeImage');
             const imagePlaceholder = document.getElementById('imagePlaceholder');
-
-            // Mock credentials
-            const VALID_USERNAME = 'jerwinsequijor@gmail.com';
-            const VALID_PASSWORD = 'jerwin123';
 
             // Alternative images for fallback
             const alternativeImages = [
@@ -1148,15 +1689,36 @@
                 loadSavedCredentials();
                 setupEventListeners();
                 preloadImages();
+
+                // Auto-hide session expired and logout alerts after 5 seconds
+                const sessionExpiredAlert = document.getElementById('sessionExpiredAlert');
+                const logoutAlert = document.getElementById('logoutAlert');
+
+                if (sessionExpiredAlert) {
+                    setTimeout(() => {
+                        sessionExpiredAlert.classList.remove('visible');
+                    }, 5000);
+                }
+
+                if (logoutAlert) {
+                    setTimeout(() => {
+                        logoutAlert.classList.remove('visible');
+                    }, 5000);
+                }
             }
 
             // Load saved credentials from localStorage
             function loadSavedCredentials() {
                 if (localStorage.getItem('rememberCredentials') === 'true') {
                     rememberCheckbox.classList.add('checked');
+                    rememberMeInput.value = 'true';
                     const savedUsername = localStorage.getItem('lastUsername');
                     if (savedUsername) {
                         usernameInput.value = savedUsername;
+                        // Focus on password field if username is remembered
+                        setTimeout(() => {
+                            passwordInput.focus();
+                        }, 100);
                     }
                 }
             }
@@ -1222,9 +1784,14 @@
                 rememberCheckbox.classList.toggle('checked');
 
                 if (rememberCheckbox.classList.contains('checked')) {
+                    rememberMeInput.value = 'true';
                     localStorage.setItem('rememberCredentials', 'true');
+                    // Save username when remember me is checked
+                    localStorage.setItem('lastUsername', usernameInput.value.trim());
                 } else {
+                    rememberMeInput.value = 'false';
                     localStorage.removeItem('rememberCredentials');
+                    localStorage.removeItem('lastUsername');
                 }
             }
 
@@ -1242,15 +1809,6 @@
                     return false;
                 }
 
-                // Check if it's an email format
-                if (username.includes('@')) {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!emailRegex.test(username)) {
-                        showInputError(usernameInput, usernameError, 'Please enter a valid email address');
-                        return false;
-                    }
-                }
-
                 clearInputError(usernameInput, usernameError);
                 return true;
             }
@@ -1260,11 +1818,6 @@
                 const password = passwordInput.value;
                 if (!password) {
                     showInputError(passwordInput, passwordError, 'Password is required');
-                    return false;
-                }
-
-                if (password.length < 6) {
-                    showInputError(passwordInput, passwordError, 'Password must be at least 6 characters');
                     return false;
                 }
 
@@ -1297,15 +1850,30 @@
             function showAlert(message, type = 'error') {
                 alertText.textContent = message;
                 alertMessage.className = 'alert-message ' + type;
-                alertIcon.className = type === 'success' ? 'fas fa-check-circle' :
-                    type === 'info' ? 'fas fa-info-circle' :
-                    'fas fa-exclamation-circle';
+
+                // Set appropriate icon
+                switch (type) {
+                    case 'success':
+                        alertIcon.className = 'fas fa-check-circle';
+                        break;
+                    case 'warning':
+                        alertIcon.className = 'fas fa-exclamation-triangle';
+                        break;
+                    case 'info':
+                        alertIcon.className = 'fas fa-info-circle';
+                        break;
+                    default: // error
+                        alertIcon.className = 'fas fa-exclamation-circle';
+                }
+
                 alertMessage.classList.add('visible');
 
-                // Auto-hide error messages after 5 seconds
-                if (type === 'error') {
-                    setTimeout(hideAlert, 5000);
-                }
+                // Auto-hide messages after appropriate time
+                const hideTime = type === 'error' ? 5000 :
+                    type === 'warning' ? 7000 :
+                        type === 'info' ? 5000 : 3000;
+
+                setTimeout(hideAlert, hideTime);
             }
 
             // Hide alert message
@@ -1346,16 +1914,16 @@
                 const duration = 1000 + Math.random() * 1000;
 
                 particle.animate([{
-                        transform: 'translate(-50%, -50%) scale(1)',
-                        opacity: 1
-                    },
-                    {
-                        transform: `translate(
+                    transform: 'translate(-50%, -50%) scale(1)',
+                    opacity: 1
+                },
+                {
+                    transform: `translate(
                             ${Math.cos(angle) * distance}px, 
                             ${Math.sin(angle) * distance}px
                         ) scale(${size})`,
-                        opacity: 0
-                    }
+                    opacity: 0
+                }
                 ], {
                     duration: duration,
                     easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
@@ -1366,97 +1934,90 @@
             async function handleFormSubmit(e) {
                 e.preventDefault();
 
-                // Validate inputs
-                const isUsernameValid = validateUsername();
-                const isPasswordValid = validatePassword();
-
-                if (!isUsernameValid || !isPasswordValid) {
-                    showAlert('Please fix the errors in the form.', 'error');
-                    return;
-                }
-
                 // Get form values
                 const username = usernameInput.value.trim();
                 const password = passwordInput.value;
+                const rememberMe = rememberMeInput.value === 'true';
+
+                // Save username to localStorage if remember me is checked
+                if (rememberMe) {
+                    localStorage.setItem('lastUsername', username);
+                }
+
+                // Validate inputs
+                if (!validateUsername() || !validatePassword()) {
+                    return;
+                }
 
                 // Disable submit button and show loader
                 submitBtn.disabled = true;
                 loaderOverlay.classList.remove('hidden');
 
                 try {
-                    // Simulate API call
-                    await simulateApiCall(username, password);
+                    // Send login request
+                    const formData = new FormData();
+                    formData.append('username', username);
+                    formData.append('password', password);
+                    formData.append('remember_me', rememberMe);
 
-                    // Handle success
-                    handleLoginSuccess(username);
+                    const response = await fetch('', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+                    console.log('Login response:', data);
+
+                    if (data.success) {
+                        if (data.temp_password) {
+                            showAlert('Temporary password detected. Please create a new permanent password.', 'info');
+                            setTimeout(() => {
+                                window.location.href = data.redirect || 'change_password.php';
+                            }, 1500);
+                        } else {
+                            showAlert(data.message || 'Login successful!', 'success');
+
+                            // ALWAYS redirect to homepage.php after successful login
+                            setTimeout(() => {
+                                window.location.href = data.redirect || 'homepage.php';
+                            }, 500); // Reduced delay for faster redirect
+                        }
+                    } else {
+                        // Handle login error
+                        showAlert(data.message || 'Login failed', 'error');
+
+                        // Shake animation
+                        loginForm.classList.add('shake');
+                        setTimeout(() => {
+                            loginForm.classList.remove('shake');
+                        }, 500);
+
+                        // Clear password and focus on it
+                        passwordInput.value = '';
+                        passwordInput.focus();
+
+                        // Re-enable submit button
+                        submitBtn.disabled = false;
+                        loaderOverlay.classList.add('hidden');
+                    }
+
                 } catch (error) {
-                    // Handle error
-                    handleLoginError(error.message);
-                } finally {
-                    // Re-enable submit button and hide loader
+                    console.error('Error:', error);
+                    showAlert('Network error: ' + error.message, 'error');
                     submitBtn.disabled = false;
                     loaderOverlay.classList.add('hidden');
                 }
-            }
-
-            // Simulate API call
-            function simulateApiCall(username, password) {
-                return new Promise((resolve, reject) => {
-                    setTimeout(() => {
-                        if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-                            resolve({
-                                success: true
-                            });
-                        } else {
-                            reject(new Error('Invalid credentials. Please check your username and password.'));
-                        }
-                    }, 1500);
-                });
-            }
-
-            // Handle successful login
-            function handleLoginSuccess(username) {
-                // Save credentials if "Remember me" is checked
-                if (rememberCheckbox.classList.contains('checked')) {
-                    localStorage.setItem('lastUsername', username);
-                } else {
-                    localStorage.removeItem('lastUsername');
-                }
-
-                // Show success message and particles
-                showAlert('Login successful! Redirecting to dashboard...', 'success');
-                createCelebrationParticles();
-
-                // Redirect to homepage
-                setTimeout(() => {
-                    window.location.href = 'homepage.php';
-                }, 2000);
-            }
-
-            // Handle login error
-            function handleLoginError(message) {
-                // Show error message
-                showAlert(message, 'error');
-
-                // Shake animation
-                loginForm.classList.add('shake');
-                setTimeout(() => {
-                    loginForm.classList.remove('shake');
-                }, 500);
-
-                // Clear password and focus on it
-                passwordInput.value = '';
-                passwordInput.focus();
             }
 
             // Initialize the application
             init();
 
             // Make handleImageError available globally for onerror attribute
-            window.handleImageError = function(img) {
+            window.handleImageError = function (img) {
                 handleImageError(img);
             };
         });
     </script>
 </body>
+
 </html>

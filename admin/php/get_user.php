@@ -1,31 +1,46 @@
 <?php
-session_start();
-require_once '../conn.php';
+// get_user.php
 
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    die(json_encode(['error' => 'Unauthorized']));
+// Database connection
+$host = "localhost";
+$username = "root";
+$password = "";
+$database = "hrms_paluan";
+
+$conn = new mysqli($host, $username, $password, $database);
+
+// Check connection
+if ($conn->connect_error) {
+    die(json_encode(['error' => 'Database connection failed']));
 }
 
-if (!isset($_GET['id'])) {
-    die(json_encode(['error' => 'User ID required']));
-}
+// Get user ID from request
+$user_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-$user_id = (int)$_GET['id'];
-
-// Get user data
-$sql = "SELECT id, full_name, email, role, is_active FROM users WHERE id = ?";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows > 0) {
-    $user = $result->fetch_assoc();
-    echo json_encode($user);
+if ($user_id > 0) {
+    $sql = "SELECT id, first_name, middle_name, last_name, email, role, is_active, employment_type 
+            FROM users WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $user = $result->fetch_assoc();
+        
+        // Combine first, middle, last name into full_name for compatibility
+        $user['full_name'] = trim($user['first_name'] . ' ' . 
+                                  ($user['middle_name'] ? $user['middle_name'] . ' ' : '') . 
+                                  $user['last_name']);
+        
+        echo json_encode($user);
+    } else {
+        echo json_encode(['error' => 'User not found']);
+    }
+    $stmt->close();
 } else {
-    echo json_encode(['error' => 'User not found']);
+    echo json_encode(['error' => 'Invalid user ID']);
 }
 
-$stmt->close();
 $conn->close();
 ?>

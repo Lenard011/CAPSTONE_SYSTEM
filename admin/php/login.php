@@ -8,8 +8,8 @@ require_once 'mailer.php';
 // OTP Configuration
 define('OTP_EXPIRY_MINUTES', 5);
 
-// Check if user is already logged in
-if (isset($_SESSION['user_id'])) {
+// Check if admin is already logged in
+if (isset($_SESSION['admin_id'])) {
     header('Location: dashboard.php');
     exit();
 }
@@ -17,121 +17,145 @@ if (isset($_SESSION['user_id'])) {
 // Initialize mailer
 $mailer = new Mailer();
 
-// Function to create test accounts
-function createTestAccounts($conn, $mailer): void {
-    $test_accounts = [
+// Function to create test admin accounts
+function createTestAdmins($conn, $mailer): void
+{
+    $test_admins = [
         [
-            'email' => 'test@example.com',
-            'password' => 'password123',
-            'full_name' => 'Test User',
-            'position' => 'Developer',
+            'email' => 'admin@example.com',
+            'password' => 'admin123',
+            'full_name' => 'Super Admin',
+            'position' => 'System Administrator',
             'department' => 'IT',
-            'is_admin' => 1,
+            'is_super_admin' => 1,
+            'is_active' => 1
+        ],
+        [
+            'email' => 'manager@example.com',
+            'password' => 'manager123',
+            'full_name' => 'Department Manager',
+            'position' => 'IT Manager',
+            'department' => 'IT',
+            'is_super_admin' => 0,
             'is_active' => 1
         ]
     ];
 
     $results = [];
 
-    foreach ($test_accounts as $account) {
-        // Check if account already exists
-        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->bind_param("s", $account['email']);
+    foreach ($test_admins as $admin) {
+        // Check if admin already exists
+        $stmt = $conn->prepare("SELECT id FROM admins WHERE email = ?");
+        $stmt->bind_param("s", $admin['email']);
         $stmt->execute();
         $stmt->store_result();
 
         if ($stmt->num_rows > 0) {
-            $results[] = "Account ({$account['email']}) already exists";
+            $results[] = "Admin ({$admin['email']}) already exists";
             $stmt->close();
             continue;
         }
         $stmt->close();
 
         // Hash password
-        $hashed_password = password_hash($account['password'], PASSWORD_DEFAULT);
+        $hashed_password = password_hash($admin['password'], PASSWORD_DEFAULT);
 
-        // Insert account
-        $stmt = $conn->prepare("INSERT INTO users (email, password, full_name, position, department, is_admin, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
-        $stmt->bind_param("sssssii", $account['email'], $hashed_password, $account['full_name'], $account['position'], $account['department'], $account['is_admin'], $account['is_active']);
+        // Insert admin
+        $stmt = $conn->prepare("INSERT INTO admins (email, password, full_name, position, department, is_super_admin, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+        $stmt->bind_param(
+            "sssssii",
+            $admin['email'],
+            $hashed_password,
+            $admin['full_name'],
+            $admin['position'],
+            $admin['department'],
+            $admin['is_super_admin'],
+            $admin['is_active']
+        );
 
         if ($stmt->execute()) {
-            $results[] = "Account ({$account['email']}) created successfully (Password: {$account['password']})";
-            
+            $results[] = "Admin ({$admin['email']}) created successfully (Password: {$admin['password']})";
+
             // Test email sending
-            $email_result = $mailer->sendMail($account['email'], "Test Account Created", "Your test account has been created.");
-            
+            $email_result = $mailer->sendMail(
+                $admin['email'],
+                "Admin Account Created",
+                "Your admin account has been created."
+            );
+
             if ($email_result) {
-                $results[] = "Welcome email sent to {$account['email']}";
+                $results[] = "Welcome email sent to {$admin['email']}";
             } else {
-                $results[] = "Failed to send email to {$account['email']}";
+                $results[] = "Failed to send email to {$admin['email']}";
             }
         } else {
-            $results[] = "Failed to create account ({$account['email']}): " . $stmt->error;
+            $results[] = "Failed to create admin ({$admin['email']}): " . $stmt->error;
         }
 
         $stmt->close();
     }
 
     // Store results in session
-    $_SESSION['test_account_results'] = $results;
+    $_SESSION['test_admin_results'] = $results;
 }
 
-// Check if we need to create test accounts
-if (isset($_GET['create_test_accounts'])) {
-    createTestAccounts($conn, $mailer);
+// Check if we need to create test admins
+if (isset($_GET['create_test_admins'])) {
+    createTestAdmins($conn, $mailer);
 }
 
 // Variables
 $error = '';
 $success = '';
 $otp_required = false;
-$user_email = '';
-
+$user_email = ''; // Initialize this variable at the top
+$admin_email = ''; // Add this if using admin_email
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    // In the OTP verification section, update:
     if (isset($_POST['verify_otp'])) {
         // Handle OTP verification
         $otp = $_POST['otp'] ?? '';
-        $user_id = $_SESSION['pending_user_id'] ?? 0;
+        $admin_id = $_SESSION['pending_admin_id'] ?? 0;
 
-        if ($user_id && $otp) {
+        if ($admin_id && $otp) {
             // Verify OTP
-            $stmt = $conn->prepare("SELECT otp_code, otp_expires_at FROM users WHERE id = ?");
-            $stmt->bind_param("i", $user_id);
+            $stmt = $conn->prepare("SELECT otp_code, otp_expires_at FROM admins WHERE id = ?");
+            $stmt->bind_param("i", $admin_id);
             $stmt->execute();
             $result = $stmt->get_result();
-            $user = $result->fetch_assoc();
+            $admin = $result->fetch_assoc();
             $stmt->close();
 
-            if ($user && $user['otp_code'] == $otp && strtotime($user['otp_expires_at']) > time()) {
+            if ($admin && $admin['otp_code'] == $otp && strtotime($admin['otp_expires_at']) > time()) {
                 // OTP is valid - clear OTP
-                $stmt = $conn->prepare("UPDATE users SET otp_code = NULL, otp_expires_at = NULL, last_login = NOW() WHERE id = ?");
-                $stmt->bind_param("i", $user_id);
+                $stmt = $conn->prepare("UPDATE admins SET otp_code = NULL, otp_expires_at = NULL, last_login = NOW() WHERE id = ?");
+                $stmt->bind_param("i", $admin_id);
                 $stmt->execute();
                 $stmt->close();
 
-                // Get full user info for session
-                $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
-                $stmt->bind_param("i", $user_id);
+                // Get full admin info for session
+                $stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
+                $stmt->bind_param("i", $admin_id);
                 $stmt->execute();
                 $result = $stmt->get_result();
-                $user_data = $result->fetch_assoc();
+                $admin_data = $result->fetch_assoc();
                 $stmt->close();
 
                 // Set session variables
-                $_SESSION['user_id'] = $user_id;
-                $_SESSION['user_email'] = $user_data['email'];
-                $_SESSION['user_name'] = $user_data['full_name'];
-                $_SESSION['user_position'] = $user_data['position'];
-                $_SESSION['user_department'] = $user_data['department'];
-                $_SESSION['is_admin'] = $user_data['is_admin'];
+                $_SESSION['admin_id'] = $admin_id;
+                $_SESSION['admin_email'] = $admin_data['email'];
+                $_SESSION['admin_name'] = $admin_data['full_name'];
+                $_SESSION['admin_position'] = $admin_data['position'];
+                $_SESSION['admin_department'] = $admin_data['department'];
+                $_SESSION['is_super_admin'] = $admin_data['is_super_admin'];
                 $_SESSION['logged_in'] = true;
 
                 // Clear pending data
-                unset($_SESSION['pending_user_id']);
+                unset($_SESSION['pending_admin_id']);
                 unset($_SESSION['pending_email']);
                 unset($_SESSION['pending_name']);
-                unset($_SESSION['pending_is_admin']);
+                unset($_SESSION['pending_is_super_admin']);
 
                 // Redirect to dashboard
                 header('Location: dashboard.php');
@@ -139,34 +163,35 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             } else {
                 $error = "Invalid or expired OTP. Please try again.";
                 $otp_required = true;
-                $user_email = $_SESSION['pending_email'] ?? '';
+                $user_email = $_SESSION['pending_email'] ?? ''; // Use pending_email
+                $admin_email = $_SESSION['pending_email'] ?? ''; // For consistency
             }
         }
     } elseif (isset($_POST['resend_otp'])) {
         // Handle OTP resend
-        $user_id = $_SESSION['pending_user_id'] ?? 0;
+        $admin_id = $_SESSION['pending_admin_id'] ?? 0;
 
-        if ($user_id) {
+        if ($admin_id) {
             // Generate new OTP
             $otp = generateOTP();
             $expires_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
 
             // Store OTP
-            $stmt = $conn->prepare("UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?");
-            $stmt->bind_param("ssi", $otp, $expires_at, $user_id);
+            $stmt = $conn->prepare("UPDATE admins SET otp_code = ?, otp_expires_at = ? WHERE id = ?");
+            $stmt->bind_param("ssi", $otp, $expires_at, $admin_id);
             $stmt->execute();
             $stmt->close();
 
-            // Get user info
-            $stmt = $conn->prepare("SELECT email, full_name FROM users WHERE id = ?");
-            $stmt->bind_param("i", $user_id);
+            // Get admin info
+            $stmt = $conn->prepare("SELECT email, full_name FROM admins WHERE id = ?");
+            $stmt->bind_param("i", $admin_id);
             $stmt->execute();
             $result = $stmt->get_result();
-            $user = $result->fetch_assoc();
+            $admin = $result->fetch_assoc();
             $stmt->close();
 
             // Send OTP
-            $result = $mailer->sendOTP($user['email'], $otp, $user['full_name']);
+            $result = $mailer->sendOTP($admin['email'], $otp, $admin['full_name']);
 
             if ($result['success']) {
                 if (isset($result['demo_mode'])) {
@@ -179,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
 
             $otp_required = true;
-            $user_email = $user['email'] ?? '';
+            $admin_email = $admin['email'] ?? '';
         }
     } else {
         // Handle initial login
@@ -190,19 +215,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (empty($email) || empty($password)) {
             $error = "Please enter both email and password.";
         } else {
-            // Check if user exists
-            $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? AND is_active = 1");
+            // Check if admin exists
+            $stmt = $conn->prepare("SELECT * FROM admins WHERE email = ? AND is_active = 1");
             $stmt->bind_param("s", $email);
             $stmt->execute();
             $result = $stmt->get_result();
-            $user = $result->fetch_assoc();
+            $admin = $result->fetch_assoc();
             $stmt->close();
 
-            if ($user) {
-                // TEMPORARY: Allow both hashed and plain text for testing
-                if ($password === 'Codde' || password_verify($password, $user['password'])) {
+            if ($admin) {
+                // Verify password
+                if (password_verify($password, $admin['password'])) {
                     // Check if account is locked
-                    if ($user['locked_until'] && strtotime($user['locked_until']) > time()) {
+                    if ($admin['locked_until'] && strtotime($admin['locked_until']) > time()) {
                         $error = "Account is locked. Please try again later.";
                     } else {
                         // Generate OTP
@@ -210,13 +235,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $expires_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
 
                         // Store OTP in database
-                        $stmt = $conn->prepare("UPDATE users SET otp_code = ?, otp_expires_at = ?, login_attempts = 0, locked_until = NULL WHERE id = ?");
-                        $stmt->bind_param("ssi", $otp, $expires_at, $user['id']);
+                        $stmt = $conn->prepare("UPDATE admins SET otp_code = ?, otp_expires_at = ?, login_attempts = 0, locked_until = NULL WHERE id = ?");
+                        $stmt->bind_param("ssi", $otp, $expires_at, $admin['id']);
                         $stmt->execute();
                         $stmt->close();
 
                         // Send OTP via email
-                        $result = $mailer->sendOTP($email, $otp, $user['full_name']);
+                        $result = $mailer->sendOTP($email, $otp, $admin['full_name']);
 
                         if ($result['success']) {
                             if (isset($result['demo_mode'])) {
@@ -225,49 +250,51 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 $success = "OTP has been sent to your email address.";
                             }
 
-                            // Store user data in session for OTP verification
-                            $_SESSION['pending_user_id'] = $user['id'];
-                            $_SESSION['pending_email'] = $user['email'];
-                            $_SESSION['pending_name'] = $user['full_name'];
-                            $_SESSION['pending_is_admin'] = $user['is_admin'];
+                            // Store admin data in session for OTP verification
+                            $_SESSION['pending_admin_id'] = $admin['id'];
+                            $_SESSION['pending_email'] = $admin['email'];
+                            $_SESSION['pending_name'] = $admin['full_name'];
+                            $_SESSION['pending_is_super_admin'] = $admin['is_super_admin'];
 
                             $otp_required = true;
-                            $user_email = $email;
+                            $admin_email = $email;
                         } else {
                             $error = "Failed to send OTP. Please try again.";
                         }
                     }
                 } else {
                     // Wrong password
-                    $new_attempts = $user['login_attempts'] + 1;
+                    $new_attempts = $admin['login_attempts'] + 1;
 
                     if ($new_attempts >= 5) {
                         $lock_until = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-                        $stmt = $conn->prepare("UPDATE users SET login_attempts = ?, locked_until = ? WHERE id = ?");
-                        $stmt->bind_param("isi", $new_attempts, $lock_until, $user['id']);
+                        $stmt = $conn->prepare("UPDATE admins SET login_attempts = ?, locked_until = ? WHERE id = ?");
+                        $stmt->bind_param("isi", $new_attempts, $lock_until, $admin['id']);
                         $stmt->execute();
                         $stmt->close();
                         $error = "Account locked due to too many failed attempts. Try again in 15 minutes.";
                     } else {
-                        $stmt = $conn->prepare("UPDATE users SET login_attempts = ? WHERE id = ?");
-                        $stmt->bind_param("ii", $new_attempts, $user['id']);
+                        $stmt = $conn->prepare("UPDATE admins SET login_attempts = ? WHERE id = ?");
+                        $stmt->bind_param("ii", $new_attempts, $admin['id']);
                         $stmt->execute();
                         $stmt->close();
                         $error = "Invalid password. Attempt " . $new_attempts . " of 5.";
                     }
                 }
             } else {
-                $error = "No account found with that email.";
+                $error = "No admin account found with that email.";
             }
         }
     }
 }
 
 // Function to generate OTP
-function generateOTP() {
+function generateOTP()
+{
     return str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -277,7 +304,9 @@ function generateOTP() {
     <title>Admin Portal - Municipality of Paluan HRMO</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -330,7 +359,7 @@ function generateOTP() {
             left: 0;
             width: 100%;
             height: 100%;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 10% 20%, rgba(30, 58, 138, 0.05) 0%, transparent 20%),
                 radial-gradient(circle at 90% 80%, rgba(30, 58, 138, 0.05) 0%, transparent 20%),
                 radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.03) 0%, transparent 30%);
@@ -362,6 +391,7 @@ function generateOTP() {
             0% {
                 background-position: -200% center;
             }
+
             100% {
                 background-position: 200% center;
             }
@@ -547,7 +577,7 @@ function generateOTP() {
             z-index: 1;
         }
 
-        .form-input:focus + .input-icon {
+        .form-input:focus+.input-icon {
             color: var(--primary-blue);
         }
 
@@ -883,8 +913,13 @@ function generateOTP() {
 
         /* Animations */
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         @keyframes slideIn {
@@ -892,6 +927,7 @@ function generateOTP() {
                 opacity: 0;
                 transform: translateY(-10px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -977,8 +1013,7 @@ function generateOTP() {
                         <a href="#">
                             <img style="height: 80px; width: 72px;"
                                 src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
-                                alt="Municipality of Paluan Logo"
-                                class="rounded-lg" />
+                                alt="Municipality of Paluan Logo" class="rounded-lg" />
                         </a>
                     </div>
                     <div class="header-title">
@@ -1015,13 +1050,14 @@ function generateOTP() {
                         <ul>
                             <?php foreach ($_SESSION['test_account_results'] as $result): ?>
                                 <li>
-                                    <i class="fas <?php echo strpos($result, 'successfully') !== false ? 'fa-check-circle text-green-600' : 'fa-exclamation-circle text-red-600'; ?>"></i>
+                                    <i
+                                        class="fas <?php echo strpos($result, 'successfully') !== false ? 'fa-check-circle text-green-600' : 'fa-exclamation-circle text-red-600'; ?>"></i>
                                     <?php echo htmlspecialchars($result); ?>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
                     </div>
-                <?php unset($_SESSION['test_account_results']);
+                    <?php unset($_SESSION['test_account_results']);
                 endif; ?>
 
                 <!-- PHP Error Message -->
@@ -1059,7 +1095,22 @@ function generateOTP() {
                             <i class="fas fa-shield-alt"></i>
                             <h3>Two-Factor Authentication Required</h3>
                             <p>Enter the 6-digit OTP sent to:</p>
-                            <div class="email-display"><?php echo htmlspecialchars($user_email); ?></div>
+                            <div class="email-display">
+                                <?php
+                                // Show the email - check multiple possible sources
+                                $display_email = '';
+                                if (!empty($admin_email)) {
+                                    $display_email = $admin_email;
+                                } elseif (!empty($user_email)) {
+                                    $display_email = $user_email;
+                                } elseif (isset($_SESSION['pending_email']) && !empty($_SESSION['pending_email'])) {
+                                    $display_email = $_SESSION['pending_email'];
+                                } elseif (isset($_POST['email']) && !empty($_POST['email'])) {
+                                    $display_email = $_POST['email'];
+                                }
+                                echo htmlspecialchars($display_email);
+                                ?>
+                            </div>
                             <p class="text-sm mt-2 text-gray-600">Check your email inbox (and spam folder)</p>
                         </div>
 
@@ -1075,24 +1126,20 @@ function generateOTP() {
                                 $otp_data = $result->fetch_assoc();
                                 $stmt->close();
                                 if ($otp_data && $otp_data['otp_expires_at']):
-                            ?>
+                                    ?>
                                     <div class="otp-timer">
-                                        <span class="timer-text" id="timerText">OTP expires in: <span id="countdown">05:00</span></span>
+                                        <span class="timer-text" id="timerText">OTP expires in: <span
+                                                id="countdown">05:00</span></span>
                                     </div>
-                            <?php endif;
+                                <?php endif;
                             endif; ?>
 
                             <!-- OTP Input -->
                             <div class="otp-container">
                                 <?php for ($i = 1; $i <= 6; $i++): ?>
-                                    <input type="text"
-                                        name="otp[]"
-                                        class="otp-input"
-                                        maxlength="1"
-                                        data-index="<?php echo $i; ?>"
-                                        oninput="moveToNext(this, <?php echo $i; ?>)"
-                                        onkeydown="handleOTPKeyDown(event, <?php echo $i; ?>)"
-                                        autocomplete="off">
+                                    <input type="text" name="otp[]" class="otp-input" maxlength="1"
+                                        data-index="<?php echo $i; ?>" oninput="moveToNext(this, <?php echo $i; ?>)"
+                                        onkeydown="handleOTPKeyDown(event, <?php echo $i; ?>)" autocomplete="off">
                                 <?php endfor; ?>
                             </div>
                             <input type="hidden" name="otp" id="fullOtp">
@@ -1128,13 +1175,8 @@ function generateOTP() {
                             <!-- Email Input -->
                             <div class="form-group">
                                 <div class="input-wrapper">
-                                    <input type="email"
-                                        id="email"
-                                        name="email"
-                                        class="form-input"
-                                        placeholder="Enter your email address"
-                                        required
-                                        autocomplete="email"
+                                    <input type="email" id="email" name="email" class="form-input"
+                                        placeholder="Enter your email address" required autocomplete="email"
                                         value="<?php echo isset($_COOKIE['remember_user']) ? htmlspecialchars($_COOKIE['remember_user']) : ''; ?>">
                                     <i class="fas fa-envelope input-icon"></i>
                                 </div>
@@ -1143,13 +1185,8 @@ function generateOTP() {
                             <!-- Password Input -->
                             <div class="form-group">
                                 <div class="input-wrapper">
-                                    <input type="password"
-                                        id="password"
-                                        name="password"
-                                        class="form-input"
-                                        placeholder="Enter your password"
-                                        required
-                                        autocomplete="current-password">
+                                    <input type="password" id="password" name="password" class="form-input"
+                                        placeholder="Enter your password" required autocomplete="current-password">
                                     <i class="fas fa-lock input-icon"></i>
                                 </div>
                             </div>
@@ -1157,11 +1194,12 @@ function generateOTP() {
                             <!-- Form Options -->
                             <div class="form-options">
                                 <label class="checkbox-container">
-                                    <div class="custom-checkbox <?php echo isset($_COOKIE['remember_user']) ? 'checked' : ''; ?>" id="rememberCheckbox"></div>
+                                    <div class="custom-checkbox <?php echo isset($_COOKIE['remember_user']) ? 'checked' : ''; ?>"
+                                        id="rememberCheckbox"></div>
                                     <input type="checkbox" name="remember" id="remember" style="display: none;" <?php echo isset($_COOKIE['remember_user']) ? 'checked' : ''; ?>>
                                     <span class="checkbox-label">Remember me</span>
                                 </label>
-                                <a href="#" class="forgot-link">Forgot password?</a>
+                                <a href="reset-password-otp.php" class="forgot-link">Forgot password?</a>
                             </div>
 
                             <!-- Submit Button -->
@@ -1175,7 +1213,8 @@ function generateOTP() {
                             <!-- Test Account Creation (Development Only) -->
                             <?php if (isset($_GET['dev'])): ?>
                                 <div class="mt-4 text-center">
-                                    <a href="?create_test_accounts" class="inline-block px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg">
+                                    <a href="?create_test_accounts"
+                                        class="inline-block px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg">
                                         <i class="fas fa-user-plus mr-2"></i>Create Test Account
                                     </a>
                                 </div>
@@ -1188,7 +1227,7 @@ function generateOTP() {
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // DOM Elements
             const loginForm = document.getElementById('loginForm');
             const otpForm = document.getElementById('otpForm');
@@ -1297,7 +1336,7 @@ function generateOTP() {
 
             // Remember me functionality
             if (rememberCheckbox) {
-                rememberCheckbox.addEventListener('click', function() {
+                rememberCheckbox.addEventListener('click', function () {
                     this.classList.toggle('checked');
                     rememberCheckboxInput.checked = this.classList.contains('checked');
                 });
@@ -1329,7 +1368,7 @@ function generateOTP() {
 
             // Form submission handler for login form
             if (loginForm) {
-                loginForm.addEventListener('submit', function(e) {
+                loginForm.addEventListener('submit', function (e) {
                     // Get form values
                     const email = emailInput.value.trim();
                     const password = passwordInput.value;
@@ -1372,7 +1411,7 @@ function generateOTP() {
 
             // Form submission handler for OTP form
             if (otpForm) {
-                otpForm.addEventListener('submit', function(e) {
+                otpForm.addEventListener('submit', function (e) {
                     const fullOTP = fullOtpInput ? fullOtpInput.value : '';
 
                     if (fullOTP.length !== 6) {
@@ -1407,6 +1446,14 @@ function generateOTP() {
             });
         });
     </script>
+
+    <script>
+    // Simple redirect for forgot password (OTP-based reset)
+    document.querySelector('.forgot-link').addEventListener('click', function (e) {
+        // Let the default link behavior happen - it goes to reset-password-otp.php
+        // No modal needed
+    });
+</script>
 </body>
 
 </html>

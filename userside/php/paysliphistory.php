@@ -1,5 +1,67 @@
+<?php
+// homepage.php - SIMPLE WORKING VERSION
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set EXACTLY the same session configuration as login.php
+$cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
+
+session_name('HRMS_SESSION');
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => $cookiePath,
+    'domain' => '',
+    'secure' => false,
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Add debug output as HTML comment (view page source to see)
+echo "<!-- =========== HOMEPAGE SESSION DEBUG =========== -->\n";
+echo "<!-- Session ID: " . session_id() . " -->\n";
+echo "<!-- Cookie Path: " . $cookiePath . " -->\n";
+echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
+echo "<!-- ============================================= -->\n";
+
+// SIMPLE SESSION CHECK
+if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+    // Redirect to login with error
+    header('Location: login.php?error=session_missing');
+    exit();
+}
+
+// Update last activity
+$_SESSION['last_activity'] = time();
+
+// User is logged in - get variables
+$user_id = $_SESSION['user_id'];
+$username = $_SESSION['username'];
+$email = $_SESSION['email'] ?? '';
+$first_name = $_SESSION['first_name'] ?? '';
+$last_name = $_SESSION['last_name'] ?? '';
+$full_name = $_SESSION['full_name'] ?? ($first_name . ' ' . $last_name);
+$role = $_SESSION['role'] ?? 'employee';
+$access_level = $_SESSION['access_level'] ?? 1;
+$employee_id = $_SESSION['employee_id'] ?? '';
+$profile_image = $_SESSION['profile_image'] ?? '';
+
+// Check for forced password change
+if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
+    header('Location: change_password.php');
+    exit();
+}
+
+// Log successful access
+error_log("User " . $username . " accessed homepage successfully");
+
+?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -230,7 +292,7 @@
                 left: 0;
                 position: fixed;
             }
-            
+
             .main-content {
                 margin-left: 260px;
                 width: calc(100% - 260px);
@@ -1449,6 +1511,7 @@
 
         /* Print Styles */
         @media print {
+
             .sidebar,
             .top-bar-actions,
             .mobile-menu-btn,
@@ -1460,23 +1523,23 @@
             .footer {
                 display: none !important;
             }
-            
+
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding: 0;
             }
-            
+
             .table-container {
                 box-shadow: none;
                 border: 1px solid #000;
             }
-            
+
             body {
                 background: white;
                 color: black;
             }
-            
+
             .payslip-table {
                 min-width: 100%;
             }
@@ -1501,29 +1564,44 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--primary);
         }
-        
+
         /* Animation for cards */
         @keyframes fadeInUp {
             from {
                 opacity: 0;
                 transform: translateY(20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        
+
         .payslip-card {
             animation: fadeInUp 0.5s ease-out forwards;
             opacity: 0;
         }
-        
-        .payslip-card:nth-child(1) { animation-delay: 0.1s; }
-        .payslip-card:nth-child(2) { animation-delay: 0.2s; }
-        .payslip-card:nth-child(3) { animation-delay: 0.3s; }
-        .payslip-card:nth-child(4) { animation-delay: 0.4s; }
-        .payslip-card:nth-child(5) { animation-delay: 0.5s; }
+
+        .payslip-card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .payslip-card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .payslip-card:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .payslip-card:nth-child(4) {
+            animation-delay: 0.4s;
+        }
+
+        .payslip-card:nth-child(5) {
+            animation-delay: 0.5s;
+        }
 
         /* Notification Toast */
         .notification-toast {
@@ -1563,6 +1641,7 @@
                 transform: translateX(100%);
                 opacity: 0;
             }
+
             to {
                 transform: translateX(0);
                 opacity: 1;
@@ -1582,30 +1661,32 @@
             .d-md-none {
                 display: none !important;
             }
-            
+
             .d-md-block {
                 display: block !important;
             }
         }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Overlay for mobile sidebar -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
-        
+
         <!-- Sidebar Navigation -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <a href="homepage.php" class="logo-container">
-                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="logo-img">
+                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" class="logo-img">
                     <div class="logo-text">
                         <div class="logo-title">HR Management Office</div>
                         <div class="logo-subtitle">Occidental Mindoro</div>
                     </div>
                 </a>
             </div>
-            
+
             <nav class="nav-menu">
                 <div class="nav-item">
                     <a href="homepage.php" class="nav-link">
@@ -1619,7 +1700,7 @@
                         <span>Attendance History</span>
                     </a>
                 </div>
-                
+
                 <div class="nav-item">
                     <a href="paysliphistory.php" class="nav-link active">
                         <i class="fas fa-file-invoice-dollar"></i>
@@ -1638,8 +1719,14 @@
                         <span>Settings</span>
                     </a>
                 </div>
+                <div class="nav-item">
+                    <a href="logout.php" class="nav-link" onclick="return confirm('Are you sure you want to logout?');">
+                        <i class="fas fa-power-off"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
             </nav>
-            
+
             <div class="user-profile">
                 <div class="user-info">
                     <div class="user-avatar">JA</div>
@@ -1650,7 +1737,7 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content -->
         <main class="main-content">
             <!-- Top Bar -->
@@ -1669,7 +1756,7 @@
                     </button>
                 </div>
             </div>
-            
+
             <!-- Summary Cards -->
             <div class="summary-cards">
                 <div class="summary-card">
@@ -1681,7 +1768,7 @@
                         <div class="value">₱24,500.00</div>
                     </div>
                 </div>
-                
+
                 <div class="summary-card">
                     <div class="summary-icon">
                         <i class="fas fa-file-invoice"></i>
@@ -1691,7 +1778,7 @@
                         <div class="value">12</div>
                     </div>
                 </div>
-                
+
                 <div class="summary-card">
                     <div class="summary-icon">
                         <i class="fas fa-calendar-alt"></i>
@@ -1701,7 +1788,7 @@
                         <div class="value">₱6,250.00</div>
                     </div>
                 </div>
-                
+
                 <div class="summary-card">
                     <div class="summary-icon">
                         <i class="fas fa-clock"></i>
@@ -1712,7 +1799,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Filter Section -->
             <div class="filter-section">
                 <div class="filter-header">
@@ -1727,7 +1814,7 @@
                                 <option value="2021">2021</option>
                             </select>
                         </div>
-                        
+
                         <div class="filter-select">
                             <select class="filter-input" id="monthFilter">
                                 <option value="">All Months</option>
@@ -1745,7 +1832,7 @@
                                 <option value="12">December</option>
                             </select>
                         </div>
-                        
+
                         <div class="filter-select">
                             <select class="filter-input" id="statusFilter">
                                 <option value="">All Status</option>
@@ -1754,23 +1841,23 @@
                                 <option value="processing">Processing</option>
                             </select>
                         </div>
-                        
+
                         <div class="search-container">
                             <i class="fas fa-search search-icon"></i>
                             <input type="text" class="search-input" placeholder="Search employee..." id="searchInput">
                         </div>
-                        
+
                         <button class="btn btn-primary" id="applyFilter">
                             <i class="fas fa-filter"></i> Apply Filters
                         </button>
-                        
+
                         <button class="btn btn-secondary" id="resetFilter">
                             <i class="fas fa-redo"></i> Reset
                         </button>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Payslip Table Container -->
             <div class="table-container">
                 <div class="table-header">
@@ -1787,7 +1874,7 @@
                         </button>
                     </div>
                 </div>
-                
+
                 <!-- Desktop Table View -->
                 <div class="table-responsive">
                     <table class="payslip-table">
@@ -1816,12 +1903,12 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 <!-- Mobile Card View -->
                 <div class="mobile-card-view" id="mobileCardView">
                     <!-- Mobile cards will be populated by JavaScript -->
                 </div>
-                
+
                 <!-- Table Footer -->
                 <div class="table-footer">
                     <div class="summary-info">
@@ -1842,7 +1929,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Pagination -->
                 <div class="pagination">
                     <div class="pagination-info">
@@ -1855,7 +1942,7 @@
             </div>
         </main>
     </div>
-    
+
     <!-- Export Modal -->
     <div class="export-modal" id="exportModal">
         <div class="modal-content">
@@ -1908,14 +1995,15 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-grid">
                 <div class="footer-col">
                     <div class="footer-logo">
-                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="footer-logo-img">
+                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                            alt="Logo" class="footer-logo-img">
                         <div>
                             <div class="footer-title">HR Management Office</div>
                             <div>Occidental Mindoro</div>
@@ -1926,7 +2014,7 @@
                         All content is in the public domain unless otherwise stated.
                     </p>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>About GOVPH</h4>
@@ -1938,7 +2026,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Quick Links</h4>
@@ -1950,7 +2038,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Connect With Us</h4>
@@ -1974,13 +2062,13 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="footer-bottom">
                 <p class="copyright">© 2024 <strong>Human Resource Management Office</strong>. All Rights Reserved.</p>
             </div>
         </div>
     </footer>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     <script>
         // Sample data
@@ -2098,7 +2186,7 @@
         let currentPage = 1;
         const itemsPerPage = 5;
 
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // DOM elements
             const mobileMenuBtn = document.getElementById('mobileMenuBtn');
             const sidebar = document.getElementById('sidebar');
@@ -2136,7 +2224,7 @@
             setupPagination();
 
             // Mobile sidebar toggle
-            mobileMenuBtn.addEventListener('click', function() {
+            mobileMenuBtn.addEventListener('click', function () {
                 sidebar.classList.toggle('active');
                 sidebarOverlay.classList.toggle('active');
                 document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : 'auto';
@@ -2145,7 +2233,7 @@
             });
 
             // Close sidebar when clicking on overlay
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebar.classList.remove('active');
                 sidebarOverlay.classList.remove('active');
                 document.body.style.overflow = 'auto';
@@ -2154,7 +2242,7 @@
             });
 
             // Close sidebar when window is resized to desktop size
-            window.addEventListener('resize', function() {
+            window.addEventListener('resize', function () {
                 if (window.innerWidth >= 1024 && sidebar.classList.contains('active')) {
                     sidebar.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
@@ -2165,10 +2253,10 @@
             });
 
             // Select all checkbox
-            selectAllCheckbox.addEventListener('change', function() {
+            selectAllCheckbox.addEventListener('change', function () {
                 const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
                 const currentPageData = getCurrentPageData();
-                
+
                 checkboxes.forEach(cb => {
                     cb.checked = this.checked;
                     const id = cb.dataset.id;
@@ -2177,25 +2265,25 @@
                         item.selected = this.checked;
                     }
                 });
-                
+
                 updateSelectedCount();
                 updateSummary();
             });
 
             // Select all button
-            selectAllBtn.addEventListener('click', function() {
+            selectAllBtn.addEventListener('click', function () {
                 selectAllCheckbox.checked = !selectAllCheckbox.checked;
                 selectAllCheckbox.dispatchEvent(new Event('change'));
             });
 
             // Export button
-            exportBtn.addEventListener('click', function() {
+            exportBtn.addEventListener('click', function () {
                 exportModal.classList.add('active');
                 document.body.style.overflow = 'hidden';
             });
 
             // Print button
-            printBtn.addEventListener('click', function() {
+            printBtn.addEventListener('click', function () {
                 const selectedItems = currentData.filter(item => item.selected);
                 if (selectedItems.length === 0) {
                     showNotification('Please select payslips to print', 'warning');
@@ -2218,14 +2306,14 @@
 
             // Export options
             exportOptions.forEach(option => {
-                option.addEventListener('click', function() {
+                option.addEventListener('click', function () {
                     exportOptions.forEach(opt => opt.classList.remove('selected'));
                     this.classList.add('selected');
                 });
             });
 
             // Export all checkbox
-            exportAllCheckbox.addEventListener('change', function() {
+            exportAllCheckbox.addEventListener('change', function () {
                 if (this.checked) {
                     const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
                     checkboxes.forEach(cb => cb.checked = true);
@@ -2246,15 +2334,15 @@
                 // Clear existing content
                 payslipTableBody.innerHTML = '';
                 mobileCardView.innerHTML = '';
-                
+
                 const pageData = getCurrentPageData();
-                
+
                 // Update counts
                 showingCountEl.textContent = pageData.length;
                 totalCountEl.textContent = currentData.length;
                 currentPageEl.textContent = currentPage;
                 totalPagesEl.textContent = Math.ceil(currentData.length / itemsPerPage);
-                
+
                 // Render desktop table
                 pageData.forEach(item => {
                     const row = document.createElement('tr');
@@ -2292,7 +2380,7 @@
                     `;
                     payslipTableBody.appendChild(row);
                 });
-                
+
                 // Render mobile cards
                 pageData.forEach(item => {
                     const card = document.createElement('div');
@@ -2349,11 +2437,11 @@
                     `;
                     mobileCardView.appendChild(card);
                 });
-                
+
                 // Add event listeners to checkboxes
                 const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
                 checkboxes.forEach(cb => {
-                    cb.addEventListener('change', function() {
+                    cb.addEventListener('change', function () {
                         const id = this.dataset.id;
                         const item = currentData.find(item => item.id == id);
                         if (item) {
@@ -2363,17 +2451,17 @@
                         }
                     });
                 });
-                
+
                 // Update select all checkbox
                 const pageDataSelected = pageData.filter(item => item.selected);
                 selectAllCheckbox.checked = pageDataSelected.length > 0 && pageDataSelected.length === pageData.length;
-                
+
                 // Initialize animations
                 const observerOptions = {
                     threshold: 0.1,
                     rootMargin: '0px 0px -50px 0px'
                 };
-                
+
                 const observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
                         if (entry.isIntersecting) {
@@ -2381,7 +2469,7 @@
                         }
                     });
                 }, observerOptions);
-                
+
                 document.querySelectorAll('.payslip-card').forEach(card => {
                     card.style.animationPlayState = 'paused';
                     observer.observe(card);
@@ -2397,12 +2485,12 @@
                 const selectedItems = currentData.filter(item => item.selected);
                 let totalGross = 0;
                 let totalNet = 0;
-                
+
                 selectedItems.forEach(item => {
                     totalGross += parseFloat(item.grossAmount.replace(/,/g, ''));
                     totalNet += parseFloat(item.netAmount.replace(/,/g, ''));
                 });
-                
+
                 totalGrossEl.textContent = `₱${totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 totalNetEl.textContent = `₱${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             }
@@ -2412,36 +2500,36 @@
                 const year = yearFilter.value;
                 const month = monthFilter.value;
                 const status = statusFilter.value;
-                
+
                 currentData = payslipData.filter(item => {
                     // Search filter
-                    if (searchTerm && !item.employeeName.toLowerCase().includes(searchTerm) && 
+                    if (searchTerm && !item.employeeName.toLowerCase().includes(searchTerm) &&
                         !item.employeeId.toLowerCase().includes(searchTerm)) {
                         return false;
                     }
-                    
+
                     // Year filter
                     if (year) {
                         const itemYear = item.period.split(' ')[1];
                         if (itemYear !== year) return false;
                     }
-                    
+
                     // Month filter
                     if (month) {
-                        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                           'July', 'August', 'September', 'October', 'November', 'December'];
+                        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
                         const itemMonth = item.period.split(' ')[0];
                         if (monthNames[parseInt(month) - 1] !== itemMonth) return false;
                     }
-                    
+
                     // Status filter
                     if (status && item.status !== status) {
                         return false;
                     }
-                    
+
                     return true;
                 });
-                
+
                 currentPage = 1;
                 renderTable();
                 updateSummary();
@@ -2459,9 +2547,9 @@
             function setupPagination() {
                 // Clear existing controls
                 paginationControls.innerHTML = '';
-                
+
                 const totalPages = Math.ceil(currentData.length / itemsPerPage);
-                
+
                 // Previous button
                 const prevBtn = document.createElement('button');
                 prevBtn.className = 'pagination-btn';
@@ -2476,11 +2564,11 @@
                     }
                 });
                 paginationControls.appendChild(prevBtn);
-                
+
                 // Page number buttons
                 const startPage = Math.max(1, currentPage - 2);
                 const endPage = Math.min(totalPages, startPage + 4);
-                
+
                 for (let i = startPage; i <= endPage; i++) {
                     const pageBtn = document.createElement('button');
                     pageBtn.className = `pagination-btn ${i === currentPage ? 'active' : ''}`;
@@ -2493,7 +2581,7 @@
                     });
                     paginationControls.appendChild(pageBtn);
                 }
-                
+
                 // Next button
                 const nextBtn = document.createElement('button');
                 nextBtn.className = 'pagination-btn';
@@ -2508,7 +2596,7 @@
                     }
                 });
                 paginationControls.appendChild(nextBtn);
-                
+
                 // Update page info
                 currentPageEl.textContent = currentPage;
                 totalPagesEl.textContent = totalPages;
@@ -2525,15 +2613,15 @@
                 const selectedFormat = document.querySelector('.export-option.selected')?.dataset.format || 'pdf';
                 const exportAll = exportAllCheckbox.checked;
                 const itemsToExport = exportAll ? currentData : currentData.filter(item => item.selected);
-                
+
                 if (itemsToExport.length === 0) {
                     showNotification('Please select payslips to export', 'warning');
                     return;
                 }
-                
+
                 showNotification(`Exporting ${itemsToExport.length} payslip(s) as ${selectedFormat.toUpperCase()}`, 'success');
                 closeModal();
-                
+
                 // In a real application, this would trigger the export/download
                 setTimeout(() => {
                     if (selectedFormat === 'print') {
@@ -2562,13 +2650,13 @@
             }
 
             // Keyboard shortcuts
-            document.addEventListener('keydown', function(e) {
+            document.addEventListener('keydown', function (e) {
                 // Close modal with Escape key
                 if (e.key === 'Escape') {
                     const modal = document.querySelector('.export-modal.active');
                     if (modal) closeModal();
                 }
-                
+
                 // Close sidebar with Escape key on mobile
                 if (e.key === 'Escape' && window.innerWidth < 1024 && sidebar.classList.contains('active')) {
                     sidebar.classList.remove('active');
@@ -2676,7 +2764,7 @@
             if (existingNotification) {
                 existingNotification.remove();
             }
-            
+
             const notification = document.createElement('div');
             notification.className = `notification-toast ${type}`;
             notification.innerHTML = `
@@ -2685,9 +2773,9 @@
                     <span class="text-sm md:text-base">${message}</span>
                 </div>
             `;
-            
+
             document.body.appendChild(notification);
-            
+
             // Remove after delay
             setTimeout(() => {
                 notification.style.opacity = '0';
@@ -2699,4 +2787,5 @@
         }
     </script>
 </body>
+
 </html>

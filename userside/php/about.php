@@ -1,12 +1,74 @@
+<?php
+// homepage.php - SIMPLE WORKING VERSION
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set EXACTLY the same session configuration as login.php
+$cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
+
+session_name('HRMS_SESSION');
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => $cookiePath,
+    'domain' => '',
+    'secure' => false,
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Add debug output as HTML comment (view page source to see)
+echo "<!-- =========== HOMEPAGE SESSION DEBUG =========== -->\n";
+echo "<!-- Session ID: " . session_id() . " -->\n";
+echo "<!-- Cookie Path: " . $cookiePath . " -->\n";
+echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
+echo "<!-- ============================================= -->\n";
+
+// SIMPLE SESSION CHECK
+if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+    // Redirect to login with error
+    header('Location: login.php?error=session_missing');
+    exit();
+}
+
+// Update last activity
+$_SESSION['last_activity'] = time();
+
+// User is logged in - get variables
+$user_id = $_SESSION['user_id'];
+$username = $_SESSION['username'];
+$email = $_SESSION['email'] ?? '';
+$first_name = $_SESSION['first_name'] ?? '';
+$last_name = $_SESSION['last_name'] ?? '';
+$full_name = $_SESSION['full_name'] ?? ($first_name . ' ' . $last_name);
+$role = $_SESSION['role'] ?? 'employee';
+$access_level = $_SESSION['access_level'] ?? 1;
+$employee_id = $_SESSION['employee_id'] ?? '';
+$profile_image = $_SESSION['profile_image'] ?? '';
+
+// Check for forced password change
+if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
+    header('Location: change_password.php');
+    exit();
+}
+
+// Log successful access
+error_log("User " . $username . " accessed homepage successfully");
+?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HRMS - About Paluan Municipality</title>
     <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <style>
         /* Modern Variables */
         :root {
@@ -24,7 +86,7 @@
             --gray-light: #e5e7eb;
             --card-bg: #ffffff;
             --sidebar-bg: linear-gradient(180deg, #1e40af 0%, #1e3a8a 100%);
-             --footer-bg: linear-gradient(180deg, #111827 0%, #1f2937 100%);
+            --footer-bg: linear-gradient(180deg, #111827 0%, #1f2937 100%);
             --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
             --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
@@ -305,7 +367,7 @@
             right: 0;
             width: 400px;
             height: 400px;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
             border-radius: 50%;
             transform: translate(30%, -30%);
         }
@@ -656,16 +718,23 @@
             position: absolute;
             width: 200%;
             height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
             animation: pulse 4s ease-in-out infinite;
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
         }
 
-         /* --- Footer --- */
+        /* --- Footer --- */
         .footer {
             background: var(--footer-bg);
             color: white;
@@ -864,6 +933,7 @@
         .footer-bottom-links a:hover {
             color: white;
         }
+
         /* Back to Top Button */
         .back-to-top {
             position: fixed;
@@ -919,25 +989,25 @@
             .app-container {
                 flex-direction: row;
             }
-            
+
             .sidebar {
                 transform: translateX(0);
                 position: fixed;
             }
-            
+
             .main-content {
                 margin-left: 260px;
                 width: calc(100% - 260px);
             }
-            
+
             .mobile-menu-btn {
                 display: none;
             }
-            
+
             .sidebar-overlay {
                 display: none !important;
             }
-            
+
             .content-nav ul {
                 flex-wrap: wrap;
             }
@@ -948,19 +1018,19 @@
             .hero-title {
                 font-size: 2.25rem;
             }
-            
+
             .hero-stats {
                 gap: 1.5rem;
             }
-            
+
             .hero-stat {
                 min-width: 140px;
             }
-            
+
             .cards-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
+
             .gallery-grid {
                 grid-template-columns: repeat(3, 1fr);
             }
@@ -971,119 +1041,119 @@
             .main-content {
                 padding: 1rem;
             }
-            
+
             .top-bar {
                 flex-direction: column;
                 align-items: flex-start;
                 padding: 1rem;
             }
-            
+
             .page-header h1 {
                 font-size: 1.5rem;
             }
-            
+
             .hero-section {
                 padding: 2rem 1rem;
                 margin-bottom: 1.5rem;
             }
-            
+
             .hero-title {
                 font-size: 1.75rem;
             }
-            
+
             .hero-subtitle {
                 font-size: 1rem;
             }
-            
+
             .hero-stats {
                 gap: 1rem;
                 justify-content: space-between;
             }
-            
+
             .hero-stat {
                 min-width: calc(50% - 0.5rem);
                 margin-bottom: 1rem;
             }
-            
+
             .hero-stat-value {
                 font-size: 1.75rem;
             }
-            
+
             .content-nav {
                 padding: 0.75rem;
                 margin-bottom: 1.5rem;
                 position: static;
                 top: 0;
             }
-            
+
             .content-nav ul {
                 gap: 0.25rem;
             }
-            
+
             .content-nav a {
                 padding: 0.5rem 0.75rem;
                 font-size: 0.9rem;
             }
-            
+
             .content-nav a i {
                 font-size: 0.9rem;
             }
-            
+
             .section-header {
                 gap: 0.75rem;
             }
-            
+
             .section-title {
                 font-size: 1.5rem;
                 min-width: 100%;
             }
-            
+
             .section-icon {
                 width: 40px;
                 height: 40px;
                 font-size: 1.25rem;
             }
-            
+
             .cards-grid {
                 grid-template-columns: 1fr;
                 gap: 1rem;
             }
-            
+
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
                 gap: 1rem;
             }
-            
+
             .stat-card {
                 padding: 1rem;
             }
-            
+
             .stat-value {
                 font-size: 2rem;
             }
-            
+
             .gallery-grid {
                 grid-template-columns: repeat(2, 1fr);
                 gap: 0.75rem;
             }
-            
+
             .gallery-item {
                 aspect-ratio: 1/1;
             }
-            
+
             .timeline {
                 padding-left: 1.5rem;
             }
-            
+
             .timeline-item::before {
                 left: -2rem;
             }
-            
+
             .footer-grid {
                 grid-template-columns: 1fr;
                 gap: 1.5rem;
             }
-            
+
             .back-to-top {
                 bottom: 1rem;
                 right: 1rem;
@@ -1098,39 +1168,39 @@
             .hero-stat {
                 min-width: 100%;
             }
-            
+
             .hero-stats {
                 flex-direction: column;
                 gap: 0.5rem;
             }
-            
+
             .hero-stat-value {
                 font-size: 1.5rem;
             }
-            
+
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .gallery-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .content-nav a {
                 padding: 0.4rem 0.6rem;
                 font-size: 0.8rem;
             }
-            
+
             .content-nav a i {
                 display: none;
             }
-            
+
             .footer-logo {
                 flex-direction: column;
                 text-align: center;
                 gap: 0.5rem;
             }
-            
+
             .social-links {
                 justify-content: center;
             }
@@ -1138,7 +1208,8 @@
 
         /* Print Styles */
         @media print {
-            .sidebar, 
+
+            .sidebar,
             .top-bar-actions,
             .content-nav,
             .footer,
@@ -1146,23 +1217,23 @@
             .mobile-menu-btn {
                 display: none !important;
             }
-            
+
             .main-content {
                 margin-left: 0;
                 width: 100%;
                 padding: 0;
             }
-            
+
             .hero-section {
                 background: none !important;
                 color: black !important;
                 box-shadow: none !important;
             }
-            
+
             .hero-section::before {
                 display: none;
             }
-            
+
             .feature-card,
             .stat-card {
                 box-shadow: none !important;
@@ -1172,23 +1243,25 @@
         }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Sidebar Overlay for Mobile -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
-        
+
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-header">
                 <a href="homepage.php" class="logo-container">
-                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="logo-img">
+                    <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" class="logo-img">
                     <div class="logo-text">
                         <div class="logo-title">HR Management Office</div>
                         <div class="logo-subtitle">Occidental Mindoro</div>
                     </div>
                 </a>
             </div>
-            
+
             <nav class="nav-menu">
                 <div class="nav-item">
                     <a href="homepage.php" class="nav-link">
@@ -1202,7 +1275,7 @@
                         <span>Attendance History</span>
                     </a>
                 </div>
-              
+
                 <div class="nav-item">
                     <a href="paysliphistory.php" class="nav-link">
                         <i class="fas fa-file-invoice-dollar"></i>
@@ -1221,8 +1294,14 @@
                         <span>Settings</span>
                     </a>
                 </div>
+                <div class="nav-item">
+                    <a href="logout.php" class="nav-link" onclick="return confirm('Are you sure you want to logout?');">
+                        <i class="fas fa-power-off"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
             </nav>
-            
+
             <div class="user-profile">
                 <div class="user-info">
                     <div class="user-avatar">JA</div>
@@ -1233,7 +1312,7 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content -->
         <main class="main-content">
             <!-- Top Bar -->
@@ -1252,13 +1331,14 @@
                     </button>
                 </div>
             </div>
-            
+
             <!-- Hero Section -->
             <div class="hero-section">
                 <h1 class="hero-title">Municipality of Paluan</h1>
                 <p class="hero-subtitle">
-                    A 3rd class municipality located at the northwestern tip of Mindoro Island, 
-                    officially known as <strong>Bayan ng Paluan</strong> in the province of Occidental Mindoro, Philippines.
+                    A 3rd class municipality located at the northwestern tip of Mindoro Island,
+                    officially known as <strong>Bayan ng Paluan</strong> in the province of Occidental Mindoro,
+                    Philippines.
                 </p>
                 <div class="hero-stats">
                     <div class="hero-stat">
@@ -1279,7 +1359,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Content Navigation -->
             <nav class="content-nav">
                 <ul>
@@ -1291,74 +1371,8 @@
                     <li><a href="#government"><i class="fas fa-university"></i> Government</a></li>
                 </ul>
             </nav>
-            
-            <!-- Geography Section -->
-            <section id="geography" class="content-section">
-                <div class="section-header">
-                    <div class="section-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
-                        <i class="fas fa-map-marked-alt"></i>
-                    </div>
-                    <h2 class="section-title">Geography & Location</h2>
-                </div>
-                
-                <div class="cards-grid">
-                    <div class="feature-card">
-                        <div class="card-header">
-                            <div class="card-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
-                                <i class="fas fa-mountain"></i>
-                            </div>
-                            <h3 class="card-title">Mountainous Terrain</h3>
-                        </div>
-                        <p class="card-content">
-                            Situated along the northeast shore of Paluan Bay, approximately 7 miles southeast of Cape Calavite. 
-                            Dominated by rolling and steep mountain ranges with Mount Calavite as the highest peak at 1,491 meters.
-                        </p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="card-header">
-                            <div class="card-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-                                <i class="fas fa-water"></i>
-                            </div>
-                            <h3 class="card-title">Coastal Features</h3>
-                        </div>
-                        <p class="card-content">
-                            The municipality faces the Paluan Bay to the north and the South China Sea to the west. 
-                            Its coastline features beautiful beaches and important fishing grounds for local communities.
-                        </p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="card-header">
-                            <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                                <i class="fas fa-ruler-combined"></i>
-                            </div>
-                            <h3 class="card-title">Land Area</h3>
-                        </div>
-                        <p class="card-content">
-                            Paluan covers a total area of 56,430 hectares, making it one of the larger municipalities 
-                            in Occidental Mindoro. The terrain is characterized by rugged landscapes and dense forest cover.
-                        </p>
-                    </div>
-                </div>
-                
-                <!-- Interactive Map -->
-                <div class="map-container">
-                    <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-                        <i class="fas fa-map text-blue-600"></i>
-                        Interactive Map of Paluan
-                    </h3>
-                    <div class="map-placeholder">
-                        <i class="fas fa-map-marked-alt text-4xl mb-2"></i>
-                        <p class="font-semibold">Municipality of Paluan</p>
-                        <p class="text-sm opacity-90 mt-1">Click to explore the interactive map</p>
-                        <button id="mapButton" class="mt-4 px-4 py-2 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors">
-                            View Full Map
-                        </button>
-                    </div>
-                </div>
-            </section>
-            
+
+
             <!-- Economy Section -->
             <section id="economy" class="content-section">
                 <div class="section-header">
@@ -1367,33 +1381,33 @@
                     </div>
                     <h2 class="section-title">Economic Profile</h2>
                 </div>
-                
+
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-value">56%</div>
                         <div class="stat-label">Forestland Coverage</div>
                         <p class="text-sm text-gray-600 mt-2">Majority of land is covered by natural vegetation</p>
                     </div>
-                    
+
                     <div class="stat-card">
                         <div class="stat-value">24%</div>
                         <div class="stat-label">Agricultural Land</div>
                         <p class="text-sm text-gray-600 mt-2">13,842 hectares dedicated to farming</p>
                     </div>
-                    
+
                     <div class="stat-card">
                         <div class="stat-value">80%</div>
                         <div class="stat-label">Uncultivated Potential</div>
                         <p class="text-sm text-gray-600 mt-2">Available land for agricultural expansion</p>
                     </div>
-                    
+
                     <div class="stat-card">
                         <div class="stat-value">17%</div>
                         <div class="stat-label">Rice Production</div>
                         <p class="text-sm text-gray-600 mt-2">Percentage of agricultural land for rice</p>
                     </div>
                 </div>
-                
+
                 <div class="feature-card">
                     <div class="card-header">
                         <div class="card-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
@@ -1402,13 +1416,15 @@
                         <h3 class="card-title">Agricultural Economy</h3>
                     </div>
                     <p class="card-content">
-                        Paluan is predominantly rural with agriculture as the main economic driver. The municipality has 
-                        significant potential for agricultural expansion with 80% of agricultural land currently uncultivated. 
-                        Rice production occupies 17% of agricultural land, while open grasslands for pasture cover 18% of total land area.
+                        Paluan is predominantly rural with agriculture as the main economic driver. The municipality has
+                        significant potential for agricultural expansion with 80% of agricultural land currently
+                        uncultivated.
+                        Rice production occupies 17% of agricultural land, while open grasslands for pasture cover 18%
+                        of total land area.
                     </p>
                 </div>
             </section>
-            
+
             <!-- Biodiversity Section -->
             <section id="biodiversity" class="content-section">
                 <div class="section-header">
@@ -1417,7 +1433,7 @@
                     </div>
                     <h2 class="section-title">Protected Areas & Biodiversity</h2>
                 </div>
-                
+
                 <div class="cards-grid">
                     <div class="feature-card">
                         <div class="card-header">
@@ -1429,11 +1445,12 @@
                         <p class="card-content">
                             <strong>Area:</strong> 181.5 square kilometers (70.1 sq mi)<br>
                             <strong>Purpose:</strong> Preservation area for wildlife and watershed<br>
-                            <strong>Key Species:</strong> Rare Mindoro tamaraw and critically endangered Mindoro bleeding-heart (Gallicolumba platenae)<br>
+                            <strong>Key Species:</strong> Rare Mindoro tamaraw and critically endangered Mindoro
+                            bleeding-heart (Gallicolumba platenae)<br>
                             Restricted access to protect endemic species and maintain ecological balance.
                         </p>
                     </div>
-                    
+
                     <div class="feature-card">
                         <div class="card-header">
                             <div class="card-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
@@ -1450,7 +1467,7 @@
                     </div>
                 </div>
             </section>
-            
+
             <!-- History Section -->
             <section id="history" class="content-section">
                 <div class="section-header">
@@ -1459,45 +1476,51 @@
                     </div>
                     <h2 class="section-title">Historical Timeline</h2>
                 </div>
-                
+
                 <div class="timeline">
                     <div class="timeline-item">
                         <div class="timeline-date">Pre-colonial Era</div>
                         <div class="timeline-content">
-                            Indigenous communities inhabited the area, living in harmony with the rich natural resources of Paluan Bay and surrounding mountains.
+                            Indigenous communities inhabited the area, living in harmony with the rich natural resources
+                            of Paluan Bay and surrounding mountains.
                         </div>
                     </div>
-                    
+
                     <div class="timeline-item">
                         <div class="timeline-date">Spanish Colonial Period</div>
                         <div class="timeline-content">
-                            Paluan was established as a visita (mission station) under the jurisdiction of the Spanish colonial government. The area was primarily used for missionary work and resource extraction.
+                            Paluan was established as a visita (mission station) under the jurisdiction of the Spanish
+                            colonial government. The area was primarily used for missionary work and resource
+                            extraction.
                         </div>
                     </div>
-                    
+
                     <div class="timeline-item">
                         <div class="timeline-date">1901</div>
                         <div class="timeline-content">
-                            Paluan was officially recognized as a municipality during the American colonial period, with formal local government structures established.
+                            Paluan was officially recognized as a municipality during the American colonial period, with
+                            formal local government structures established.
                         </div>
                     </div>
-                    
+
                     <div class="timeline-item">
                         <div class="timeline-date">1975</div>
                         <div class="timeline-content">
-                            Mount Calavite was declared a wildlife sanctuary through Presidential Proclamation No. 1465, recognizing its ecological importance.
+                            Mount Calavite was declared a wildlife sanctuary through Presidential Proclamation No. 1465,
+                            recognizing its ecological importance.
                         </div>
                     </div>
-                    
+
                     <div class="timeline-item">
                         <div class="timeline-date">Present Day</div>
                         <div class="timeline-content">
-                            Paluan continues to balance development with environmental conservation, maintaining its status as a 3rd class municipality while preserving its natural heritage.
+                            Paluan continues to balance development with environmental conservation, maintaining its
+                            status as a 3rd class municipality while preserving its natural heritage.
                         </div>
                     </div>
                 </div>
             </section>
-            
+
             <!-- Photo Gallery -->
             <section class="content-section">
                 <div class="section-header">
@@ -1506,44 +1529,49 @@
                     </div>
                     <h2 class="section-title">Gallery of Paluan</h2>
                 </div>
-                
+
                 <div class="gallery-grid">
                     <div class="gallery-item">
-                        <img src="https://images.unsplash.com/photo-1544551763-46a013bb70d5?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Mountain View">
+                        <img src="https://images.unsplash.com/photo-1544551763-46a013bb70d5?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Mountain View">
                         <div class="gallery-caption">Mount Calavite</div>
                     </div>
-                    
+
                     <div class="gallery-item">
-                        <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Coastal Area">
+                        <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Coastal Area">
                         <div class="gallery-caption">Paluan Bay</div>
                     </div>
-                    
+
                     <div class="gallery-item">
-                        <img src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Rice Fields">
+                        <img src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Rice Fields">
                         <div class="gallery-caption">Agricultural Land</div>
                     </div>
-                    
+
                     <div class="gallery-item">
-                        <img src="https://images.unsplash.com/photo-1441974231531-c6227db76b6e?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Forest">
+                        <img src="https://images.unsplash.com/photo-1441974231531-c6227db76b6e?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Forest">
                         <div class="gallery-caption">Protected Forest</div>
                     </div>
                 </div>
             </section>
         </main>
     </div>
-    
+
     <!-- Back to Top Button -->
     <button class="back-to-top" id="backToTop" aria-label="Back to top">
         <i class="fas fa-chevron-up"></i>
     </button>
-    
+
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-grid">
                 <div class="footer-col">
                     <div class="footer-logo">
-                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" class="footer-logo-img">
+                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                            alt="Logo" class="footer-logo-img">
                         <div>
                             <div class="footer-title">HR Management Office</div>
                             <div>Municipality of Paluan</div>
@@ -1555,7 +1583,7 @@
                         All content is in the public domain unless otherwise stated.
                     </p>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>About GOVPH</h4>
@@ -1567,7 +1595,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Quick Links</h4>
@@ -1579,7 +1607,7 @@
                         </ul>
                     </div>
                 </div>
-                
+
                 <div class="footer-col">
                     <div class="footer-links">
                         <h4>Connect With Us</h4>
@@ -1607,16 +1635,17 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="footer-bottom">
-                <p>© 2024 <strong>Municipality of Paluan - Human Resource Management Office</strong>. All Rights Reserved.</p>
+                <p>© 2024 <strong>Municipality of Paluan - Human Resource Management Office</strong>. All Rights
+                    Reserved.</p>
             </div>
         </div>
     </footer>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const mobileMenuBtn = document.getElementById('mobileMenuBtn');
             const sidebar = document.querySelector('.sidebar');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -1624,7 +1653,7 @@
             const contentNavLinks = document.querySelectorAll('.content-nav a');
             const mapButton = document.getElementById('mapButton');
             const galleryItems = document.querySelectorAll('.gallery-item');
-            
+
             // Mobile sidebar toggle
             function toggleSidebar() {
                 sidebar.classList.toggle('active');
@@ -1633,52 +1662,52 @@
                 icon.classList.toggle('fa-bars');
                 icon.classList.toggle('fa-times');
             }
-            
+
             mobileMenuBtn.addEventListener('click', toggleSidebar);
             sidebarOverlay.addEventListener('click', toggleSidebar);
-            
+
             // Close sidebar when clicking a link on mobile
             if (window.innerWidth < 1025) {
                 document.querySelectorAll('.nav-link').forEach(link => {
                     link.addEventListener('click', toggleSidebar);
                 });
             }
-            
+
             // Back to top button
-            window.addEventListener('scroll', function() {
+            window.addEventListener('scroll', function () {
                 if (window.scrollY > 300) {
                     backToTop.classList.add('visible');
                 } else {
                     backToTop.classList.remove('visible');
                 }
             });
-            
-            backToTop.addEventListener('click', function() {
+
+            backToTop.addEventListener('click', function () {
                 window.scrollTo({
                     top: 0,
                     behavior: 'smooth'
                 });
             });
-            
+
             // Smooth scrolling for content navigation with active state update
             contentNavLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
+                link.addEventListener('click', function (e) {
                     e.preventDefault();
-                    
+
                     const targetId = this.getAttribute('href');
                     const targetElement = document.querySelector(targetId);
-                    
+
                     if (targetElement) {
                         // Update active state
                         contentNavLinks.forEach(a => a.classList.remove('active'));
                         this.classList.add('active');
-                        
+
                         // Scroll to section
                         window.scrollTo({
                             top: targetElement.offsetTop - 100,
                             behavior: 'smooth'
                         });
-                        
+
                         // Close sidebar on mobile
                         if (window.innerWidth < 1025) {
                             toggleSidebar();
@@ -1686,7 +1715,7 @@
                     }
                 });
             });
-            
+
             // Update active nav based on scroll position
             const sections = document.querySelectorAll('.content-section');
             function updateActiveNav() {
@@ -1698,7 +1727,7 @@
                         current = section.getAttribute('id');
                     }
                 });
-                
+
                 contentNavLinks.forEach(a => {
                     a.classList.remove('active');
                     if (a.getAttribute('href') === `#${current}`) {
@@ -1706,33 +1735,33 @@
                     }
                 });
             }
-            
+
             window.addEventListener('scroll', updateActiveNav);
-            
+
             // Map button functionality
             if (mapButton) {
-                mapButton.addEventListener('click', function() {
+                mapButton.addEventListener('click', function () {
                     showNotification('Opening interactive map...', 'info');
                     setTimeout(() => {
                         window.open('https://www.google.com/maps/place/Paluan,+Occidental+Mindoro', '_blank');
                     }, 500);
                 });
             }
-            
+
             // Gallery image modal
             galleryItems.forEach(item => {
-                item.addEventListener('click', function() {
+                item.addEventListener('click', function () {
                     const caption = this.querySelector('.gallery-caption').textContent;
                     const imgSrc = this.querySelector('img').src;
                     showImageModal(imgSrc, caption);
                 });
             });
-            
+
             // Window resize handler
             let resizeTimer;
-            window.addEventListener('resize', function() {
+            window.addEventListener('resize', function () {
                 clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(function() {
+                resizeTimer = setTimeout(function () {
                     // Adjust sidebar behavior on resize
                     if (window.innerWidth >= 1025) {
                         sidebar.classList.remove('active');
@@ -1740,7 +1769,7 @@
                         mobileMenuBtn.querySelector('i').classList.remove('fa-times');
                         mobileMenuBtn.querySelector('i').classList.add('fa-bars');
                     }
-                    
+
                     // Update content nav width for desktop
                     if (window.innerWidth >= 1025) {
                         const contentNav = document.querySelector('.content-nav');
@@ -1752,7 +1781,7 @@
                     }
                 }, 250);
             });
-            
+
             // Initial setup
             if (window.innerWidth >= 1025) {
                 const contentNav = document.querySelector('.content-nav');
@@ -1760,7 +1789,7 @@
                 contentNav.style.width = `${mainContentWidth - 30}px`;
             }
         });
-        
+
         // Utility Functions
         function showImageModal(src, caption) {
             const modalHtml = `
@@ -1777,9 +1806,9 @@
                     </div>
                 </div>
             `;
-            
+
             document.body.insertAdjacentHTML('beforeend', modalHtml);
-            
+
             // Add keyboard close
             document.addEventListener('keydown', function closeOnEscape(e) {
                 if (e.key === 'Escape') {
@@ -1788,20 +1817,20 @@
                 }
             });
         }
-        
+
         function closeImageModal() {
             const modal = document.getElementById('imageModal');
             if (modal) {
                 modal.remove();
             }
         }
-        
+
         function showNotification(message, type = 'info') {
             const notification = document.createElement('div');
-            const bgColor = type === 'success' ? 'bg-green-600' : 
-                           type === 'warning' ? 'bg-yellow-600' : 
-                           type === 'danger' ? 'bg-red-600' : 'bg-blue-600';
-            
+            const bgColor = type === 'success' ? 'bg-green-600' :
+                type === 'warning' ? 'bg-yellow-600' :
+                    type === 'danger' ? 'bg-red-600' : 'bg-blue-600';
+
             notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform translate-x-0`;
             notification.innerHTML = `
                 <div class="flex items-center">
@@ -1809,14 +1838,14 @@
                     <span>${message}</span>
                 </div>
             `;
-            
+
             document.body.appendChild(notification);
-            
+
             // Animate in
             setTimeout(() => {
                 notification.classList.remove('translate-x-0');
                 notification.classList.add('translate-x-full');
-                
+
                 // Remove after animation
                 setTimeout(() => {
                     notification.remove();
@@ -1825,4 +1854,5 @@
         }
     </script>
 </body>
+
 </html>
