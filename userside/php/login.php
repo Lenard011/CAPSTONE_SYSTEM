@@ -33,37 +33,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
     while (ob_get_level()) {
         ob_end_clean();
     }
-    
+
     header('Content-Type: application/json');
-    
+
     $response = [
         'success' => false,
         'message' => '',
         'redirect' => null
     ];
-    
+
     try {
         $username = trim($_POST['username']);
         $password = $_POST['password'];
-        
+
         if (empty($username) || empty($password)) {
             throw new Exception('Username and password are required');
         }
-        
+
         // Database connection
         $host = 'localhost';
         $user = 'root';
         $pass = '';
         $dbname = 'hrms_paluan';
-        
+
         $conn = new mysqli($host, $user, $pass, $dbname);
-        
+
         if ($conn->connect_error) {
             throw new Exception('Database connection failed');
         }
-        
+
         $conn->set_charset("utf8mb4");
-        
+
         // Query to find user
         $sql = "SELECT id, username, email, password_hash, first_name, last_name, 
                        full_name, role, access_level, employee_id, profile_image,
@@ -74,43 +74,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
                 AND is_active = 1
                 AND is_verified = 1
                 AND status = 'approved'";
-        
+
         $stmt = $conn->prepare($sql);
-        
+
         if (!$stmt) {
             throw new Exception('Database query error');
         }
-        
+
         $stmt->bind_param("ss", $username, $username);
         $stmt->execute();
         $result = $stmt->get_result();
         $user = $result->fetch_assoc();
         $stmt->close();
-        
+
         if (!$user) {
             throw new Exception('Invalid username or email');
         }
-        
+
         // Verify password
         if (!password_verify($password, $user['password_hash'])) {
             throw new Exception('Invalid password');
         }
-        
+
         // SUCCESS - Set session variables
-        $_SESSION['user_id'] = (int)$user['id'];
+        $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['username'] = $user['username'];
         $_SESSION['email'] = $user['email'];
         $_SESSION['first_name'] = $user['first_name'];
         $_SESSION['last_name'] = $user['last_name'];
         $_SESSION['full_name'] = $user['full_name'];
         $_SESSION['role'] = $user['role'];
-        $_SESSION['access_level'] = (int)$user['access_level'];
+        $_SESSION['access_level'] = (int) $user['access_level'];
         $_SESSION['employee_id'] = $user['employee_id'];
         $_SESSION['profile_image'] = $user['profile_image'];
         $_SESSION['login_time'] = time();
         $_SESSION['created'] = time();
         $_SESSION['last_activity'] = time();
-        
+
         // Check for temporary password
         if ($user['password_is_temporary'] == 1) {
             $_SESSION['must_change_password'] = true;
@@ -121,9 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
             $response['redirect'] = 'homepage.php';
             $response['message'] = 'Login successful!';
         }
-        
+
         $response['success'] = true;
-        
+
         // Update last login
         $updateStmt = $conn->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
         if ($updateStmt) {
@@ -131,20 +131,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
             $updateStmt->execute();
             $updateStmt->close();
         }
-        
+
         $conn->close();
-        
+
         // Force session write
         session_write_close();
-        
+
         // Log success
         error_log("Login successful for user: " . $user['username']);
-        
+
     } catch (Exception $e) {
         $response['message'] = $e->getMessage();
         error_log("Login error: " . $e->getMessage());
     }
-    
+
     echo json_encode($response);
     exit();
 }
@@ -163,22 +163,22 @@ $logoutSuccess = isset($_GET['logout']) && $_GET['logout'] == 'success';
 if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && !empty($_SESSION['user_id'])) {
     // Check if this is a login POST request
     $isLoginRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']);
-    
+
     if (!$isLoginRequest) {
         // Update last activity
         $_SESSION['last_activity'] = time();
-        
+
         // Check for forced password change
         if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
             header('Location: change_password.php');
             exit();
         }
-        
+
         // Clear output buffer
         while (ob_get_level()) {
             ob_end_clean();
         }
-        
+
         // Redirect to homepage
         header('Location: homepage.php');
         exit();
@@ -236,10 +236,10 @@ if ((!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) && isset($_COO
 
                         if ($tokenData && password_verify($token, $tokenData['hashed_token'])) {
                             error_log("Remember me token valid for user: " . $tokenData['username']);
-                            
+
                             // Regenerate session ID for security
                             session_regenerate_id(true);
-                            
+
                             // IMPORTANT: Don't clear session, just set/update variables
                             $_SESSION['user_id'] = $tokenData['id'];
                             $_SESSION['username'] = $tokenData['username'];
@@ -263,12 +263,12 @@ if ((!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) && isset($_COO
                             if ($tokenData['password_is_temporary'] == 1) {
                                 $_SESSION['must_change_password'] = true;
                                 $_SESSION['temp_password_login'] = true;
-                                
+
                                 // Clear output buffer
                                 while (ob_get_level()) {
                                     ob_end_clean();
                                 }
-                                
+
                                 header('Location: change_password.php');
                                 exit();
                             }
@@ -290,10 +290,10 @@ if ((!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) && isset($_COO
 
                             // Force session write
                             session_write_close();
-                            
+
                             // Restart session immediately
                             session_start();
-                            
+
                             // Clear output buffer
                             while (ob_get_level()) {
                                 ob_end_clean();
@@ -399,7 +399,7 @@ if ($isLoginRequest) {
 
         // Check user status
         if ($user['status'] !== 'approved') {
-            $statusMessage = match($user['status']) {
+            $statusMessage = match ($user['status']) {
                 'pending' => 'Your account is pending approval.',
                 'rejected' => 'Your account has been rejected.',
                 'suspended' => 'Your account is suspended.',
@@ -417,13 +417,13 @@ if ($isLoginRequest) {
                     last_login_attempt = NOW() 
                 WHERE id = ?
             ");
-            
+
             if ($updateStmt) {
                 $updateStmt->bind_param("i", $user['id']);
                 $updateStmt->execute();
                 $updateStmt->close();
             }
-            
+
             throw new Exception('Invalid password');
         }
 
@@ -432,16 +432,16 @@ if ($isLoginRequest) {
 
         // Regenerate session ID for security
         session_regenerate_id(true);
-        
+
         // Set all session variables
-        $_SESSION['user_id'] = (int)$user['id'];
+        $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['username'] = $user['username'];
         $_SESSION['email'] = $user['email'];
         $_SESSION['first_name'] = $user['first_name'];
         $_SESSION['last_name'] = $user['last_name'];
         $_SESSION['full_name'] = $user['full_name'];
         $_SESSION['role'] = $user['role'];
-        $_SESSION['access_level'] = (int)$user['access_level'];
+        $_SESSION['access_level'] = (int) $user['access_level'];
         $_SESSION['employee_id'] = $user['employee_id'];
         $_SESSION['profile_image'] = $user['profile_image'];
         $_SESSION['employment_type'] = $user['employment_type'];
@@ -534,7 +534,7 @@ if ($isLoginRequest) {
 
         // Force session write
         session_write_close();
-        
+
         // Don't restart session - let homepage.php start it fresh
         error_log("Login successful for user: " . $user['username']);
         error_log("Session ID after login: " . session_id());
@@ -570,6 +570,7 @@ $redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Modern Color Palette - Updated to match image */
         :root {
@@ -1590,6 +1591,13 @@ $redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
                             <span>SIGN IN TO PORTAL</span>
                         </div>
                     </button>
+
+                    <!-- Back to User Selection -->
+                    <a href="../../admin/php/homepage.php"
+                        class="w-full block text-center px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-md hover:shadow-lg mt-4">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        Back to User Selection
+                    </a>
                 </form>
             </div>
 

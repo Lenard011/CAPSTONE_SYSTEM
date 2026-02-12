@@ -2637,10 +2637,10 @@ $conn->close();
             <!-- Settings Tabs -->
             <div class="settings-tabs">
                 <?php if ($is_admin): ?>
-                    <button class="settings-tab <?php echo $current_tab == 'system' ? 'active' : ''; ?>" data-tab="system">
+                    <!-- <button class="settings-tab <?php echo $current_tab == 'system' ? 'active' : ''; ?>" data-tab="system">
                         <i class="fas fa-cog"></i>
                         System Settings
-                    </button>
+                    </button> -->
                     <button class="settings-tab <?php echo $current_tab == 'users' ? 'active' : ''; ?>" data-tab="users">
                         <i class="fas fa-users"></i>
                         User Management
@@ -2675,7 +2675,7 @@ $conn->close();
 
             <!-- Tab Contents -->
             <?php if ($is_admin): ?>
-                <!-- System Settings Tab -->
+                <!-- System Settings Tab
                 <div id="system" class="tab-content <?php echo $current_tab == 'system' ? 'active' : ''; ?>">
                     <div class="settings-card">
                         <div class="card-header">
@@ -2773,7 +2773,7 @@ $conn->close();
                             </form>
                         </div>
                     </div>
-                </div>
+                </div> -->
 
                 <!-- User Management Tab -->
                 <div id="users" class="tab-content <?php echo $current_tab == 'users' ? 'active' : ''; ?>">

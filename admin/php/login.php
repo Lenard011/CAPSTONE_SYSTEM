@@ -1202,28 +1202,35 @@ function generateOTP()
                                 <a href="reset-password-otp.php" class="forgot-link">Forgot password?</a>
                             </div>
 
-                            <!-- Submit Button -->
-                            <button type="submit" class="submit-btn">
+                            <button type="submit" class="submit-btn" id="submitBtn">
                                 <div class="btn-content">
                                     <i class="fas fa-sign-in-alt"></i>
                                     <span>SIGN IN TO PORTAL</span>
                                 </div>
                             </button>
 
-                            <!-- Test Account Creation (Development Only) -->
-                            <?php if (isset($_GET['dev'])): ?>
-                                <div class="mt-4 text-center">
-                                    <a href="?create_test_accounts"
-                                        class="inline-block px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg">
-                                        <i class="fas fa-user-plus mr-2"></i>Create Test Account
-                                    </a>
-                                </div>
-                            <?php endif; ?>
-                        </form>
+                            <!-- Back to User Selection -->
+                            <a href="./homepage.php"
+                                class="w-full block text-center px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-md hover:shadow-lg mt-4">
+                                <i class="fas fa-arrow-left mr-2"></i>
+                                Back to User Selection
+                            </a>
+                    </div>
+
+                    <!-- Test Account Creation (Development Only) -->
+                    <?php if (isset($_GET['dev'])): ?>
+                        <div class="mt-4 text-center">
+                            <a href="?create_test_accounts"
+                                class="inline-block px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg">
+                                <i class="fas fa-user-plus mr-2"></i>Create Test Account
+                            </a>
+                        </div>
                     <?php endif; ?>
-                </div>
+                    </form>
+                <?php endif; ?>
             </div>
-        </main>
+    </div>
+    </main>
     </div>
 
     <script>
@@ -1448,12 +1455,12 @@ function generateOTP()
     </script>
 
     <script>
-    // Simple redirect for forgot password (OTP-based reset)
-    document.querySelector('.forgot-link').addEventListener('click', function (e) {
-        // Let the default link behavior happen - it goes to reset-password-otp.php
-        // No modal needed
-    });
-</script>
+        // Simple redirect for forgot password (OTP-based reset)
+        document.querySelector('.forgot-link').addEventListener('click', function (e) {
+            // Let the default link behavior happen - it goes to reset-password-otp.php
+            // No modal needed
+        });
+    </script>
 </body>
 
 </html>

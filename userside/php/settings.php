@@ -26,6 +26,24 @@ if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
     exit();
 }
 
+// Set user variables BEFORE using them in default_profile_image
+$user_id = $_SESSION['user_id'];
+$username = $_SESSION['username'];
+$email = $_SESSION['email'] ?? '';
+$first_name = $_SESSION['first_name'] ?? '';
+$last_name = $_SESSION['last_name'] ?? '';
+$full_name = $_SESSION['full_name'] ?? ($first_name . ' ' . $last_name);
+
+// NOW define default_profile_image after $full_name is set
+$upload_dir = 'uploads/profile_pictures/';
+$default_profile_image = 'https://ui-avatars.com/api/?name=' . urlencode($full_name) . '&background=random&color=fff';
+
+// Create upload directory if it doesn't exist
+if (!file_exists($upload_dir)) {
+    mkdir($upload_dir, 0777, true);
+}
+
+
 // Update last activity
 $_SESSION['last_activity'] = time();
 
@@ -60,9 +78,12 @@ $user_data = array();
 $sql = "SELECT 
             id, username, first_name, middle_name, last_name, email,
             employee_id, employee_type, department, position, 
-            profile_image, mobile_number, date_of_birth, bio,
+            profile_image, mobile_number, date_of_birth,
             account_status, status, employment_type, access_level,
-            last_password_change, must_change_password
+            last_password_change, must_change_password,
+            COALESCE(two_factor_enabled, 0) as two_factor_enabled,
+            COALESCE(login_notifications, 1) as login_notifications,
+            password_hash
         FROM users 
         WHERE id = ?";
 
@@ -113,9 +134,9 @@ $stmt->close();
 
 // For demonstration, set some default values if not in database
 $middle_name = $user_data['middle_name'] ?? '';
-$phone_number = $user_data['phone_number'] ?? '';
-$date_of_birth = $user_data['date_of_birth'] ?? '';
-$bio = $user_data['bio'] ?? '';
+$phone_number = $user_data['mobile_number'] ?? '';
+$date_of_birth = '';
+$bio = '';
 $employee_type = $user_data['employee_type'] ?? '';
 $employment_type = $user_data['employment_type'] ?? 'permanent';
 $account_status = $user_data['account_status'] ?? 'ACTIVE';
@@ -1527,6 +1548,193 @@ error_log("User " . $username . " accessed homepage successfully");
                 border-bottom: 1px solid #ddd;
             }
         }
+
+        /* Profile Picture Styles */
+        .profile-image-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .profile-picture {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--gray-light);
+            box-shadow: var(--shadow-md);
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .profile-picture:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+        }
+
+        .upload-loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 2rem;
+            color: var(--primary);
+            z-index: 10;
+        }
+
+        /* Profile picture placeholder with initials */
+        .profile-picture-placeholder {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: bold;
+            border: 4px solid var(--gray-light);
+            box-shadow: var(--shadow-md);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .profile-picture-placeholder:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+        }
+
+        /* Image preview modal */
+        .image-preview-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .image-preview-modal.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .preview-image {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .close-preview {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 50%;
+            transition: var(--transition);
+        }
+
+        .close-preview:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* File upload progress */
+        .upload-progress {
+            width: 100%;
+            height: 6px;
+            background: var(--gray-light);
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Password strength indicators */
+        #passwordStrength,
+        #passwordMatch {
+            margin-top: 5px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+        }
+
+        #passwordStrength.weak,
+        #passwordMatch.mismatch {
+            background-color: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+        }
+
+        #passwordStrength.medium {
+            background-color: rgba(245, 158, 11, 0.1);
+            border-left: 3px solid #f59e0b;
+        }
+
+        #passwordStrength.strong {
+            background-color: rgba(16, 185, 129, 0.1);
+            border-left: 3px solid #10b981;
+        }
+
+        #passwordMatch.match {
+            background-color: rgba(16, 185, 129, 0.1);
+            border-left: 3px solid #10b981;
+        }
+
+        /* Device status indicators */
+        .device-status.active {
+            background: #d1fae5;
+            color: #065f46;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .device-status.inactive {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        /* Security section specific styles */
+        .security-preferences {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: var(--light);
+            border-radius: 12px;
+            border: 1px solid var(--gray-light);
+        }
+
+        .security-preferences .toggle-group {
+            background: white;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 
@@ -1674,17 +1882,50 @@ error_log("User " . $username . " accessed homepage successfully");
                             Update your personal information, contact details, and profile picture.
                         </p>
 
+                        <!-- Update the profile picture section -->
                         <div class="profile-picture-container">
-                            <div class="profile-picture-placeholder">
-                                JA
+                            <?php
+                            $profile_image_url = '';
+                            if (!empty($profile_image)) {
+                                // Check if it's a URL or local file
+                                if (filter_var($profile_image, FILTER_VALIDATE_URL)) {
+                                    $profile_image_url = $profile_image;
+                                } else if (file_exists($profile_image)) {
+                                    $profile_image_url = $profile_image;
+                                } else if (file_exists($upload_dir . basename($profile_image))) {
+                                    $profile_image_url = $upload_dir . basename($profile_image);
+                                } else {
+                                    $profile_image_url = $default_profile_image;
+                                }
+                            } else {
+                                $profile_image_url = $default_profile_image;
+                            }
+                            ?>
+
+                            <div class="profile-image-wrapper">
+                                <img src="<?php echo htmlspecialchars($profile_image_url); ?>" alt="Profile Picture"
+                                    class="profile-picture" id="profileImagePreview"
+                                    onerror="this.src='<?php echo $default_profile_image; ?>'">
+
+                                <!-- Hidden file input -->
+                                <input type="file" id="profileImageInput" accept="image/*" style="display: none;"
+                                    name="profile_image">
+
+                                <!-- Loading overlay -->
+                                <div class="upload-loading" id="uploadLoading" style="display: none;">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                </div>
                             </div>
+
                             <div class="profile-actions">
-                                <button class="btn btn-secondary">
+                                <button type="button" class="btn btn-secondary" id="changePhotoBtn">
                                     <i class="fas fa-camera"></i> Change Photo
                                 </button>
-                                <button class="btn btn-secondary">
-                                    <i class="fas fa-trash"></i> Remove Photo
-                                </button>
+                                <?php if (!empty($profile_image)): ?>
+                                    <button type="button" class="btn btn-secondary" id="removePhotoBtn">
+                                        <i class="fas fa-trash"></i> Remove Photo
+                                    </button>
+                                <?php endif; ?>
                                 <p class="form-hint">
                                     <i class="fas fa-info-circle"></i> JPG, PNG or GIF. Max size 2MB
                                 </p>
@@ -1731,7 +1972,7 @@ error_log("User " . $username . " accessed homepage successfully");
                                 <label class="form-label">Phone Number</label>
                                 <input type="tel" class="form-input"
                                     value="<?php echo htmlspecialchars($phone_number); ?>"
-                                    placeholder="Enter phone number" name="phone_number">
+                                    placeholder="Enter phone number" name="mobile_number">
                             </div>
 
                             <div class="form-group">
@@ -1776,48 +2017,12 @@ error_log("User " . $username . " accessed homepage successfully");
                             <div class="form-group">
                                 <label class="form-label">Date of Birth</label>
                                 <input type="date" class="form-input"
-                                    value="<?php echo htmlspecialchars($date_of_birth); ?>" name="date_of_birth">
+                                    value="<?php echo !empty($user_data['date_of_birth']) ? htmlspecialchars($user_data['date_of_birth']) : ''; ?>"
+                                    name="date_of_birth">
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label class="form-label">Bio</label>
-                            <textarea class="form-input" rows="4" placeholder="Tell us about yourself..."
-                                name="bio"><?php echo htmlspecialchars($bio); ?></textarea>
-                        </div>
-
-                        <!-- Update the profile picture section -->
-                        <div class="profile-picture-container">
-                            <?php if (!empty($profile_image)): ?>
-                                <img src="<?php echo htmlspecialchars($profile_image); ?>" alt="Profile Picture"
-                                    class="profile-picture">
-                            <?php else: ?>
-                                <div class="profile-picture-placeholder">
-                                    <?php echo strtoupper(substr($first_name, 0, 1) . substr($last_name, 0, 1)); ?>
-                                </div>
-                            <?php endif; ?>
-                            <div class="profile-actions">
-                                <button class="btn btn-secondary" type="button" id="changePhotoBtn">
-                                    <i class="fas fa-camera"></i> Change Photo
-                                </button>
-                                <?php if (!empty($profile_image)): ?>
-                                    <button class="btn btn-secondary" type="button" id="removePhotoBtn">
-                                        <i class="fas fa-trash"></i> Remove Photo
-                                    </button>
-                                <?php endif; ?>
-                                <p class="form-hint">
-                                    <i class="fas fa-info-circle"></i> JPG, PNG or GIF. Max size 2MB
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Bio</label>
-                            <textarea class="form-input" rows="4"
-                                placeholder="Tell us about yourself...">Dedicated HR professional with 8 years of experience in government service. Passionate about employee welfare and organizational development.</textarea>
-                        </div>
                     </section>
-
                     <!-- Security Settings -->
                     <section id="security" class="settings-section">
                         <div class="section-header">
@@ -1834,90 +2039,72 @@ error_log("User " . $username . " accessed homepage successfully");
                             Manage your password, two-factor authentication, and connected devices.
                         </p>
 
-                        <div class="form-group">
-                            <label class="form-label">Current Password <span>*</span></label>
-                            <input type="password" class="form-input" placeholder="Enter current password">
-                        </div>
-
-                        <div class="form-grid">
+                        <!-- Password Change Form -->
+                        <form id="passwordForm">
                             <div class="form-group">
-                                <label class="form-label">New Password <span>*</span></label>
-                                <input type="password" class="form-input" placeholder="Enter new password">
+                                <label class="form-label">Current Password <span>*</span></label>
+                                <input type="password" class="form-input" placeholder="Enter current password"
+                                    id="current_password" name="current_password" required>
                             </div>
 
-                            <div class="form-group">
-                                <label class="form-label">Confirm Password <span>*</span></label>
-                                <input type="password" class="form-input" placeholder="Confirm new password">
-                            </div>
-                        </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">New Password <span>*</span></label>
+                                    <input type="password" class="form-input" placeholder="Enter new password"
+                                        id="new_password" name="new_password" required>
+                                    <div id="passwordStrength" class="form-hint"></div>
+                                </div>
 
-                        <p class="form-hint">
-                            <i class="fas fa-info-circle"></i> Password must be at least 8 characters with uppercase,
-                            lowercase, number, and special character.
-                        </p>
-
-                        <div class="toggle-group">
-                            <div>
-                                <div class="toggle-label">Two-Factor Authentication</div>
-                                <div class="toggle-description">Add an extra layer of security to your account</div>
+                                <div class="form-group">
+                                    <label class="form-label">Confirm Password <span>*</span></label>
+                                    <input type="password" class="form-input" placeholder="Confirm new password"
+                                        id="confirm_password" name="confirm_password" required>
+                                    <div id="passwordMatch" class="form-hint"></div>
+                                </div>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
 
-                        <div class="toggle-group">
-                            <div>
-                                <div class="toggle-label">Email Notifications for Login</div>
-                                <div class="toggle-description">Get notified when someone logs into your account</div>
+                            <p class="form-hint">
+                                <i class="fas fa-info-circle"></i> Password must be at least 8 characters with
+                                uppercase,
+                                lowercase, number, and special character.
+                            </p>
+                        </form>
+
+                        <!-- Security Preferences -->
+                        <div class="security-preferences">
+                            <div class="toggle-group">
+                                <div>
+                                    <div class="toggle-label">Two-Factor Authentication</div>
+                                    <div class="toggle-description">Add an extra layer of security to your account</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="two_factor_auth" name="two_factor_auth" <?php echo isset($user_data['two_factor_enabled']) && $user_data['two_factor_enabled'] ? 'checked' : ''; ?>>
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </div>
-                            <label class="toggle-switch">
-                                <input type="checkbox" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
+
+                            <div class="toggle-group">
+                                <div>
+                                    <div class="toggle-label">Email Notifications for Login</div>
+                                    <div class="toggle-description">Get notified when someone logs into your account
+                                    </div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="login_notifications" name="login_notifications" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
 
                         <h3 class="text-lg font-bold mt-6 mb-4">Connected Devices</h3>
-                        <div class="device-list">
-                            <div class="device-item">
-                                <div class="device-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
-                                    <i class="fas fa-desktop"></i>
-                                </div>
-                                <div class="device-info">
-                                    <div class="device-name">Office Desktop - Windows 11</div>
-                                    <div class="device-details">Last active: Today, 09:45 AM • IP: 192.168.1.100</div>
-                                </div>
-                                <div class="device-status">Active</div>
-                            </div>
-
-                            <div class="device-item">
-                                <div class="device-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                                    <i class="fas fa-mobile-alt"></i>
-                                </div>
-                                <div class="device-info">
-                                    <div class="device-name">iPhone 14 - iOS 17</div>
-                                    <div class="device-details">Last active: Yesterday, 8:30 PM • IP: 192.168.1.101
-                                    </div>
-                                </div>
-                                <div class="device-status">Active</div>
-                            </div>
-
-                            <div class="device-item">
-                                <div class="device-icon" style="background: linear-gradient(135deg, #6b7280, #4b5563);">
-                                    <i class="fas fa-laptop"></i>
-                                </div>
-                                <div class="device-info">
-                                    <div class="device-name">MacBook Pro - macOS</div>
-                                    <div class="device-details">Last active: 3 days ago • IP: 192.168.1.102</div>
-                                </div>
-                                <div class="device-status inactive">Inactive</div>
-                            </div>
+                        <div class="device-list" id="connectedDevices">
+                            <!-- Devices will be loaded dynamically -->
                         </div>
-
-                        <button class="btn btn-secondary mt-4">
-                            <i class="fas fa-sign-out-alt"></i> Log Out All Devices
-                        </button>
+                        <div class="flex " style="margin-top: 10px;">
+                            <button class="btn btn-secondary mt-4" id="logoutAllDevices">
+                                <i class="fas fa-sign-out-alt"></i> Log Out All Devices
+                            </button>
+                        </div>
                     </section>
 
                     <!-- Notification Settings -->
@@ -2428,6 +2615,560 @@ error_log("User " . $username . " accessed homepage successfully");
     </footer>
 
     <script>
+        // Profile Picture Upload Functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            const profileImageInput = document.getElementById('profileImageInput');
+            const changePhotoBtn = document.getElementById('changePhotoBtn');
+            const removePhotoBtn = document.getElementById('removePhotoBtn');
+            const profileImagePreview = document.getElementById('profileImagePreview');
+            const uploadLoading = document.getElementById('uploadLoading');
+
+            // Change Photo Button Click
+            if (changePhotoBtn) {
+                changePhotoBtn.addEventListener('click', function () {
+                    profileImageInput.click();
+                });
+            }
+
+            // Remove Photo Button Click
+            if (removePhotoBtn) {
+                removePhotoBtn.addEventListener('click', function () {
+                    if (confirm('Are you sure you want to remove your profile picture?')) {
+                        removeProfilePicture();
+                    }
+                });
+            }
+
+            // File Input Change
+            if (profileImageInput) {
+                profileImageInput.addEventListener('change', function (e) {
+                    if (e.target.files && e.target.files[0]) {
+                        uploadProfilePicture(e.target.files[0]);
+                    }
+                });
+            }
+
+            // Upload Profile Picture
+            function uploadProfilePicture(file) {
+                // Validate file
+                const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                const maxSize = 2 * 1024 * 1024; // 2MB
+
+                if (!validTypes.includes(file.type)) {
+                    showNotification('Invalid file type. Please upload JPG, PNG, GIF, or WebP image.', 'danger');
+                    return;
+                }
+
+                if (file.size > maxSize) {
+                    showNotification('File size exceeds 2MB limit.', 'danger');
+                    return;
+                }
+
+                // Show preview
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    profileImagePreview.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+
+                // Show loading
+                uploadLoading.style.display = 'flex';
+
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('profile_image', file);
+
+                // Send to server
+                fetch('upload_profile_picture.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        uploadLoading.style.display = 'none';
+
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+
+                            // Update image preview with new URL (add timestamp to prevent caching)
+                            if (data.image_url) {
+                                profileImagePreview.src = data.image_url + '?t=' + new Date().getTime();
+                            }
+
+                            // Show remove button if not already visible
+                            if (!removePhotoBtn) {
+                                location.reload(); // Reload to show remove button
+                            }
+                        } else {
+                            showNotification(data.message || 'Upload failed', 'danger');
+                            // Revert to original image
+                            profileImagePreview.src = profileImagePreview.dataset.original || profileImagePreview.src;
+                        }
+                    })
+                    .catch(error => {
+                        uploadLoading.style.display = 'none';
+                        console.error('Error:', error);
+                        showNotification('Upload failed. Please try again.', 'danger');
+                        profileImagePreview.src = profileImagePreview.dataset.original || profileImagePreview.src;
+                    });
+            }
+
+            // Remove Profile Picture
+            function removeProfilePicture() {
+                // Show loading
+                if (uploadLoading) {
+                    uploadLoading.style.display = 'flex';
+                }
+
+                // Send to server
+                fetch('upload_profile_picture.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'remove_profile_image=1'
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (uploadLoading) {
+                            uploadLoading.style.display = 'none';
+                        }
+
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+
+                            // Update image preview
+                            if (data.image_url) {
+                                profileImagePreview.src = data.image_url + '?t=' + new Date().getTime();
+                            }
+
+                            // Hide remove button
+                            if (removePhotoBtn) {
+                                removePhotoBtn.style.display = 'none';
+                            }
+                        } else {
+                            showNotification(data.message || 'Failed to remove profile picture', 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        if (uploadLoading) {
+                            uploadLoading.style.display = 'none';
+                        }
+                        console.error('Error:', error);
+                        showNotification('Failed to remove profile picture', 'danger');
+                    });
+            }
+        });
+    </script>
+    <script>
+        // Security Settings Functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            const saveSecurityBtn = document.getElementById('saveSecurity');
+            const logoutAllDevicesBtn = document.getElementById('logoutAllDevices');
+            const passwordForm = document.getElementById('passwordForm');
+            const newPasswordInput = document.getElementById('new_password');
+            const confirmPasswordInput = document.getElementById('confirm_password');
+            const currentPasswordInput = document.getElementById('current_password');
+            const twoFactorToggle = document.getElementById('two_factor_auth');
+            const loginNotificationsToggle = document.getElementById('login_notifications');
+            const connectedDevicesContainer = document.getElementById('connectedDevices');
+
+            // Load connected devices
+            loadConnectedDevices();
+
+            // Password strength checker
+            if (newPasswordInput) {
+                newPasswordInput.addEventListener('input', checkPasswordStrength);
+            }
+
+            // Password confirmation checker
+            if (confirmPasswordInput) {
+                confirmPasswordInput.addEventListener('input', checkPasswordMatch);
+            }
+
+            // Save Security button - FIXED
+            if (saveSecurityBtn) {
+                saveSecurityBtn.addEventListener('click', saveSecuritySettings);
+            }
+
+            // Logout all devices button
+            if (logoutAllDevicesBtn) {
+                logoutAllDevicesBtn.addEventListener('click', logoutAllDevices);
+            }
+
+            // Toggle change listeners
+            if (twoFactorToggle) {
+                twoFactorToggle.addEventListener('change', function () {
+                    updateSecurityPreference('toggle_2fa', {
+                        two_factor_enabled: this.checked ? 1 : 0
+                    });
+                });
+            }
+
+            if (loginNotificationsToggle) {
+                loginNotificationsToggle.addEventListener('change', function () {
+                    updateSecurityPreference('toggle_login_notifications', {
+                        login_notifications: this.checked ? 1 : 0
+                    });
+                });
+            }
+
+            // Functions
+            function checkPasswordStrength() {
+                const password = newPasswordInput.value;
+                const strengthDiv = document.getElementById('passwordStrength');
+
+                if (!password) {
+                    strengthDiv.innerHTML = '';
+                    strengthDiv.className = 'form-hint';
+                    return;
+                }
+
+                let strength = 0;
+                let message = '';
+                let color = '';
+                let icon = '';
+
+                // Check length
+                if (password.length >= 8) strength++;
+                if (password.length >= 12) strength++;
+
+                // Check for mixed case
+                if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
+
+                // Check for numbers
+                if (/\d/.test(password)) strength++;
+
+                // Check for special characters
+                if (/[^A-Za-z0-9]/.test(password)) strength++;
+
+                // Determine strength level
+                switch (strength) {
+                    case 0:
+                    case 1:
+                        message = 'Very Weak';
+                        color = '#ef4444';
+                        icon = 'times-circle';
+                        break;
+                    case 2:
+                        message = 'Weak';
+                        color = '#f59e0b';
+                        icon = 'exclamation-triangle';
+                        break;
+                    case 3:
+                        message = 'Good';
+                        color = '#3b82f6';
+                        icon = 'check-circle';
+                        break;
+                    case 4:
+                        message = 'Strong';
+                        color = '#10b981';
+                        icon = 'shield-alt';
+                        break;
+                    case 5:
+                        message = 'Very Strong';
+                        color = '#059669';
+                        icon = 'shield-check';
+                        break;
+                }
+
+                strengthDiv.innerHTML = `<i class="fas fa-${icon}" style="color: ${color}"></i> Password strength: <strong style="color: ${color}">${message}</strong>`;
+                strengthDiv.className = 'form-hint';
+            }
+
+            function checkPasswordMatch() {
+                const password = newPasswordInput.value;
+                const confirm = confirmPasswordInput.value;
+                const matchDiv = document.getElementById('passwordMatch');
+
+                if (!confirm) {
+                    matchDiv.innerHTML = '';
+                    matchDiv.className = 'form-hint';
+                    return;
+                }
+
+                if (password === confirm) {
+                    matchDiv.innerHTML = '<i class="fas fa-check-circle" style="color: #10b981"></i> Passwords match';
+                    matchDiv.className = 'form-hint';
+                } else {
+                    matchDiv.innerHTML = '<i class="fas fa-times-circle" style="color: #ef4444"></i> Passwords do not match';
+                    matchDiv.className = 'form-hint';
+                }
+            }
+
+            function saveSecuritySettings() {
+                // Get form values
+                const currentPassword = document.getElementById('current_password').value;
+                const newPassword = document.getElementById('new_password').value;
+                const confirmPassword = document.getElementById('confirm_password').value;
+                const saveBtn = document.getElementById('saveSecurity');
+
+                console.log('Starting password change...');
+                console.log('Current password entered:', currentPassword ? 'Yes (hidden)' : 'No');
+                console.log('New password:', newPassword ? 'Yes (hidden)' : 'No');
+                console.log('Confirm password:', confirmPassword ? 'Yes (hidden)' : 'No');
+
+                // Validate required fields
+                if (!currentPassword || !newPassword || !confirmPassword) {
+                    showNotification('Please fill in all password fields', 'danger');
+                    return;
+                }
+
+                // Validate password match
+                if (newPassword !== confirmPassword) {
+                    showNotification('New passwords do not match', 'danger');
+                    return;
+                }
+
+                // Validate password strength
+                if (!validatePassword(newPassword)) {
+                    showNotification('Password must be at least 8 characters with uppercase, lowercase, number, and special character', 'danger');
+                    return;
+                }
+
+                // Show loading
+                const originalText = saveBtn.innerHTML;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+                saveBtn.disabled = true;
+
+                // Create form data
+                const formData = new FormData();
+                formData.append('action', 'change_password');
+                formData.append('current_password', currentPassword);
+                formData.append('new_password', newPassword);
+                formData.append('confirm_password', confirmPassword);
+
+                // Log what we're sending
+                console.log('Sending to update_security.php with:', {
+                    action: 'change_password',
+                    current_password_length: currentPassword.length,
+                    new_password_length: newPassword.length
+                });
+
+                // Send request
+                fetch('update_security.php', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include' // Important for sessions
+                })
+                    .then(response => {
+                        console.log('Response status:', response.status);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Response data:', data);
+
+                        if (data.success) {
+                            showNotification(data.message || 'Password updated successfully!', 'success');
+
+                            // Clear form fields
+                            document.getElementById('current_password').value = '';
+                            document.getElementById('new_password').value = '';
+                            document.getElementById('confirm_password').value = '';
+                            document.getElementById('passwordStrength').innerHTML = '';
+                            document.getElementById('passwordMatch').innerHTML = '';
+
+                            // Show success state on button
+                            saveBtn.innerHTML = '<i class="fas fa-check"></i> Updated';
+                            saveBtn.classList.remove('btn-primary');
+                            saveBtn.classList.add('btn-success');
+
+                            // Revert after 3 seconds
+                            setTimeout(() => {
+                                saveBtn.innerHTML = originalText;
+                                saveBtn.disabled = false;
+                                saveBtn.classList.remove('btn-success');
+                                saveBtn.classList.add('btn-primary');
+                            }, 3000);
+                        } else {
+                            showNotification(data.message || 'Failed to update password', 'danger');
+                            saveBtn.innerHTML = originalText;
+                            saveBtn.disabled = false;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Fetch error:', error);
+                        showNotification('Network error: ' + error.message, 'danger');
+                        saveBtn.innerHTML = originalText;
+                        saveBtn.disabled = false;
+                    });
+            }
+
+            function updateSecurityPreference(action, data) {
+                const formData = new FormData();
+                formData.append('action', action);
+
+                for (const key in data) {
+                    formData.append(key, data[key]);
+                }
+
+                fetch('update_security.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                        } else {
+                            showNotification(data.message || 'Update failed', 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showNotification('Network error. Please try again.', 'danger');
+                    });
+            }
+
+            function logoutAllDevices() {
+                if (!confirm('Are you sure you want to log out from all other devices? You will remain logged in on this device.')) {
+                    return;
+                }
+
+                // Show loading
+                const originalText = logoutAllDevicesBtn.innerHTML;
+                logoutAllDevicesBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging out...';
+                logoutAllDevicesBtn.disabled = true;
+
+                // Send request
+                const formData = new FormData();
+                formData.append('action', 'logout_all_devices');
+
+                fetch('update_security.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            // Refresh devices list
+                            loadConnectedDevices();
+                        } else {
+                            showNotification(data.message, 'danger');
+                        }
+
+                        logoutAllDevicesBtn.innerHTML = originalText;
+                        logoutAllDevicesBtn.disabled = false;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        showNotification('Network error. Please try again.', 'danger');
+                        logoutAllDevicesBtn.innerHTML = originalText;
+                        logoutAllDevicesBtn.disabled = false;
+                    });
+            }
+
+            function loadConnectedDevices() {
+                if (!connectedDevicesContainer) return;
+
+                fetch('update_security.php?action=get_devices')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.devices) {
+                            renderDevices(data.devices);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading devices:', error);
+                        // Show mock devices if API fails
+                        renderDevices([
+                            {
+                                id: 1,
+                                name: 'Office Desktop - Windows 11',
+                                type: 'desktop',
+                                last_active: 'Today, 09:45 AM',
+                                ip_address: '192.168.1.100',
+                                is_current: true,
+                                status: 'active'
+                            },
+                            {
+                                id: 2,
+                                name: 'iPhone 14 - iOS 17',
+                                type: 'mobile',
+                                last_active: 'Yesterday, 8:30 PM',
+                                ip_address: '192.168.1.101',
+                                is_current: false,
+                                status: 'active'
+                            },
+                            {
+                                id: 3,
+                                name: 'MacBook Pro - macOS',
+                                type: 'laptop',
+                                last_active: '3 days ago',
+                                ip_address: '192.168.1.102',
+                                is_current: false,
+                                status: 'inactive'
+                            }
+                        ]);
+                    });
+            }
+
+            function renderDevices(devices) {
+                if (!connectedDevicesContainer) return;
+
+                connectedDevicesContainer.innerHTML = '';
+
+                devices.forEach(device => {
+                    const deviceItem = document.createElement('div');
+                    deviceItem.className = 'device-item';
+
+                    // Set icon based on device type
+                    let icon = 'fa-desktop';
+                    let bgColor = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+
+                    if (device.type === 'mobile') {
+                        icon = 'fa-mobile-alt';
+                        bgColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                    } else if (device.type === 'laptop') {
+                        icon = 'fa-laptop';
+                        bgColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                    }
+
+                    deviceItem.innerHTML = `
+                <div class="device-icon" style="background: ${bgColor};">
+                    <i class="fas ${icon}"></i>
+                </div>
+                <div class="device-info">
+                    <div class="device-name">
+                        ${device.name}
+                        ${device.is_current ? '<span style="color: #10b981; font-size: 0.8em; margin-left: 8px;">(Current Device)</span>' : ''}
+                    </div>
+                    <div class="device-details">
+                        Last active: ${device.last_active} • IP: ${device.ip_address}
+                    </div>
+                </div>
+                <div class="device-status ${device.status}">${device.status === 'active' ? 'Active' : 'Inactive'}</div>
+            `;
+
+                    connectedDevicesContainer.appendChild(deviceItem);
+                });
+            }
+
+            function validatePassword(password) {
+                // At least 8 characters
+                if (password.length < 8) return false;
+
+                // Contains uppercase
+                if (!/[A-Z]/.test(password)) return false;
+
+                // Contains lowercase
+                if (!/[a-z]/.test(password)) return false;
+
+                // Contains number
+                if (!/[0-9]/.test(password)) return false;
+
+                // Contains special character
+                if (!/[^A-Za-z0-9]/.test(password)) return false;
+
+                return true;
+            }
+        });
+    </script>
+    <script>
         // Add this to your JavaScript section
         document.getElementById('saveProfile').addEventListener('click', function () {
             saveProfileSettings();
@@ -2436,16 +3177,39 @@ error_log("User " . $username . " accessed homepage successfully");
         function saveProfileSettings() {
             const formData = new FormData();
 
-            // Collect all form data
-            const formElements = document.querySelectorAll('#profile input, #profile select, #profile textarea');
-            formElements.forEach(element => {
-                if (element.name) {
-                    formData.append(element.name, element.value);
+            // Collect form data from the profile section
+            const profileSection = document.getElementById('profile');
+            const inputs = profileSection.querySelectorAll('input[name], select[name]');
+
+            inputs.forEach(input => {
+                // Skip disabled fields
+                if (!input.disabled && input.name) {
+                    if (input.type === 'checkbox' || input.type === 'radio') {
+                        formData.append(input.name, input.checked);
+                    } else {
+                        formData.append(input.name, input.value);
+                    }
                 }
             });
 
-            // Add user_id for reference
-            formData.append('user_id', '<?php echo $user_id; ?>');
+            // Validate required fields
+            const requiredFields = ['first_name', 'last_name', 'email'];
+            let isValid = true;
+
+            requiredFields.forEach(fieldName => {
+                const field = document.querySelector(`[name="${fieldName}"]`);
+                if (field && !field.value.trim()) {
+                    field.style.borderColor = 'red';
+                    isValid = false;
+                } else if (field) {
+                    field.style.borderColor = '';
+                }
+            });
+
+            if (!isValid) {
+                showNotification('Please fill in all required fields', 'danger');
+                return;
+            }
 
             // Show loading state
             const saveBtn = document.getElementById('saveProfile');
@@ -2458,24 +3222,44 @@ error_log("User " . $username . " accessed homepage successfully");
                 method: 'POST',
                 body: formData
             })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success) {
                         saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved';
-                        saveBtn.style.background = '';
-                        showNotification('Profile updated successfully!', 'success');
+                        saveBtn.classList.remove('btn-primary');
+                        saveBtn.classList.add('btn-success');
+                        showNotification(data.message || 'Profile updated successfully!', 'success');
 
                         // Update displayed name if changed
                         if (data.updated_name) {
-                            document.querySelector('.user-details h4').textContent = data.updated_name;
-                            document.querySelector('.user-avatar').textContent =
-                                data.updated_name.split(' ').map(n => n[0]).join('').toUpperCase().substr(0, 2);
+                            const userDetails = document.querySelector('.user-details h4');
+                            if (userDetails) {
+                                userDetails.textContent = data.updated_name;
+                            }
+
+                            // Update avatar initials
+                            const avatar = document.querySelector('.user-avatar');
+                            if (avatar) {
+                                const initials = data.updated_name.split(' ')
+                                    .map(n => n[0])
+                                    .join('')
+                                    .toUpperCase()
+                                    .substr(0, 2);
+                                avatar.textContent = initials;
+                            }
                         }
 
-                        // Reset after delay
+                        // Reset button after delay
                         setTimeout(() => {
                             saveBtn.innerHTML = originalText;
                             saveBtn.disabled = false;
+                            saveBtn.classList.remove('btn-success');
+                            saveBtn.classList.add('btn-primary');
                         }, 2000);
                     } else {
                         saveBtn.innerHTML = '<i class="fas fa-exclamation-circle"></i> Error';
@@ -2489,7 +3273,7 @@ error_log("User " . $username . " accessed homepage successfully");
                 .catch(error => {
                     console.error('Error:', error);
                     saveBtn.innerHTML = '<i class="fas fa-exclamation-circle"></i> Error';
-                    showNotification('Network error. Please try again.', 'danger');
+                    showNotification('Network error. Please check your connection and try again.', 'danger');
                     setTimeout(() => {
                         saveBtn.innerHTML = originalText;
                         saveBtn.disabled = false;
@@ -2874,31 +3658,59 @@ error_log("User " . $username . " accessed homepage successfully");
 
         // Show notification
         function showNotification(message, type = 'info') {
+            // Create notification element
             const notification = document.createElement('div');
-            const bgColor = type === 'success' ? 'bg-green-600' :
-                type === 'warning' ? 'bg-yellow-600' :
-                    type === 'danger' ? 'bg-red-600' : 'bg-blue-600';
-
-            notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform translate-x-0`;
+            notification.className = `notification notification-${type}`;
             notification.innerHTML = `
-                <div class="flex items-center">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'danger' ? 'times-circle' : 'info-circle'} mr-3"></i>
-                    <span>${message}</span>
-                </div>
-            `;
+        <div class="notification-content">
+            <i class="fas fa-${type === 'success' ? 'check-circle' :
+                    type === 'danger' ? 'exclamation-circle' :
+                        type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        </div>
+    `;
+
+            // Add styles for notifications
+            if (!document.querySelector('.notification-styles')) {
+                const style = document.createElement('style');
+                style.className = 'notification-styles';
+                style.textContent = `
+            .notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 8px;
+                color: white;
+                z-index: 10000;
+                animation: slideIn 0.3s ease-out;
+                max-width: 350px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            }
+            .notification-success { background: var(--success); }
+            .notification-danger { background: var(--danger); }
+            .notification-warning { background: var(--warning); }
+            .notification-info { background: var(--info); }
+            .notification-content {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+                document.head.appendChild(style);
+            }
 
             document.body.appendChild(notification);
 
-            // Animate in
+            // Remove after 5 seconds
             setTimeout(() => {
-                notification.classList.remove('translate-x-0');
-                notification.classList.add('translate-x-full');
-
-                // Remove after animation
-                setTimeout(() => {
-                    notification.remove();
-                }, 300);
-            }, 3000);
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
         }
 
         // Helper function to capitalize first letter
