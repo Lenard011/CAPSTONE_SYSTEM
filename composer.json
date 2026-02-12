@@ -1,0 +1,19 @@
+{
+    "name": "hrms/capstone-system",
+    "description": "HRMS Attendance Management System",
+    "type": "project",
+    "require": {
+        "phpoffice/phpspreadsheet": "^1.30"
+    },
+    "config": {
+        "platform": {
+            "php": "7.4.33"
+        }
+    },
+    "authors": [
+        {
+            "name": "HRMS Paluan",
+            "email": "admin@example.com"
+        }
+    ]
+}

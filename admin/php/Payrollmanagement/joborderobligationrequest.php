@@ -1444,5 +1444,4 @@ if (isset($_GET['logout'])) {
     });
   </script>
 </body>
-
 </html>
