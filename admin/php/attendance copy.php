@@ -3749,126 +3749,51 @@ $departments = [
             const bulkEmployeeNameInput = document.getElementById('bulk_employee_name');
             const bulkDepartmentSelect = document.getElementById('bulk_department');
 
-            if (!bulkEmployeeIdInput || !bulkEmployeeNameInput || !bulkDepartmentSelect) {
-                console.log('Employee form elements not found');
-                return;
-            }
+            if (bulkEmployeeIdInput && bulkEmployeeNameInput && bulkDepartmentSelect) {
+                bulkEmployeeIdInput.addEventListener('blur', async function() {
+                    const employeeId = this.value.trim();
 
-            // Add input event for real-time validation
-            bulkEmployeeIdInput.addEventListener('input', function() {
-                // Clear the fields if input is empty
-                if (this.value.trim() === '') {
-                    bulkEmployeeNameInput.value = '';
-                    // Reset department to default
-                    bulkDepartmentSelect.value = '';
-
-                    // Remove any error styling
-                    this.classList.remove('border-red-500', 'ring-red-500');
-                }
-            });
-
-            bulkEmployeeIdInput.addEventListener('blur', async function() {
-                const employeeId = this.value.trim();
-
-                if (employeeId.length === 0) {
-                    return;
-                }
-
-                // Show loading state
-                this.classList.add('opacity-75', 'bg-gray-100');
-                this.disabled = true;
-
-                // Clear previous error styling
-                this.classList.remove('border-red-500', 'ring-red-500');
-
-                try {
-                    console.log('Fetching employee info for ID:', employeeId);
-
-                    const response = await fetch('get_employee_info.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: 'employee_id=' + encodeURIComponent(employeeId)
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                    if (employeeId.length === 0) {
+                        return;
                     }
 
-                    const data = await response.json();
-                    console.log('Response data:', data);
+                    try {
+                        this.classList.add('opacity-75');
 
-                    if (data.success) {
-                        // Success - populate the fields
-                        bulkEmployeeNameInput.value = data.employee.full_name || '';
+                        const response = await fetch('get_employee_info.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: 'employee_id=' + encodeURIComponent(employeeId)
+                        });
 
-                        // Set department if it exists in the response
-                        if (data.employee.department) {
-                            // Try to find matching department in dropdown
-                            let found = false;
-                            for (let i = 0; i < bulkDepartmentSelect.options.length; i++) {
-                                if (bulkDepartmentSelect.options[i].value === data.employee.department) {
-                                    bulkDepartmentSelect.selectedIndex = i;
-                                    found = true;
-                                    break;
-                                }
-                            }
+                        const data = await response.json();
 
-                            // If exact match not found, try to find partial match
-                            if (!found) {
-                                for (let i = 0; i < bulkDepartmentSelect.options.length; i++) {
-                                    if (bulkDepartmentSelect.options[i].value.toLowerCase().includes(data.employee.department.toLowerCase()) ||
-                                        data.employee.department.toLowerCase().includes(bulkDepartmentSelect.options[i].value.toLowerCase())) {
-                                        bulkDepartmentSelect.selectedIndex = i;
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // If still not found, set a custom value? (but select doesn't support custom values)
-                            if (!found) {
-                                console.log('Department not found in dropdown:', data.employee.department);
-                            }
+                        if (data.success) {
+                            bulkEmployeeNameInput.value = data.employee.full_name;
+                            bulkDepartmentSelect.value = data.employee.department;
+                            showNotification('Employee information loaded successfully!', 'success');
+                        } else {
+                            bulkEmployeeNameInput.value = '';
+                            bulkDepartmentSelect.value = '';
+                            showNotification('Employee ID not found. Please enter a valid ID.', 'error');
                         }
-
-                        showNotification('Employee information loaded successfully!', 'success');
-                    } else {
-                        // Error - clear fields and show error
-                        bulkEmployeeNameInput.value = '';
-                        bulkDepartmentSelect.value = '';
-
-                        // Add error styling
-                        this.classList.add('border-red-500', 'ring-red-500');
-
-                        showNotification(data.message || 'Employee ID not found. Please check and try again.', 'error');
+                    } catch (error) {
+                        console.error('Error fetching employee info:', error);
+                        showNotification('Error loading employee information. Please try again.', 'error');
+                    } finally {
+                        this.classList.remove('opacity-75');
                     }
-                } catch (error) {
-                    console.error('Error fetching employee info:', error);
+                });
 
-                    // Clear fields on error
-                    bulkEmployeeNameInput.value = '';
-                    bulkDepartmentSelect.value = '';
-
-                    // Add error styling
-                    this.classList.add('border-red-500', 'ring-red-500');
-
-                    showNotification('Error loading employee information. Please try again.', 'error');
-                } finally {
-                    // Remove loading state
-                    this.classList.remove('opacity-75', 'bg-gray-100');
-                    this.disabled = false;
-                }
-            });
-
-            // Allow Enter key to trigger the blur event
-            bulkEmployeeIdInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.blur();
-                }
-            });
+                bulkEmployeeIdInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.blur();
+                    }
+                });
+            }
         }
 
         autoFillEmployeeInfo();
