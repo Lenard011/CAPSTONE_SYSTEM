@@ -45,6 +45,7 @@ define('DB_USERNAME', 'root');
 define('DB_PASSWORD', '');
 define('DB_NAME', 'hrms_paluan');
 
+
 // Define upload directory
 $upload_dir = 'uploads/contractual_documents/';
 
@@ -330,6 +331,55 @@ if (isset($_GET['activate_id'])) {
     }
 }
 
+
+// ===============================================
+// HANDLE EDIT FETCH REQUEST (AJAX)
+// ===============================================
+if (isset($_GET['edit_fetch_id'])) {
+    header('Content-Type: application/json');
+
+    try {
+        $edit_id = intval($_GET['edit_fetch_id']);
+
+        $stmt = $pdo->prepare("SELECT * FROM contractofservice WHERE id = ?");
+        $stmt->execute([$edit_id]);
+        $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($employee) {
+            // Make sure middle initial is included
+            if (!isset($employee['middle'])) {
+                $employee['middle'] = '';
+            }
+
+            // Construct full name from components
+            $first_name = isset($employee['first_name']) ? trim($employee['first_name']) : '';
+            $last_name = isset($employee['last_name']) ? trim($employee['last_name']) : '';
+            $middle = isset($employee['middle']) ? trim($employee['middle']) : '';
+
+            $full_name_parts = [];
+            if (!empty($first_name))
+                $full_name_parts[] = $first_name;
+            if (!empty($middle))
+                $full_name_parts[] = substr($middle, 0, 1) . '.';
+            if (!empty($last_name))
+                $full_name_parts[] = $last_name;
+            $employee['full_name'] = !empty($full_name_parts) ? implode(' ', $full_name_parts) : 'No Name Provided';
+
+            echo json_encode([
+                'success' => true,
+                'employee' => $employee
+            ]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Employee not found']);
+        }
+        exit();
+
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit();
+    }
+}
+
 // ===============================================
 // HANDLE EDIT DATA FETCH
 // ===============================================
@@ -353,7 +403,7 @@ if (isset($_GET['edit_id'])) {
 }
 
 // ===============================================
-// HANDLE FORM SUBMISSION (ADD/EDIT)
+// HANDLE FORM SUBMISSION (ADD/EDIT) - FIXED
 // ===============================================
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // CSRF Validation
@@ -363,11 +413,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Get action type
         $action = $_POST['action'] ?? 'add';
         $is_edit = ($action === 'edit');
-        $edit_id = isset($_POST['employee_id']) ? intval($_POST['employee_id']) : null;
+
+        // FIXED: Check both possible field names for employee ID
+        $edit_id = null;
+        if ($is_edit) {
+            // Try to get ID from employeeId field first (from modal), then from employee_id field
+            if (isset($_POST['employeeId']) && !empty($_POST['employeeId'])) {
+                $edit_id = intval($_POST['employeeId']);
+            } elseif (isset($_POST['id']) && !empty($_POST['id'])) {
+                $edit_id = intval($_POST['id']);
+            }
+        }
+
+        error_log("========== FORM SUBMISSION ==========");
+        error_log("Action: " . $action);
+        error_log("Edit ID: " . ($edit_id ?? 'null'));
+        error_log("POST data: " . print_r($_POST, true));
 
         // Validate required fields
         $required_fields = [
-            'full_name',
             'designation',
             'office',
             'period_from',
@@ -431,9 +495,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $validation_errors[] = "Invalid joining date";
         }
 
+        // FIXED: Additional validation for edit mode - require employee ID
+        if ($is_edit && empty($edit_id)) {
+            $validation_errors[] = "Employee ID is missing for update operation";
+        }
+
         if (empty($validation_errors)) {
             try {
-                // Check if email already exists
+                $pdo->beginTransaction();
+
+                // Check if email already exists (for new records or different employee)
                 if (!$is_edit) {
                     $stmt = $pdo->prepare("SELECT id FROM contractofservice WHERE email_address = ?");
                     $stmt->execute([$_POST['email_address']]);
@@ -450,8 +521,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 // Get existing files for edit mode
                 $existing_files = [];
-                if ($is_edit && $employee_data) {
-                    $existing_files = $employee_data;
+                if ($is_edit && $edit_id) {
+                    $stmt = $pdo->prepare("SELECT * FROM contractofservice WHERE id = ?");
+                    $stmt->execute([$edit_id]);
+                    $existing_files = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
                 }
 
                 // Handle file uploads
@@ -501,19 +574,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     )
                 ];
 
-                // Generate employee ID for new records
-                $employee_id = $_POST['employee_id_input'] ?? '';
-                if (!$is_edit || empty($employee_id)) {
+                // Generate or use employee ID
+                $employee_id = $_POST['employee_id'] ?? '';
+                if (empty($employee_id) && !$is_edit) {
                     $office_code = getOfficeCode($_POST['office']);
                     $employee_id = generateEmployeeID($pdo, $office_code);
                 }
 
-                // Prepare SQL and parameters
                 if ($is_edit && $edit_id) {
+                    // FIXED: Ensure we have the ID for update
+                    if (!$edit_id) {
+                        throw new Exception("Cannot update: Employee ID is missing");
+                    }
+
                     // UPDATE existing record
                     $sql = "UPDATE contractofservice SET
                         employee_id = :employee_id,
-                        full_name = :full_name,
                         designation = :designation,
                         office = :office,
                         period_from = :period_from,
@@ -523,6 +599,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         profile_image_path = :profile_image_path,
                         first_name = :first_name,
                         last_name = :last_name,
+                        middle = :middle,
                         mobile_number = :mobile_number,
                         email_address = :email_address,
                         date_of_birth = :date_of_birth,
@@ -548,7 +625,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                     $params = [
                         ':employee_id' => $employee_id,
-                        ':full_name' => $_POST['full_name'],
                         ':designation' => $_POST['designation'],
                         ':office' => $_POST['office'],
                         ':period_from' => $_POST['period_from'],
@@ -558,6 +634,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         ':profile_image_path' => $profile_image_path,
                         ':first_name' => $_POST['first_name'],
                         ':last_name' => $_POST['last_name'],
+                        ':middle' => $_POST['middle'] ?? '',
                         ':mobile_number' => $_POST['mobile_number'],
                         ':email_address' => $_POST['email_address'],
                         ':date_of_birth' => $_POST['date_of_birth'],
@@ -580,19 +657,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     ];
 
                     $stmt->execute($params);
+                    $pdo->commit();
                     $success = "Employee record updated successfully!";
+                    error_log("Employee updated successfully. ID: " . $edit_id);
+
                 } else {
-                    // INSERT new record - REMOVED PASSWORD_HASH FIELD
+                    // INSERT new record
                     $sql = "INSERT INTO contractofservice (
-                        employee_id, full_name, designation, office, period_from, period_to, wages, contribution, 
-                        profile_image_path, first_name, last_name, mobile_number, email_address, date_of_birth, 
+                        employee_id, designation, office, period_from, period_to, wages, contribution, 
+                        profile_image_path, first_name, last_name, middle, mobile_number, email_address, date_of_birth, 
                         marital_status, gender, nationality, street_address, 
                         city, state_region, zip_code, joining_date, eligibility, 
                         doc_id_path, doc_resume_path, doc_service_path, doc_appointment_path, doc_transcript_path, doc_eligibility_path,
                         status, created_at, updated_at
                     ) VALUES (
-                        :employee_id, :full_name, :designation, :office, :period_from, :period_to, :wages, :contribution, 
-                        :profile_image_path, :first_name, :last_name, :mobile_number, :email_address, :date_of_birth, 
+                        :employee_id, :designation, :office, :period_from, :period_to, :wages, :contribution, 
+                        :profile_image_path, :first_name, :last_name, :middle, :mobile_number, :email_address, :date_of_birth, 
                         :marital_status, :gender, :nationality, :street_address, 
                         :city, :state_region, :zip_code, :joining_date, :eligibility, 
                         :doc_id_path, :doc_resume_path, :doc_service_path, :doc_appointment_path, :doc_transcript_path, :doc_eligibility_path,
@@ -603,7 +683,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                     $params = [
                         ':employee_id' => $employee_id,
-                        ':full_name' => $_POST['full_name'],
                         ':designation' => $_POST['designation'],
                         ':office' => $_POST['office'],
                         ':period_from' => $_POST['period_from'],
@@ -613,6 +692,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         ':profile_image_path' => $profile_image_path,
                         ':first_name' => $_POST['first_name'],
                         ':last_name' => $_POST['last_name'],
+                        ':middle' => $_POST['middle'] ?? '',
                         ':mobile_number' => $_POST['mobile_number'],
                         ':email_address' => $_POST['email_address'],
                         ':date_of_birth' => $_POST['date_of_birth'],
@@ -634,17 +714,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     ];
 
                     $stmt->execute($params);
+                    $pdo->commit();
                     $success = "New contractual employee created successfully! (ID: $employee_id)";
+                    error_log("New employee created. ID: " . $employee_id);
                 }
 
                 // Redirect to prevent form resubmission
                 header("Location: contractofservice.php");
                 exit();
+
             } catch (Exception $e) {
+                $pdo->rollBack();
                 $error = "Error: " . $e->getMessage();
+                error_log("Form submission error: " . $e->getMessage());
             }
         } else {
             $error = "Please fix the following errors:<br>" . implode("<br>", $validation_errors);
+            error_log("Validation errors: " . print_r($validation_errors, true));
         }
     }
 }
@@ -673,14 +759,14 @@ try {
     // Calculate offset
     $offset = ($current_page - 1) * $records_per_page;
 
-    // Fetch employees
+    // Fetch employees - FIXED: Get individual name components instead of full_name
     $sql = "SELECT 
-                id, employee_id, full_name, designation, office, 
+                id, employee_id, first_name, last_name, middle, designation, office, 
                 period_from, period_to, wages, contribution,
                 email_address, mobile_number, status
             FROM contractofservice 
             WHERE $status_condition
-            ORDER BY full_name ASC
+            ORDER BY first_name ASC
             LIMIT :limit OFFSET :offset";
 
     $stmt = $pdo->prepare($sql);
@@ -688,6 +774,34 @@ try {
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
     $employees = $stmt->fetchAll();
+
+    // CONSTRUCT FULL NAME FOR EACH EMPLOYEE
+    foreach ($employees as $key => $employee) {
+        $first_name = isset($employee['first_name']) ? trim($employee['first_name']) : '';
+        $last_name = isset($employee['last_name']) ? trim($employee['last_name']) : '';
+        $middle = isset($employee['middle']) ? trim($employee['middle']) : '';
+
+        // Build the full name
+        $full_name_parts = [];
+
+        if (!empty($first_name)) {
+            $full_name_parts[] = $first_name;
+        }
+
+        if (!empty($middle)) {
+            $full_name_parts[] = substr($middle, 0, 1) . '.';
+        }
+
+        if (!empty($last_name)) {
+            $full_name_parts[] = $last_name;
+        }
+
+        $full_name = !empty($full_name_parts) ? implode(' ', $full_name_parts) : 'No Name Provided';
+
+        // ADD THE CONSTRUCTED FULL NAME TO THE EMPLOYEE ARRAY
+        $employees[$key]['full_name'] = $full_name;
+    }
+
 } catch (PDOException $e) {
     error_log("Query execution error: " . $e->getMessage());
     $error_message = "Could not retrieve employee data.";
@@ -2465,6 +2579,30 @@ $office_options = [
 
                 <!-- Action Bar -->
                 <div class="bg-gray-50 rounded-lg p-4 md:p-5 mb-6 border border-gray-200">
+                    <!-- Success/Error Messages - Matching permanent.php style -->
+                    <?php if (isset($success) && !empty($success)): ?>
+                        <div class="mb-4 p-4 text-sm text-green-800 rounded-lg bg-green-50" role="alert">
+                            <span class="font-medium">Success!</span> <?php echo htmlspecialchars($success); ?>
+                        </div>
+                        <script>
+                            setTimeout(() => {
+                                const element = document.querySelector('.bg-green-50');
+                                if (element) element.remove();
+                            }, 5000);
+                        </script>
+                    <?php endif; ?>
+
+                    <?php if (isset($error) && !empty($error)): ?>
+                        <div class="mb-4 p-4 text-sm text-red-800 rounded-lg bg-red-50" role="alert">
+                            <span class="font-medium">Error:</span> <?php echo $error; ?>
+                        </div>
+                        <script>
+                            setTimeout(() => {
+                                const element = document.querySelector('.bg-red-50');
+                                if (element) element.remove();
+                            }, 5000);
+                        </script>
+                    <?php endif; ?>
                     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div class="w-full lg:w-auto lg:flex-1">
                             <div class="relative max-w-md">
@@ -2486,15 +2624,20 @@ $office_options = [
                                 </a>
                             <?php else: ?>
                                 <!-- Records per page selector -->
-                                <div class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-3 py-2.5 hover:border-blue-500 transition-colors">
+                                <div
+                                    class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-3 py-2.5 hover:border-blue-500 transition-colors">
                                     <span class="text-sm text-gray-600 whitespace-nowrap">Show:</span>
                                     <select id="recordsPerPage" onchange="changeRecordsPerPage(this.value)"
                                         class="bg-transparent border-none text-gray-900 text-sm focus:outline-none focus:ring-0 cursor-pointer appearance-none">
                                         <option value="5" <?php echo ($records_per_page == 5) ? 'selected' : ''; ?>>5</option>
-                                        <option value="10" <?php echo ($records_per_page == 10) ? 'selected' : ''; ?>>10</option>
-                                        <option value="25" <?php echo ($records_per_page == 25) ? 'selected' : ''; ?>>25</option>
-                                        <option value="50" <?php echo ($records_per_page == 50) ? 'selected' : ''; ?>>50</option>
-                                        <option value="100" <?php echo ($records_per_page == 100) ? 'selected' : ''; ?>>100</option>
+                                        <option value="10" <?php echo ($records_per_page == 10) ? 'selected' : ''; ?>>10
+                                        </option>
+                                        <option value="25" <?php echo ($records_per_page == 25) ? 'selected' : ''; ?>>25
+                                        </option>
+                                        <option value="50" <?php echo ($records_per_page == 50) ? 'selected' : ''; ?>>50
+                                        </option>
+                                        <option value="100" <?php echo ($records_per_page == 100) ? 'selected' : ''; ?>>100
+                                        </option>
                                     </select>
                                     <span class="text-sm text-gray-600 whitespace-nowrap">per page</span>
                                 </div>
@@ -2568,7 +2711,8 @@ $office_options = [
                                             <div class="flex flex-col items-center justify-center py-4">
                                                 <i class="fas fa-exclamation-triangle text-red-500 text-3xl mb-3"></i>
                                                 <p class="text-red-600 font-medium">
-                                                    <?php echo htmlspecialchars($error_message); ?></p>
+                                                    <?php echo htmlspecialchars($error_message); ?>
+                                                </p>
                                             </div>
                                         </td>
                                     </tr>
@@ -2604,7 +2748,7 @@ $office_options = [
                                         $status = $employee['status']; // This will be 'active' or 'inactive'
                                         $period_from = date('M d, Y', strtotime($employee['period_from']));
                                         $period_to = date('M d, Y', strtotime($employee['period_to']));
-                                    ?>
+                                        ?>
                                         <tr class="hover:bg-gray-50 transition-colors">
                                             <td class="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                                                 <?php echo $start_number + $index; ?>
@@ -2625,7 +2769,7 @@ $office_options = [
                                                     </div>
                                                     <div class="ml-4">
                                                         <div class="text-sm font-medium text-gray-900">
-                                                            <?php echo htmlspecialchars($employee['full_name']); ?>
+                                                            <?php echo htmlspecialchars($employee['full_name'] ?? 'N/A'); ?>
                                                         </div>
                                                         <div class="text-sm text-gray-500">
                                                             <?php echo htmlspecialchars($employee['email_address'] ?? 'No email'); ?>
@@ -2713,7 +2857,8 @@ $office_options = [
                                     <?php echo min($total_records, $current_page * $records_per_page); ?>
                                 </span>
                                 of
-                                <span class="font-semibold text-gray-900"><?php echo number_format($total_records); ?></span>
+                                <span
+                                    class="font-semibold text-gray-900"><?php echo number_format($total_records); ?></span>
                                 <?php if ($view_inactive): ?>
                                     <span class="text-yellow-600 ml-2">[Inactive Employees]</span>
                                 <?php endif; ?>
@@ -2762,7 +2907,7 @@ $office_options = [
                                 // Show page numbers
                                 for ($i = $start_page; $i <= $end_page; $i++):
                                     $view_param = $view_inactive ? "&view=inactive" : "";
-                                ?>
+                                    ?>
                                     <a href="contractofservice.php?page=<?php echo $i; ?><?php echo $view_param; ?>&per_page=<?php echo $records_per_page; ?>"
                                         class="pagination-btn <?php echo ($i == $current_page) ? 'active' : ''; ?>">
                                         <?php echo $i; ?>
@@ -2819,7 +2964,8 @@ $office_options = [
         <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden mx-2">
             <!-- Modal header -->
             <div class="flex items-center justify-between p-3 md:p-5 border-b sticky top-0 bg-white z-10">
-                <h3 class="text-lg md:text-xl font-semibold text-gray-900" id="modalTitle">Add New Contractual Employee</h3>
+                <h3 class="text-lg md:text-xl font-semibold text-gray-900" id="modalTitle">Add New Contractual Employee
+                </h3>
                 <button type="button"
                     class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 inline-flex justify-center items-center"
                     onclick="closeModal()">
@@ -2850,36 +2996,65 @@ $office_options = [
                     <input type="hidden" name="employee_id" id="employeeId" value="">
 
                     <!-- Employee ID Field -->
-                    <div class="mb-4 md:mb-6">
-                        <label for="employee_id_input" class="block mb-2 text-sm font-medium text-gray-900">Employee ID</label>
-                        <input type="text" name="employee_id_input" id="employee_id_input"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 font-mono"
-                            placeholder="Auto-generated" readonly>
-                        <p class="mt-1 text-xs text-gray-500">Employee ID will be auto-generated based on office and year</p>
+                    <!-- Employee ID Field -->
+                    <div>
+                        <label for="employee_id" class="block mb-2 text-sm font-medium text-gray-900">
+                            Employee ID * <span class="text-xs text-gray-500 ml-2">(Format: COS-YEAR-XXXX)</span>
+                        </label>
+                        <div class="relative">
+                            <input type="text" name="employee_id" id="employee_id"
+                                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                placeholder="Enter Employee ID (e.g., COS-2024-0001)" required
+                                pattern="^[A-Za-z0-9\-_]+$"
+                                title="Employee ID can contain letters, numbers, hyphens, and underscores">
+                            <div class="mt-1 text-xs text-gray-500">
+                                Format: COS-YEAR-XXXX (example: COS-2024-0001) or use your own format
+                            </div>
+                        </div>
+                        <div class="error-message" id="employee_id_error"></div>
                     </div>
 
                     <!-- Step 1: Professional Information -->
                     <div id="step1" class="form-step active">
-                        <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Professional Details</h2>
+                        <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Professional Details
+                        </h2>
 
                         <div class="grid gap-3 md:gap-4 mb-4">
-                            <div>
-                                <label for="full_name" class="block mb-2 text-sm font-medium text-gray-900">Full Name *</label>
-                                <input type="text" name="full_name" id="full_name"
-                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                    placeholder="Juan Dela Cruz Jr." required>
-                                <div class="validation-error hidden">Please enter a valid full name</div>
+                            <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="first_name" class="block mb-2 text-sm font-medium text-gray-900">First
+                                        Name *</label>
+                                    <input type="text" name="first_name" id="first_name"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                </div>
+                                <div>
+                                    <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Last
+                                        Name *</label>
+                                    <input type="text" name="last_name" id="last_name"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                </div>
+                                <div>
+                                    <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Middle
+                                        Initial *</label>
+                                    <input type="text" name="middle" id="middle"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                </div>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label for="designation" class="block mb-2 text-sm font-medium text-gray-900">Designation *</label>
+                                    <label for="designation"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Designation *</label>
                                     <input type="text" name="designation" id="designation"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="Job title" required>
                                 </div>
                                 <div>
-                                    <label for="office" class="block mb-2 text-sm font-medium text-gray-900">Office Assignment *</label>
+                                    <label for="office" class="block mb-2 text-sm font-medium text-gray-900">Office
+                                        Assignment *</label>
                                     <select name="office" id="office"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
@@ -2894,13 +3069,15 @@ $office_options = [
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label for="period_from" class="block mb-2 text-sm font-medium text-gray-900">Period From *</label>
+                                    <label for="period_from" class="block mb-2 text-sm font-medium text-gray-900">Period
+                                        From *</label>
                                     <input type="date" name="period_from" id="period_from"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
                                 </div>
                                 <div>
-                                    <label for="period_to" class="block mb-2 text-sm font-medium text-gray-900">Period To *</label>
+                                    <label for="period_to" class="block mb-2 text-sm font-medium text-gray-900">Period
+                                        To *</label>
                                     <input type="date" name="period_to" id="period_to"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
@@ -2909,14 +3086,16 @@ $office_options = [
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label for="wages" class="block mb-2 text-sm font-medium text-gray-900">Wages (per period) *</label>
+                                    <label for="wages" class="block mb-2 text-sm font-medium text-gray-900">Wages (per
+                                        period) *</label>
                                     <input type="number" name="wages" id="wages" step="0.01" min="0"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="0.00" required>
                                     <div class="validation-error hidden">Enter a valid amount</div>
                                 </div>
                                 <div>
-                                    <label for="contribution" class="block mb-2 text-sm font-medium text-gray-900">Contribution</label>
+                                    <label for="contribution"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Contribution</label>
                                     <input type="text" name="contribution" id="contribution"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="SSS, PhilHealth, etc.">
@@ -2951,44 +3130,32 @@ $office_options = [
                                             class="cursor-pointer text-blue-600 hover:text-blue-800 text-sm font-medium">
                                             <i class="fas fa-upload mr-1"></i>Upload Photo
                                         </label>
-                                        <input type="hidden" id="current_profile_image" name="current_profile_image" value="">
-                                    </div>
-                                </div>
-                                <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label for="first_name" class="block mb-2 text-sm font-medium text-gray-900">First Name *</label>
-                                        <input type="text" name="first_name" id="first_name"
-                                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                            required>
-                                        <div class="validation-error hidden">Please enter a valid first name</div>
-                                    </div>
-                                    <div>
-                                        <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Last Name *</label>
-                                        <input type="text" name="last_name" id="last_name"
-                                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                            required>
-                                        <div class="validation-error hidden">Please enter a valid last name</div>
+                                        <input type="hidden" id="current_profile_image" name="current_profile_image"
+                                            value="">
                                     </div>
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label for="mobile_number" class="block mb-2 text-sm font-medium text-gray-900">Mobile Number *</label>
+                                    <label for="mobile_number"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Mobile Number *</label>
                                     <input type="text" name="mobile_number" id="mobile_number"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="09123456789" pattern="[0-9]{11}" required>
                                     <div class="validation-error hidden">Mobile number must be exactly 11 digits</div>
                                 </div>
                                 <div>
-                                    <label for="email_address" class="block mb-2 text-sm font-medium text-gray-900">Email Address *</label>
+                                    <label for="email_address"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Email Address *</label>
                                     <input type="email" name="email_address" id="email_address"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="juan.delacruz@email.com" required>
                                     <div class="validation-error hidden">Please enter a valid email address</div>
                                 </div>
                                 <div>
-                                    <label for="date_of_birth" class="block mb-2 text-sm font-medium text-gray-900">Date of Birth *</label>
+                                    <label for="date_of_birth" class="block mb-2 text-sm font-medium text-gray-900">Date
+                                        of Birth *</label>
                                     <input type="date" name="date_of_birth" id="date_of_birth"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
@@ -2998,7 +3165,8 @@ $office_options = [
 
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label for="marital_status" class="block mb-2 text-sm font-medium text-gray-900">Marital Status *</label>
+                                    <label for="marital_status"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Marital Status *</label>
                                     <select name="marital_status" id="marital_status"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
@@ -3010,7 +3178,8 @@ $office_options = [
                                     </select>
                                 </div>
                                 <div>
-                                    <label for="gender" class="block mb-2 text-sm font-medium text-gray-900">Gender *</label>
+                                    <label for="gender" class="block mb-2 text-sm font-medium text-gray-900">Gender
+                                        *</label>
                                     <select name="gender" id="gender"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
@@ -3021,7 +3190,8 @@ $office_options = [
                                     </select>
                                 </div>
                                 <div>
-                                    <label for="nationality" class="block mb-2 text-sm font-medium text-gray-900">Nationality *</label>
+                                    <label for="nationality"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Nationality *</label>
                                     <input type="text" name="nationality" id="nationality"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         value="Filipino" required>
@@ -3030,7 +3200,8 @@ $office_options = [
                             </div>
 
                             <div>
-                                <label for="street_address" class="block mb-2 text-sm font-medium text-gray-900">Street Address *</label>
+                                <label for="street_address" class="block mb-2 text-sm font-medium text-gray-900">Street
+                                    Address *</label>
                                 <input type="text" name="street_address" id="street_address"
                                     class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                     placeholder="123 Main Street, Barangay Poblacion" required>
@@ -3038,21 +3209,24 @@ $office_options = [
 
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label for="city" class="block mb-2 text-sm font-medium text-gray-900">City *</label>
+                                    <label for="city" class="block mb-2 text-sm font-medium text-gray-900">City
+                                        *</label>
                                     <input type="text" name="city" id="city"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="Paluan" required>
                                     <div class="validation-error hidden">Please enter a valid city name</div>
                                 </div>
                                 <div>
-                                    <label for="state_region" class="block mb-2 text-sm font-medium text-gray-900">State/Region *</label>
+                                    <label for="state_region"
+                                        class="block mb-2 text-sm font-medium text-gray-900">State/Region *</label>
                                     <input type="text" name="state_region" id="state_region"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         value="Occidental Mindoro" required>
                                     <div class="validation-error hidden">Please enter a valid state/region</div>
                                 </div>
                                 <div>
-                                    <label for="zip_code" class="block mb-2 text-sm font-medium text-gray-900">ZIP Code *</label>
+                                    <label for="zip_code" class="block mb-2 text-sm font-medium text-gray-900">ZIP Code
+                                        *</label>
                                     <input type="text" name="zip_code" id="zip_code"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="5104" pattern="[0-9]{4}" required>
@@ -3064,13 +3238,15 @@ $office_options = [
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label for="joining_date" class="block mb-2 text-sm font-medium text-gray-900">Joining Date *</label>
+                                    <label for="joining_date"
+                                        class="block mb-2 text-sm font-medium text-gray-900">Joining Date *</label>
                                     <input type="date" name="joining_date" id="joining_date"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
                                 </div>
                                 <div>
-                                    <label class="block mb-2 text-sm font-medium text-gray-900">Civil Service Eligibility *</label>
+                                    <label class="block mb-2 text-sm font-medium text-gray-900">Civil Service
+                                        Eligibility *</label>
                                     <div class="flex space-x-4">
                                         <label class="inline-flex items-center">
                                             <input type="radio" name="eligibility" value="Eligible"
@@ -3108,10 +3284,13 @@ $office_options = [
                             <!-- Government ID -->
                             <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_id">
                                 <i class="fas fa-id-card text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
-                                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Government ID</h4>
-                                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Government-issued identification</p>
+                                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Government ID
+                                </h4>
+                                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Government-issued
+                                    identification</p>
                                 <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
-                                <input type="file" name="doc_id" id="doc_id" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                                <input type="file" name="doc_id" id="doc_id" accept=".jpg,.jpeg,.pdf,.png"
+                                    class="hidden">
                                 <div class="file-status text-xs md:text-sm text-green-600"></div>
                             </div>
 
@@ -3121,27 +3300,32 @@ $office_options = [
                                 <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Resume / CV</h4>
                                 <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Resume or curriculum vitae</p>
                                 <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
-                                <input type="file" name="doc_resume" id="doc_resume" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                                <input type="file" name="doc_resume" id="doc_resume" accept=".jpg,.jpeg,.pdf,.png"
+                                    class="hidden">
                                 <div class="file-status text-xs md:text-sm text-green-600"></div>
                             </div>
 
                             <!-- Service Record -->
                             <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_service">
                                 <i class="fas fa-history text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
-                                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Service Record</h4>
+                                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Service Record
+                                </h4>
                                 <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Service record document</p>
                                 <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
-                                <input type="file" name="doc_service" id="doc_service" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                                <input type="file" name="doc_service" id="doc_service" accept=".jpg,.jpeg,.pdf,.png"
+                                    class="hidden">
                                 <div class="file-status text-xs md:text-sm text-green-600"></div>
                             </div>
 
                             <!-- Appointment Paper -->
                             <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_appointment">
                                 <i class="fas fa-file-contract text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
-                                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Appointment Paper</h4>
+                                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Appointment
+                                    Paper</h4>
                                 <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Appointment paper</p>
                                 <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
-                                <input type="file" name="doc_appointment" id="doc_appointment" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                                <input type="file" name="doc_appointment" id="doc_appointment"
+                                    accept=".jpg,.jpeg,.pdf,.png" class="hidden">
                                 <div class="file-status text-xs md:text-sm text-green-600"></div>
                             </div>
 
@@ -3151,7 +3335,8 @@ $office_options = [
                                 <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Transcript</h4>
                                 <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Transcript and diploma</p>
                                 <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
-                                <input type="file" name="doc_transcript" id="doc_transcript" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                                <input type="file" name="doc_transcript" id="doc_transcript"
+                                    accept=".jpg,.jpeg,.pdf,.png" class="hidden">
                                 <div class="file-status text-xs md:text-sm text-green-600"></div>
                             </div>
 
@@ -3161,7 +3346,8 @@ $office_options = [
                                 <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Eligibility</h4>
                                 <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Civil service eligibility</p>
                                 <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
-                                <input type="file" name="doc_eligibility" id="doc_eligibility" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                                <input type="file" name="doc_eligibility" id="doc_eligibility"
+                                    accept=".jpg,.jpeg,.pdf,.png" class="hidden">
                                 <div class="file-status text-xs md:text-sm text-green-600"></div>
                             </div>
                         </div>
@@ -3276,19 +3462,25 @@ $office_options = [
     <!-- JavaScript -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+
     <script>
-        // Sidebar functionality
+
+    </script>
+    <script>
+        // ===============================================
+        // SIDEBAR FUNCTIONALITY
+        // ===============================================
         const sidebarToggle = document.getElementById('sidebar-toggle');
         const sidebarContainer = document.getElementById('sidebar-container');
         const overlay = document.getElementById('overlay');
 
         if (sidebarToggle && sidebarContainer && overlay) {
-            sidebarToggle.addEventListener('click', function() {
+            sidebarToggle.addEventListener('click', function () {
                 sidebarContainer.classList.toggle('active');
                 overlay.classList.toggle('active');
             });
 
-            overlay.addEventListener('click', function() {
+            overlay.addEventListener('click', function () {
                 sidebarContainer.classList.remove('active');
                 overlay.classList.remove('active');
             });
@@ -3299,14 +3491,10 @@ $office_options = [
         const payrollDropdown = document.getElementById('payroll-dropdown');
 
         if (payrollToggle && payrollDropdown) {
-            payrollToggle.addEventListener('click', function(e) {
+            payrollToggle.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-
-                // Toggle the 'open' class
                 payrollDropdown.classList.toggle('open');
-
-                // Toggle chevron rotation
                 const chevron = this.querySelector('.chevron');
                 if (chevron) {
                     chevron.classList.toggle('rotated');
@@ -3320,39 +3508,25 @@ $office_options = [
         let currentStep = 1;
         let isEditMode = false;
         let inactivateEmployeeId = null;
-        let inactivateEmployeeName = null;
         let activateEmployeeId = null;
-        let activateEmployeeName = null;
         let currentViewEmployeeId = null;
 
-        // Modal visibility functions
-        // Modal visibility functions - FIXED
         function showModal(modalId) {
             const modal = document.getElementById(modalId);
             const backdrop = document.getElementById('modalBackdrop');
 
             if (modal && backdrop) {
-                console.log('Showing modal:', modalId);
-
-                // Hide all other modals first
                 document.querySelectorAll('.modal-container').forEach(m => {
                     m.classList.remove('active');
                 });
 
-                // Show backdrop
                 backdrop.classList.add('active');
 
-                // Show modal with slight delay for animation
                 setTimeout(() => {
                     modal.classList.add('active');
                     document.body.classList.add('modal-open');
                     document.body.style.overflow = 'hidden';
                 }, 10);
-
-            } else {
-                console.error('Modal elements not found!');
-                console.log('Modal:', modal);
-                console.log('Backdrop:', backdrop);
             }
         }
 
@@ -3361,12 +3535,8 @@ $office_options = [
             const backdrop = document.getElementById('modalBackdrop');
 
             if (modal && backdrop) {
-                console.log('Hiding modal:', modalId);
-
-                // Hide modal
                 modal.classList.remove('active');
 
-                // Hide backdrop if no other modals are open
                 setTimeout(() => {
                     const anyModalOpen = Array.from(document.querySelectorAll('.modal-container'))
                         .some(m => m.classList.contains('active'));
@@ -3380,19 +3550,22 @@ $office_options = [
             }
         }
 
-        // Add modal
+        // ===============================================
+        // ADD EMPLOYEE MODAL
+        // ===============================================
         function openAddModal() {
-            console.log('Opening add modal...');
-
             isEditMode = false;
             document.getElementById('modalTitle').textContent = 'Add New Contractual Employee';
             document.getElementById('formAction').value = 'add';
             document.getElementById('employeeId').value = '';
             document.getElementById('submitButtonText').textContent = 'Submit Employee';
 
-            // Reset form
             const form = document.getElementById('employeeForm');
-            if (form) form.reset();
+            if (form) {
+                form.action = 'contractofservice.php';
+                form.reset();
+            }
+
             resetFormToStep1();
 
             // Reset file drop zones
@@ -3419,50 +3592,197 @@ $office_options = [
             if (document.getElementById('period_to')) document.getElementById('period_to').value = nextMonthStr;
             if (document.getElementById('joining_date')) document.getElementById('joining_date').value = today;
             if (document.getElementById('date_of_birth')) document.getElementById('date_of_birth').value = '1990-01-01';
-
-            // Clear employee ID
-            if (document.getElementById('employee_id_input')) {
-                document.getElementById('employee_id_input').value = 'Auto-generated on save';
-            }
-
-            // Set default values
+            if (document.getElementById('employee_id')) document.getElementById('employee_id').value = '';
             if (document.getElementById('nationality')) document.getElementById('nationality').value = 'Filipino';
             if (document.getElementById('state_region')) document.getElementById('state_region').value = 'Occidental Mindoro';
             if (document.getElementById('city')) document.getElementById('city').value = 'Paluan';
 
-            // Show modal
             showModal('employeeModal');
         }
 
-        // Edit functions
+        // ===============================================
+        // EDIT EMPLOYEE FUNCTIONS
+        // ===============================================
         function editEmployee(employeeId) {
-            window.location.href = `contractofservice.php?edit_id=${employeeId}`;
+            if (!employeeId) {
+                alert('Invalid employee ID');
+                return;
+            }
+
+            showModal('employeeModal');
+
+            document.getElementById('modalTitle').innerHTML = 'Edit Contractual Employee <span class="ml-2 text-sm font-normal text-gray-500"><i class="fas fa-spinner fa-spin"></i> Loading...</span>';
+            document.getElementById('formAction').value = 'edit';
+            document.getElementById('employeeId').value = employeeId;
+            document.getElementById('submitButtonText').textContent = 'Update Employee';
+
+            // FIXED: Explicitly set form action and method
+            const form = document.getElementById('employeeForm');
+            if (form) {
+                form.action = 'contractofservice.php';
+                form.method = 'POST';
+                form.classList.add('opacity-50', 'pointer-events-none');
+            }
+
+            resetFormToStep1();
+
+            fetch(`contractofservice.php?edit_fetch_id=${employeeId}&t=${Date.now()}`)
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    if (form) form.classList.remove('opacity-50', 'pointer-events-none');
+                    document.getElementById('modalTitle').innerHTML = 'Edit Contractual Employee';
+
+                    if (data.success) {
+                        openEditModal(data.employee);
+                    } else {
+                        alert('Error loading employee data: ' + (data.error || 'Unknown error'));
+                        closeModal();
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch Error:', error);
+                    if (form) form.classList.remove('opacity-50', 'pointer-events-none');
+                    document.getElementById('modalTitle').innerHTML = 'Edit Contractual Employee';
+                    alert('Error loading employee data. Please try again.');
+                    closeModal();
+                });
         }
 
-        function editCurrentEmployee() {
-            if (currentViewEmployeeId) {
-                editEmployee(currentViewEmployeeId);
+
+        function openEditModal(employeeData) {
+            isEditMode = true;
+
+            // FIXED: Ensure hidden ID field is properly set
+            const employeeIdHidden = document.getElementById('employeeId');
+            if (employeeIdHidden) {
+                employeeIdHidden.value = employeeData.id;
+                console.log('Set employeeId to:', employeeData.id);
+            }
+
+            // Also set a hidden field for id as backup
+            let idField = document.getElementById('hidden_id_field');
+            if (!idField) {
+                idField = document.createElement('input');
+                idField.type = 'hidden';
+                idField.name = 'id';
+                idField.id = 'hidden_id_field';
+                document.getElementById('employeeForm').appendChild(idField);
+            }
+            idField.value = employeeData.id;
+
+            // Set all form fields (rest of your existing code)
+            setFieldValue('employee_id', employeeData.employee_id);
+
+            // Set all form fields
+            setFieldValue('employee_id', employeeData.employee_id);
+            setFieldValue('designation', employeeData.designation);
+            setSelectValue('office', employeeData.office);
+            setFieldValue('period_from', employeeData.period_from);
+            setFieldValue('period_to', employeeData.period_to);
+            setFieldValue('wages', employeeData.wages);
+            setFieldValue('contribution', employeeData.contribution);
+            setFieldValue('first_name', employeeData.first_name);
+            setFieldValue('last_name', employeeData.last_name);
+            setFieldValue('middle', employeeData.middle);
+            setFieldValue('mobile_number', employeeData.mobile_number);
+            setFieldValue('email_address', employeeData.email_address);
+            setFieldValue('date_of_birth', employeeData.date_of_birth);
+            setSelectValue('marital_status', employeeData.marital_status);
+            setSelectValue('gender', employeeData.gender);
+            setFieldValue('nationality', employeeData.nationality || 'Filipino');
+            setFieldValue('street_address', employeeData.street_address);
+            setFieldValue('city', employeeData.city || 'Paluan');
+            setFieldValue('state_region', employeeData.state_region || 'Occidental Mindoro');
+            setFieldValue('zip_code', employeeData.zip_code);
+            setFieldValue('joining_date', employeeData.joining_date);
+
+            // Eligibility
+            const eligibility = employeeData.eligibility || 'Not Eligible';
+            document.querySelectorAll('input[name="eligibility"]').forEach(radio => {
+                radio.checked = (radio.value === eligibility);
+            });
+
+            // Profile image
+            const profileImageContainer = document.getElementById('profileImageContainer');
+            if (profileImageContainer) {
+                if (employeeData.profile_image_path && employeeData.profile_image_path !== 'NULL' && employeeData.profile_image_path !== '') {
+                    profileImageContainer.innerHTML = `<img src="${employeeData.profile_image_path}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
+                    setFieldValue('current_profile_image', employeeData.profile_image_path);
+                } else {
+                    profileImageContainer.innerHTML = '<i class="fas fa-user text-gray-400 text-3xl md:text-4xl"></i>';
+                    setFieldValue('current_profile_image', '');
+                }
+            }
+
+            // Documents
+            const fileFields = [
+                { id: 'doc_id', field: 'doc_id_path' },
+                { id: 'doc_resume', field: 'doc_resume_path' },
+                { id: 'doc_service', field: 'doc_service_path' },
+                { id: 'doc_appointment', field: 'doc_appointment_path' },
+                { id: 'doc_transcript', field: 'doc_transcript_path' },
+                { id: 'doc_eligibility', field: 'doc_eligibility_path' }
+            ];
+
+            fileFields.forEach(fileField => {
+                const zone = document.querySelector(`[data-file-input="${fileField.id}"]`);
+                if (zone) {
+                    const fileStatus = zone.querySelector('.file-status');
+                    if (employeeData[fileField.field] && employeeData[fileField.field] !== 'NULL' && employeeData[fileField.field] !== '') {
+                        const fileName = employeeData[fileField.field].split('/').pop();
+                        if (fileStatus) fileStatus.textContent = `Current: ${fileName.substring(0, 20)}${fileName.length > 20 ? '...' : ''}`;
+                        zone.classList.add('border-green-500', 'bg-green-50');
+                        zone.classList.remove('border-gray-300', 'bg-gray-50');
+                    } else {
+                        if (fileStatus) fileStatus.textContent = '';
+                        zone.classList.remove('border-green-500', 'bg-green-50');
+                        zone.classList.add('border-gray-300', 'bg-gray-50');
+                    }
+                }
+            });
+
+            resetFormToStep1();
+        }
+
+        // Helper functions for setting form values
+        function setFieldValue(id, value) {
+            const element = document.getElementById(id);
+            if (element) element.value = value || '';
+        }
+
+        function setSelectValue(id, value) {
+            const element = document.getElementById(id);
+            if (element && value) {
+                for (let i = 0; i < element.options.length; i++) {
+                    if (element.options[i].value === value) {
+                        element.selectedIndex = i;
+                        break;
+                    }
+                }
             }
         }
 
+        // ===============================================
+        // VIEW EMPLOYEE FUNCTIONS
+        // ===============================================
         function viewEmployee(employeeId) {
             currentViewEmployeeId = employeeId;
 
-            // Show loading state
             const content = document.getElementById('viewEmployeeContent');
             if (content) {
                 content.innerHTML = `
-            <div class="flex justify-center items-center h-64">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                <p class="ml-3 text-gray-600">Loading employee data...</p>
-            </div>
-        `;
+                <div class="flex justify-center items-center h-64">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                    <p class="ml-3 text-gray-600">Loading employee data...</p>
+                </div>
+            `;
             }
 
-            // Show modal
             showModal('viewEmployeeModal');
 
-            // Fetch data
             fetch(`contractofservice.php?view_id=${employeeId}`)
                 .then(response => response.json())
                 .then(data => {
@@ -3471,12 +3791,12 @@ $office_options = [
                             content.innerHTML = data.html;
                         } else {
                             content.innerHTML = `
-                        <div class="text-center p-8">
-                            <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
-                            <p class="text-red-600 font-medium">Error loading employee data</p>
-                            <p class="text-gray-500 text-sm mt-2">${data.error || 'Unknown error'}</p>
-                        </div>
-                    `;
+                            <div class="text-center p-8">
+                                <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+                                <p class="text-red-600 font-medium">Error loading employee data</p>
+                                <p class="text-gray-500 text-sm mt-2">${data.error || 'Unknown error'}</p>
+                            </div>
+                        `;
                         }
                     }
                 })
@@ -3484,19 +3804,28 @@ $office_options = [
                     console.error('Error:', error);
                     if (content) {
                         content.innerHTML = `
-                    <div class="text-center p-8">
-                        <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
-                        <p class="text-red-600 font-medium">Error loading employee data</p>
-                        <p class="text-gray-500 text-sm mt-2">Network error. Please try again.</p>
-                    </div>
-                `;
+                        <div class="text-center p-8">
+                            <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+                            <p class="text-red-600 font-medium">Error loading employee data</p>
+                            <p class="text-gray-500 text-sm mt-2">Network error. Please try again.</p>
+                        </div>
+                    `;
                     }
                 });
         }
 
+        function editCurrentEmployee() {
+            if (currentViewEmployeeId) {
+                closeViewModal();
+                setTimeout(() => editEmployee(currentViewEmployeeId), 300);
+            }
+        }
+
+        // ===============================================
+        // CONFIRMATION MODALS
+        // ===============================================
         function confirmInactivate(employeeId, employeeName) {
             inactivateEmployeeId = employeeId;
-            inactivateEmployeeName = employeeName;
             const nameElement = document.getElementById('inactivateEmployeeName');
             if (nameElement) nameElement.textContent = `"${employeeName}"`;
             showModal('inactivateModal');
@@ -3504,110 +3833,26 @@ $office_options = [
 
         function confirmActivate(employeeId, employeeName) {
             activateEmployeeId = employeeId;
-            activateEmployeeName = employeeName;
             const nameElement = document.getElementById('activateEmployeeName');
             if (nameElement) nameElement.textContent = `"${employeeName}"`;
             showModal('activateModal');
         }
 
-        // Close functions
-        function closeModal() {
-            hideModal('employeeModal');
-        }
-
+        // ===============================================
+        // CLOSE MODAL FUNCTIONS
+        // ===============================================
+        function closeModal() { hideModal('employeeModal'); }
         function closeViewModal() {
             hideModal('viewEmployeeModal');
             currentViewEmployeeId = null;
         }
-
         function closeInactivateModal() {
             hideModal('inactivateModal');
             inactivateEmployeeId = null;
-            inactivateEmployeeName = null;
         }
-
         function closeActivateModal() {
             hideModal('activateModal');
             activateEmployeeId = null;
-            activateEmployeeName = null;
-        }
-
-        // ===============================================
-        // PAGINATION ENHANCEMENTS
-        // ===============================================
-        function goToPage(page) {
-            const viewParam = <?php echo $view_inactive ? "'&view=inactive'" : "''"; ?>;
-            window.location.href = `contractofservice.php?page=${page}${viewParam}&per_page=<?php echo $records_per_page; ?>`;
-        }
-
-        function updatePaginationUI() {
-            // Highlight current page
-            const currentPage = <?php echo $current_page; ?>;
-            document.querySelectorAll('.pagination-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.textContent == currentPage) {
-                    btn.classList.add('active');
-                }
-            });
-
-            // Add loading indicator for pagination clicks
-            document.querySelectorAll('.pagination-btn[href]').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    // Only show loading for page numbers, not navigation icons
-                    if (!this.querySelector('i')) {
-                        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                        this.classList.add('opacity-75');
-                    }
-                });
-            });
-        }
-
-        // Initialize pagination UI on load
-        document.addEventListener('DOMContentLoaded', function() {
-            updatePaginationUI();
-
-            // Keyboard navigation for pagination
-            document.addEventListener('keydown', function(e) {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-                    return; // Don't interfere with form inputs
-                }
-
-                const currentPage = <?php echo $current_page; ?>;
-                const totalPages = <?php echo $total_pages; ?>;
-                const viewParam = <?php echo $view_inactive ? "'&view=inactive'" : "''"; ?>;
-
-                if (e.key === 'ArrowLeft' && currentPage > 1) {
-                    window.location.href = `contractofservice.php?page=${currentPage - 1}${viewParam}&per_page=<?php echo $records_per_page; ?>`;
-                } else if (e.key === 'ArrowRight' && currentPage < totalPages) {
-                    window.location.href = `contractofservice.php?page=${currentPage + 1}${viewParam}&per_page=<?php echo $records_per_page; ?>`;
-                }
-            });
-
-            // Auto-scroll to top when paginating
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.has('page')) {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-            }
-        });
-
-        // Records per page selector functionality
-        function changeRecordsPerPage(perPage) {
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set('per_page', perPage);
-            currentUrl.searchParams.set('page', 1); // Reset to first page
-
-            // Show loading
-            const select = document.getElementById('recordsPerPage');
-            if (select) {
-                select.disabled = true;
-                select.innerHTML = '<option>Loading...</option>';
-            }
-
-            // Redirect
-            window.location.href = currentUrl.toString();
         }
 
         // ===============================================
@@ -3623,24 +3868,87 @@ $office_options = [
             document.querySelectorAll('.form-step').forEach(step => {
                 step.classList.remove('active');
             });
-
             const stepElement = document.getElementById(`step${stepIndex}`);
-            if (stepElement) {
-                stepElement.classList.add('active');
-            }
+            if (stepElement) stepElement.classList.add('active');
         }
 
         function updateStepNavigation() {
             document.querySelectorAll('.step-nav').forEach(nav => {
                 const step = parseInt(nav.getAttribute('data-step'));
                 nav.classList.remove('border-blue-600', 'text-blue-600', 'border-transparent', 'text-gray-500');
+                nav.classList.add(step === currentStep ? 'border-blue-600' : 'border-transparent',
+                    step === currentStep ? 'text-blue-600' : 'text-gray-500');
+            });
+        }
 
-                if (step === currentStep) {
-                    nav.classList.add('border-blue-600', 'text-blue-600');
-                } else {
-                    nav.classList.add('border-transparent', 'text-gray-500');
+        function validateFormStep(step) {
+            let isValid = true;
+            const stepElement = document.getElementById(`step${step}`);
+            if (!stepElement) return true;
+
+            const inputs = stepElement.querySelectorAll('input[required], select[required]');
+            inputs.forEach(input => {
+                input.classList.remove('border-red-500');
+                if (!input.value.trim()) {
+                    isValid = false;
+                    input.classList.add('border-red-500');
                 }
             });
+            return isValid;
+        }
+
+        // ===============================================
+        // FORM SUBMISSION - FIXED
+        // ===============================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.getElementById('employeeForm');
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+
+                    // Validate all steps
+                    let allValid = true;
+                    for (let i = 1; i <= 3; i++) {
+                        if (!validateFormStep(i)) {
+                            allValid = false;
+                            currentStep = i;
+                            showStep(currentStep);
+                            updateStepNavigation();
+                            break;
+                        }
+                    }
+
+                    if (allValid) {
+                        const submitBtn = document.getElementById('submitBtn');
+                        if (submitBtn) {
+                            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+                            submitBtn.disabled = true;
+                        }
+
+                        // Log form data for debugging
+                        console.log('Submitting form...');
+                        console.log('Action:', document.getElementById('formAction').value);
+                        console.log('Employee ID:', document.getElementById('employeeId').value);
+
+                        this.submit();
+                    }
+                });
+            }
+        });
+
+        // ===============================================
+        // PAGINATION FUNCTIONS
+        // ===============================================
+        function goToPage(page) {
+            const viewParam = <?php echo isset($view_inactive) && $view_inactive ? "'&view=inactive'" : "''"; ?>;
+            window.location.href = `contractofservice.php?page=${page}${viewParam}&per_page=<?php echo $records_per_page ?? 10; ?>`;
+        }
+
+        function changeRecordsPerPage(perPage) {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('per_page', perPage);
+            currentUrl.searchParams.set('page', 1);
+            window.location.href = currentUrl.toString();
         }
 
         // ===============================================
@@ -3651,73 +3959,56 @@ $office_options = [
             const rows = document.querySelectorAll('tbody tr');
 
             rows.forEach(row => {
-                // Skip if it's the "no data" row
-                if (row.querySelector('td[colspan]')) {
-                    return;
-                }
+                if (row.querySelector('td[colspan]')) return;
 
                 let shouldShow = false;
-
-                // Get all text content from the row for searching
-                const cells = row.querySelectorAll('td');
-
-                // Check each cell's content for the search term
-                cells.forEach(cell => {
+                row.querySelectorAll('td, th').forEach(cell => {
                     if (cell.textContent.toLowerCase().includes(searchTerm)) {
                         shouldShow = true;
                     }
                 });
-
-                // Also check the name cell which is a th
-                const nameCell = row.querySelector('th');
-                if (nameCell && nameCell.textContent.toLowerCase().includes(searchTerm)) {
-                    shouldShow = true;
-                }
-
-                // Toggle row visibility
-                if (shouldShow) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
+                row.style.display = shouldShow ? '' : 'none';
             });
         }
 
         // ===============================================
-        // EVENT LISTENERS
+        // DATE & TIME FUNCTIONALITY
         // ===============================================
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing modals...');
-
-            // Add click event to "Add New Contractual" button
-            const addButton = document.querySelector('button[onclick*="openAddModal"]');
-            if (addButton) {
-                console.log('Add button found, adding click event');
-                addButton.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    openAddModal();
+        function updateDateTime() {
+            try {
+                const now = new Date();
+                const dateString = now.toLocaleDateString('en-US', {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                 });
+
+                let hours = now.getHours();
+                let minutes = now.getMinutes();
+                let seconds = now.getSeconds();
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12 || 12;
+
+                const timeString = `${hours}:${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds} ${ampm}`;
+
+                const dateElement = document.getElementById('current-date');
+                const timeElement = document.getElementById('current-time');
+                if (dateElement) dateElement.textContent = dateString;
+                if (timeElement) timeElement.textContent = timeString;
+            } catch (error) {
+                console.error('Error updating date/time:', error);
             }
+        }
 
-            // Add click event to table view buttons
-            document.querySelectorAll('button[onclick*="viewEmployee"]').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const match = this.getAttribute('onclick').match(/viewEmployee\((\d+)\)/);
-                    if (match) viewEmployee(parseInt(match[1]));
-                });
-            });
-
-            // Add click event to table edit buttons
-            document.querySelectorAll('button[onclick*="editEmployee"]').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const match = this.getAttribute('onclick').match(/editEmployee\((\d+)\)/);
-                    if (match) editEmployee(parseInt(match[1]));
-                });
-            });
+        // ===============================================
+        // INITIALIZATION
+        // ===============================================
+        document.addEventListener('DOMContentLoaded', function () {
+            // Initialize date/time
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
 
             // Step navigation
             document.querySelectorAll('.step-nav').forEach(nav => {
-                nav.addEventListener('click', function() {
+                nav.addEventListener('click', function () {
                     const step = parseInt(this.getAttribute('data-step'));
                     if (step < currentStep || validateFormStep(currentStep)) {
                         currentStep = step;
@@ -3727,9 +4018,9 @@ $office_options = [
                 });
             });
 
-            // Next buttons
-            document.querySelectorAll('.next-step').forEach(button => {
-                button.addEventListener('click', function() {
+            // Next/Previous buttons
+            document.querySelectorAll('.next-step').forEach(btn => {
+                btn.addEventListener('click', function () {
                     const nextStep = parseInt(this.getAttribute('data-next'));
                     if (validateFormStep(currentStep)) {
                         currentStep = nextStep;
@@ -3739,75 +4030,40 @@ $office_options = [
                 });
             });
 
-            // Previous buttons
-            document.querySelectorAll('.prev-step').forEach(button => {
-                button.addEventListener('click', function() {
+            document.querySelectorAll('.prev-step').forEach(btn => {
+                btn.addEventListener('click', function () {
                     currentStep--;
                     showStep(currentStep);
                     updateStepNavigation();
                 });
             });
 
-            // Form submission
-            document.getElementById('employeeForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                // Validate all steps
-                let allValid = true;
-                for (let i = 1; i <= 3; i++) {
-                    if (!validateFormStep(i)) {
-                        allValid = false;
-                        currentStep = i;
-                        showStep(currentStep);
-                        updateStepNavigation();
-                        break;
-                    }
-                }
-
-                if (allValid) {
-                    // Show loading state
-                    const submitBtn = document.getElementById('submitBtn');
-                    const originalText = submitBtn.innerHTML;
-                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
-                    submitBtn.disabled = true;
-
-                    // Submit form
-                    setTimeout(() => {
-                        this.submit();
-                    }, 500);
-                }
-            });
-
-            // File upload functionality
+            // File upload zones
             document.querySelectorAll('.file-drop-zone').forEach(zone => {
                 const fileInput = zone.querySelector('input[type="file"]');
                 const fileStatus = zone.querySelector('.file-status');
 
-                zone.addEventListener('click', function() {
-                    fileInput.click();
-                });
+                if (fileInput && fileStatus) {
+                    zone.addEventListener('click', () => fileInput.click());
 
-                fileInput.addEventListener('change', function() {
-                    if (this.files.length > 0) {
-                        const fileName = this.files[0].name;
-                        const fileSize = (this.files[0].size / 1024 / 1024).toFixed(2);
+                    fileInput.addEventListener('change', function () {
+                        if (this.files.length > 0) {
+                            const fileName = this.files[0].name;
+                            const fileSize = (this.files[0].size / 1024 / 1024).toFixed(2);
 
-                        if (fileSize > 10) {
-                            alert('File size must be less than 10MB');
-                            this.value = '';
-                            fileStatus.textContent = '';
-                            return;
+                            if (fileSize > 10) {
+                                alert('File size must be less than 10MB');
+                                this.value = '';
+                                fileStatus.textContent = '';
+                                return;
+                            }
+
+                            fileStatus.textContent = `Selected: ${fileName.substring(0, 20)}${fileName.length > 20 ? '...' : ''}`;
+                            zone.classList.add('border-green-500', 'bg-green-50');
+                            zone.classList.remove('border-gray-300', 'bg-gray-50');
                         }
-
-                        fileStatus.textContent = `Selected: ${fileName.substring(0, 20)}${fileName.length > 20 ? '...' : ''}`;
-                        zone.classList.add('border-green-500', 'bg-green-50');
-                        zone.classList.remove('border-gray-300', 'bg-gray-50');
-                    } else {
-                        fileStatus.textContent = '';
-                        zone.classList.remove('border-green-500', 'bg-green-50');
-                        zone.classList.add('border-gray-300', 'bg-gray-50');
-                    }
-                });
+                    });
+                }
             });
 
             // Profile image upload
@@ -3815,10 +4071,9 @@ $office_options = [
             const profileImageContainer = document.getElementById('profileImageContainer');
 
             if (profileImageInput && profileImageContainer) {
-                profileImageInput.addEventListener('change', function() {
+                profileImageInput.addEventListener('change', function () {
                     if (this.files && this.files[0]) {
                         const fileSize = (this.files[0].size / 1024 / 1024).toFixed(2);
-
                         if (fileSize > 5) {
                             alert('Profile image size must be less than 5MB');
                             this.value = '';
@@ -3826,7 +4081,7 @@ $office_options = [
                         }
 
                         const reader = new FileReader();
-                        reader.onload = function(e) {
+                        reader.onload = (e) => {
                             profileImageContainer.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
                         };
                         reader.readAsDataURL(this.files[0]);
@@ -3835,270 +4090,40 @@ $office_options = [
             }
 
             // Confirmation buttons
-            document.getElementById('confirmInactivateBtn').addEventListener('click', function() {
-                if (inactivateEmployeeId) {
-                    window.location.href = `contractofservice.php?inactivate_id=${inactivateEmployeeId}`;
-                }
-            });
+            const confirmInactivateBtn = document.getElementById('confirmInactivateBtn');
+            if (confirmInactivateBtn) {
+                confirmInactivateBtn.addEventListener('click', function () {
+                    if (inactivateEmployeeId) {
+                        window.location.href = `contractofservice.php?inactivate_id=${inactivateEmployeeId}`;
+                    }
+                });
+            }
 
-            document.getElementById('confirmActivateBtn').addEventListener('click', function() {
-                if (activateEmployeeId) {
-                    window.location.href = `contractofservice.php?activate_id=${activateEmployeeId}`;
-                }
-            });
+            const confirmActivateBtn = document.getElementById('confirmActivateBtn');
+            if (confirmActivateBtn) {
+                confirmActivateBtn.addEventListener('click', function () {
+                    if (activateEmployeeId) {
+                        window.location.href = `contractofservice.php?activate_id=${activateEmployeeId}`;
+                    }
+                });
+            }
 
             // Close modals on backdrop click
-            document.getElementById('modalBackdrop').addEventListener('click', function() {
-                closeModal();
-                closeViewModal();
-                closeInactivateModal();
-                closeActivateModal();
-            });
-
-            // Auto-open edit modal if needed
-            <?php if ($is_edit && $employee_data): ?>
-                setTimeout(() => {
-                    openEditModal(<?php echo json_encode($employee_data); ?>);
-                }, 100);
-            <?php endif; ?>
+            const backdrop = document.getElementById('modalBackdrop');
+            if (backdrop) {
+                backdrop.addEventListener('click', function () {
+                    closeModal();
+                    closeViewModal();
+                    closeInactivateModal();
+                    closeActivateModal();
+                });
+            }
 
             // Search functionality
             const searchInput = document.getElementById('search-employee');
             if (searchInput) {
-                // Real-time search as user types
                 searchInput.addEventListener('input', searchEmployees);
-
-                // Clear search functionality
-                const clearSearchBtn = document.createElement('button');
-                clearSearchBtn.type = 'button';
-                clearSearchBtn.className = 'absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600';
-                clearSearchBtn.innerHTML = '<i class="fas fa-times"></i>';
-                clearSearchBtn.style.display = 'none';
-                clearSearchBtn.addEventListener('click', function() {
-                    searchInput.value = '';
-                    searchEmployees();
-                    this.style.display = 'none';
-                });
-
-                // Add clear button to search container
-                const searchContainer = searchInput.parentNode;
-                searchContainer.classList.add('relative');
-                searchContainer.appendChild(clearSearchBtn);
-
-                // Show/hide clear button based on input
-                searchInput.addEventListener('input', function() {
-                    if (this.value.length > 0) {
-                        clearSearchBtn.style.display = 'flex';
-                    } else {
-                        clearSearchBtn.style.display = 'none';
-                    }
-                });
             }
-        });
-
-        // ===============================================
-        // VALIDATION FUNCTION
-        // ===============================================
-        function validateFormStep(step) {
-            let isValid = true;
-            const stepElement = document.getElementById(`step${step}`);
-            const inputs = stepElement.querySelectorAll('input[required], select[required]');
-
-            inputs.forEach(input => {
-                // Reset error state
-                input.classList.remove('border-red-500');
-                const errorElement = input.nextElementSibling;
-                if (errorElement && errorElement.classList.contains('validation-error')) {
-                    errorElement.classList.add('hidden');
-                }
-
-                // Validate
-                if (!input.checkValidity()) {
-                    isValid = false;
-                    input.classList.add('border-red-500');
-                    if (errorElement && errorElement.classList.contains('validation-error')) {
-                        errorElement.classList.remove('hidden');
-                    }
-                }
-            });
-
-            return isValid;
-        }
-
-        // ===============================================
-        // EDIT MODAL FUNCTION
-        // ===============================================
-        function openEditModal(employeeData) {
-            isEditMode = true;
-            document.getElementById('modalTitle').textContent = 'Edit Contractual Employee';
-            document.getElementById('formAction').value = 'edit';
-            document.getElementById('employeeId').value = employeeData.id;
-            document.getElementById('submitButtonText').textContent = 'Update Employee';
-
-            // Fill form data
-            document.getElementById('employee_id_input').value = employeeData.employee_id || '';
-            document.getElementById('full_name').value = employeeData.full_name || '';
-            document.getElementById('designation').value = employeeData.designation || '';
-            document.getElementById('office').value = employeeData.office || '';
-            document.getElementById('period_from').value = employeeData.period_from || '';
-            document.getElementById('period_to').value = employeeData.period_to || '';
-            document.getElementById('wages').value = employeeData.wages || '';
-            document.getElementById('contribution').value = employeeData.contribution || '';
-            document.getElementById('first_name').value = employeeData.first_name || '';
-            document.getElementById('last_name').value = employeeData.last_name || '';
-            document.getElementById('mobile_number').value = employeeData.mobile_number || '';
-            document.getElementById('email_address').value = employeeData.email_address || '';
-            document.getElementById('date_of_birth').value = employeeData.date_of_birth || '';
-            document.getElementById('marital_status').value = employeeData.marital_status || '';
-            document.getElementById('gender').value = employeeData.gender || '';
-            document.getElementById('nationality').value = employeeData.nationality || 'Filipino';
-            document.getElementById('street_address').value = employeeData.street_address || '';
-            document.getElementById('city').value = employeeData.city || 'Paluan';
-            document.getElementById('state_region').value = employeeData.state_region || 'Occidental Mindoro';
-            document.getElementById('zip_code').value = employeeData.zip_code || '';
-            document.getElementById('joining_date').value = employeeData.joining_date || '';
-
-            // Eligibility
-            const eligibility = employeeData.eligibility || 'Not Eligible';
-            document.querySelectorAll('input[name="eligibility"]').forEach(radio => {
-                radio.checked = (radio.value === eligibility);
-            });
-
-            // Profile image
-            const profileImageContainer = document.getElementById('profileImageContainer');
-            if (employeeData.profile_image_path) {
-                profileImageContainer.innerHTML = `<img src="${employeeData.profile_image_path}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
-                document.getElementById('current_profile_image').value = employeeData.profile_image_path;
-            } else {
-                profileImageContainer.innerHTML = '<i class="fas fa-user text-gray-400 text-3xl md:text-4xl"></i>';
-                document.getElementById('current_profile_image').value = '';
-            }
-
-            // File status
-            const fileFields = [{
-                    id: 'doc_id',
-                    field: 'doc_id_path'
-                },
-                {
-                    id: 'doc_resume',
-                    field: 'doc_resume_path'
-                },
-                {
-                    id: 'doc_service',
-                    field: 'doc_service_path'
-                },
-                {
-                    id: 'doc_appointment',
-                    field: 'doc_appointment_path'
-                },
-                {
-                    id: 'doc_transcript',
-                    field: 'doc_transcript_path'
-                },
-                {
-                    id: 'doc_eligibility',
-                    field: 'doc_eligibility_path'
-                }
-            ];
-
-            fileFields.forEach(fileField => {
-                const zone = document.querySelector(`[data-file-input="${fileField.id}"]`);
-                if (zone) {
-                    const fileStatus = zone.querySelector('.file-status');
-                    const fileInput = zone.querySelector('input[type="file"]');
-
-                    if (employeeData[fileField.field]) {
-                        const fileName = employeeData[fileField.field].split('/').pop();
-                        fileStatus.textContent = `Current: ${fileName.substring(0, 20)}${fileName.length > 20 ? '...' : ''}`;
-                        zone.classList.add('border-green-500', 'bg-green-50');
-                        zone.classList.remove('border-gray-300', 'bg-gray-50');
-                    } else {
-                        fileStatus.textContent = '';
-                        zone.classList.remove('border-green-500', 'bg-green-50');
-                        zone.classList.add('border-gray-300', 'bg-gray-50');
-                    }
-
-                    // Clear file input
-                    if (fileInput) {
-                        fileInput.value = '';
-                    }
-                }
-            });
-
-            // Reset to step 1
-            resetFormToStep1();
-
-            // Show modal
-            showModal('employeeModal');
-        }
-
-        // ===============================================
-        // NAVBAR DATE & TIME FUNCTIONALITY - FIXED
-        // ===============================================
-        function updateDateTime() {
-            try {
-                const now = new Date();
-
-                // Format date: Weekday, Month Day, Year
-                const optionsDate = {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                };
-                const dateString = now.toLocaleDateString('en-US', optionsDate);
-
-                // Format time: HH:MM:SS AM/PM
-                let hours = now.getHours();
-                let minutes = now.getMinutes();
-                let seconds = now.getSeconds();
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                hours = hours % 12;
-                hours = hours ? hours : 12; // Convert 0 to 12
-                minutes = minutes < 10 ? '0' + minutes : minutes;
-                seconds = seconds < 10 ? '0' + seconds : seconds;
-
-                const timeString = `${hours}:${minutes}:${seconds} ${ampm}`;
-
-                // Update the DOM
-                const dateElement = document.getElementById('current-date');
-                const timeElement = document.getElementById('current-time');
-
-                if (dateElement) {
-                    dateElement.textContent = dateString;
-                } else {
-                    console.error('Date element not found');
-                }
-
-                if (timeElement) {
-                    timeElement.textContent = timeString;
-                } else {
-                    console.error('Time element not found');
-                }
-
-            } catch (error) {
-                console.error('Error updating date/time:', error);
-                // Set fallback values
-                const dateElement = document.getElementById('current-date');
-                const timeElement = document.getElementById('current-time');
-
-                if (dateElement) dateElement.textContent = new Date().toLocaleDateString();
-                if (timeElement) timeElement.textContent = new Date().toLocaleTimeString();
-            }
-        }
-
-        // Initialize date/time immediately when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing date/time...');
-
-            // Initial call to display date/time immediately
-            updateDateTime();
-
-            // Update every second
-            setInterval(updateDateTime, 1000);
-
-            // Force update after 100ms in case of timing issues
-            setTimeout(updateDateTime, 100);
         });
     </script>
 </body>

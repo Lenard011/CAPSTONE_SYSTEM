@@ -82,14 +82,14 @@ function handleAddEmployee($conn)
         // Upload files
         $uploaded_files = uploadFiles();
 
-        // Prepare data
-        $full_name = mysqli_real_escape_string($conn, $_POST['full_name']);
+        // Prepare data - DEFINE THESE FIRST
         $position = mysqli_real_escape_string($conn, $_POST['position']);
         $office = mysqli_real_escape_string($conn, $_POST['office']);
         $monthly_salary = floatval($_POST['monthly_salary']);
         $amount_accrued = floatval($_POST['amount_accrued']);
         $first_name = mysqli_real_escape_string($conn, $_POST['first_name']);
         $last_name = mysqli_real_escape_string($conn, $_POST['last_name']);
+        $middle_name = mysqli_real_escape_string($conn, $_POST['middle']);
         $mobile_number = mysqli_real_escape_string($conn, $_POST['mobile_number']);
         $email_address = mysqli_real_escape_string($conn, $_POST['email_address']);
         $date_of_birth = mysqli_real_escape_string($conn, $_POST['date_of_birth']);
@@ -102,50 +102,119 @@ function handleAddEmployee($conn)
         $ip_code = mysqli_real_escape_string($conn, $_POST['ip_code']);
         $joining_date = mysqli_real_escape_string($conn, $_POST['joining_date']);
         $eligibility = mysqli_real_escape_string($conn, $_POST['eligibility']);
-        $status = 'Active'; // New employees are active by default
+        $status = 'Active';
 
-        // Hash password
-        $password_hash = password_hash($_POST['password'], PASSWORD_DEFAULT);
-
-        // Insert query
-        $sql = "INSERT INTO permanent (
-            employee_id, full_name, position, office, monthly_salary, amount_accrued,
-            first_name, last_name, mobile_number, email_address, date_of_birth,
-            marital_status, gender, nationality, street_address, city, state_region,
-            ip_code, joining_date, eligibility, status, password_hash,
-            profile_image_path, doc_id_path, doc_resume_path, doc_service_path,
-            doc_appointment_path, doc_transcript_path, doc_eligibility_path,
-            created_at, updated_at
-        ) VALUES (
-            '$employee_id', '$full_name', '$position', '$office', $monthly_salary, $amount_accrued,
-            '$first_name', '$last_name', '$mobile_number', '$email_address', '$date_of_birth',
-            '$marital_status', '$gender', '$nationality', '$street_address', '$city', '$state_region',
-            '$ip_code', '$joining_date', '$eligibility', '$status', '$password_hash',
-            '" . ($uploaded_files['profile_image'] ?? '') . "',
-            '" . ($uploaded_files['doc_id'] ?? '') . "',
-            '" . ($uploaded_files['doc_resume'] ?? '') . "',
-            '" . ($uploaded_files['doc_service'] ?? '') . "',
-            '" . ($uploaded_files['doc_appointment'] ?? '') . "',
-            '" . ($uploaded_files['doc_transcript'] ?? '') . "',
-            '" . ($uploaded_files['doc_eligibility'] ?? '') . "',
-            NOW(), NOW()
-        )";
-
-        if ($conn->query($sql) === TRUE) {
-            $conn->commit();
-            $form_submit_success = "Permanent employee added successfully with Employee ID: " . $employee_id;
-
-            // Clear POST data
-            $_POST = array();
-        } else {
-            throw new Exception("Error adding employee: " . $conn->error);
+        // SIMPLE DUPLICATE NAME CHECK - MOVED HERE after variables are defined
+        $check_name_sql = "SELECT employee_id, first_name, last_name, middle, status FROM permanent 
+                   WHERE LOWER(TRIM(first_name)) = LOWER(TRIM('$first_name')) 
+                   AND LOWER(TRIM(last_name)) = LOWER(TRIM('$last_name')) 
+                   AND LOWER(TRIM(middle)) = LOWER(TRIM('$middle_name'))";
+        $name_result = $conn->query($check_name_sql);
+        if ($name_result->num_rows > 0) {
+            $dup = $name_result->fetch_assoc();
+            throw new Exception("Duplicate entry: Employee with name '$first_name " . substr($middle_name, 0, 1) . ". $last_name' already exists (Employee ID: " . $dup['employee_id'] . ", Status: " . $dup['status'] . ").");
         }
+
+        // ===== CREATE USER ACCOUNT =====
+        // Generate a default password
+        $default_password = bin2hex(random_bytes(8));
+        $password_hash = password_hash($default_password, PASSWORD_DEFAULT);
+
+        // Check what columns exist in your users table
+        $table_check = $conn->query("SHOW COLUMNS FROM users");
+        $user_columns = [];
+        while ($col = $table_check->fetch_assoc()) {
+            $user_columns[] = $col['Field'];
+        }
+
+        // Build dynamic INSERT query based on existing columns
+        $user_fields = [];
+        $user_values = [];
+
+        // Always include these basic fields
+        $user_fields[] = 'username';
+        $user_values[] = "'$employee_id'";
+
+        $user_fields[] = 'email';
+        $user_values[] = "'$email_address'";
+
+        $user_fields[] = 'password_hash';
+        $user_values[] = "'$password_hash'";
+
+        $user_fields[] = 'status';
+        $user_values[] = "'Active'";
+
+        $user_fields[] = 'created_at';
+        $user_values[] = 'NOW()';
+
+        // Add role if column exists
+        if (in_array('role', $user_columns)) {
+            $user_fields[] = 'role';
+            $user_values[] = "'employee'";
+        }
+
+        // Add role_id if column exists
+        if (in_array('role_id', $user_columns)) {
+            $user_fields[] = 'role_id';
+            $user_values[] = "2";
+        }
+
+        // Add full_name if column exists
+        $full_name = $first_name . ' ' . (!empty($middle_name) ? substr($middle_name, 0, 1) . '. ' : '') . $last_name;
+        if (in_array('full_name', $user_columns)) {
+            $user_fields[] = 'full_name';
+            $user_values[] = "'" . mysqli_real_escape_string($conn, $full_name) . "'";
+        }
+
+        // Build the INSERT query
+        $user_sql = "INSERT INTO users (" . implode(', ', $user_fields) . ") 
+                     VALUES (" . implode(', ', $user_values) . ")";
+
+        if ($conn->query($user_sql) === TRUE) {
+            $user_id = $conn->insert_id;
+
+            // Now insert into permanent table with the user_id
+            $sql = "INSERT INTO permanent (
+                employee_id, user_id, position, office, monthly_salary, amount_accrued,
+                first_name, last_name, middle, mobile_number, email_address, date_of_birth,
+                marital_status, gender, nationality, street_address, city, state_region,
+                ip_code, joining_date, eligibility, status,
+                profile_image_path, doc_id_path, doc_resume_path, doc_service_path,
+                doc_appointment_path, doc_transcript_path, doc_eligibility_path,
+                created_at, updated_at
+            ) VALUES (
+                '$employee_id', $user_id, '$position', '$office', $monthly_salary, $amount_accrued,
+                '$first_name', '$last_name', '$middle_name', '$mobile_number', '$email_address', '$date_of_birth',
+                '$marital_status', '$gender', '$nationality', '$street_address', '$city', '$state_region',
+                '$ip_code', '$joining_date', '$eligibility', '$status',
+                '" . ($uploaded_files['profile_image'] ?? '') . "',
+                '" . ($uploaded_files['doc_id'] ?? '') . "',
+                '" . ($uploaded_files['doc_resume'] ?? '') . "',
+                '" . ($uploaded_files['doc_service'] ?? '') . "',
+                '" . ($uploaded_files['doc_appointment'] ?? '') . "',
+                '" . ($uploaded_files['doc_transcript'] ?? '') . "',
+                '" . ($uploaded_files['doc_eligibility'] ?? '') . "',
+                NOW(), NOW()
+            )";
+
+            if ($conn->query($sql) === TRUE) {
+                $conn->commit();
+                $form_submit_success = "Permanent employee added successfully with Employee ID: " . $employee_id . ". Default password: " . $default_password;
+
+                // Clear POST data
+                $_POST = array();
+            } else {
+                throw new Exception("Error adding employee: " . $conn->error);
+            }
+        } else {
+            throw new Exception("Error creating user account: " . $conn->error);
+        }
+
     } catch (Exception $e) {
         $conn->rollback();
         $form_submit_error = $e->getMessage();
     }
 }
-
 function handleEditEmployee($conn)
 {
     global $form_submit_success, $form_submit_error;
@@ -160,17 +229,14 @@ function handleEditEmployee($conn)
         // Start transaction
         $conn->begin_transaction();
 
-        // Upload new files if provided
-        $uploaded_files = uploadFiles();
-
         // Prepare data
-        $full_name = mysqli_real_escape_string($conn, $_POST['full_name']);
         $position = mysqli_real_escape_string($conn, $_POST['position']);
         $office = mysqli_real_escape_string($conn, $_POST['office']);
         $monthly_salary = floatval($_POST['monthly_salary']);
         $amount_accrued = floatval($_POST['amount_accrued']);
         $first_name = mysqli_real_escape_string($conn, $_POST['first_name']);
         $last_name = mysqli_real_escape_string($conn, $_POST['last_name']);
+        $middle_name = mysqli_real_escape_string($conn, $_POST['middle']);
         $mobile_number = mysqli_real_escape_string($conn, $_POST['mobile_number']);
         $email_address = mysqli_real_escape_string($conn, $_POST['email_address']);
         $date_of_birth = mysqli_real_escape_string($conn, $_POST['date_of_birth']);
@@ -184,22 +250,73 @@ function handleEditEmployee($conn)
         $joining_date = mysqli_real_escape_string($conn, $_POST['joining_date']);
         $eligibility = mysqli_real_escape_string($conn, $_POST['eligibility']);
 
-        // Check if password is being updated
-        $password_update = '';
-        if (!empty($_POST['password'])) {
-            $password_hash = password_hash($_POST['password'], PASSWORD_DEFAULT);
-            $password_update = ", password_hash = '$password_hash'";
+        // Upload new files if provided
+        $uploaded_files = uploadFiles();
+
+        // ===== UPDATE USER ACCOUNT IF EXISTS =====
+        // First, check if this employee has a user_id
+        $check_user_sql = "SELECT user_id FROM permanent WHERE employee_id = '$employee_id'";
+        $check_user_result = $conn->query($check_user_sql);
+
+        if ($check_user_result && $check_user_result->num_rows > 0) {
+            $user_data = $check_user_result->fetch_assoc();
+            $user_id = $user_data['user_id'];
+
+            // If user_id exists, update the users table
+            if (!empty($user_id)) {
+                // Check what columns exist in users table
+                $table_check = $conn->query("SHOW COLUMNS FROM users");
+                $user_columns = [];
+                while ($col = $table_check->fetch_assoc()) {
+                    $user_columns[] = $col['Field'];
+                }
+
+                // Build dynamic UPDATE query
+                $user_update_fields = [];
+
+                if (in_array('email', $user_columns)) {
+                    $user_update_fields[] = "email = '$email_address'";
+                }
+
+                if (in_array('username', $user_columns) && !empty($employee_id)) {
+                    $user_update_fields[] = "username = '$employee_id'";
+                }
+
+                // Update password if provided
+                if (!empty($_POST['password'])) {
+                    $password_hash = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                    if (in_array('password_hash', $user_columns)) {
+                        $user_update_fields[] = "password_hash = '$password_hash'";
+                    }
+                }
+
+                // Update full_name if column exists
+                $full_name = $first_name . ' ' . (!empty($middle_name) ? substr($middle_name, 0, 1) . '. ' : '') . $last_name;
+                if (in_array('full_name', $user_columns)) {
+                    $user_update_fields[] = "full_name = '" . mysqli_real_escape_string($conn, $full_name) . "'";
+                }
+
+                if (in_array('updated_at', $user_columns)) {
+                    $user_update_fields[] = "updated_at = NOW()";
+                }
+
+                if (!empty($user_update_fields)) {
+                    $update_user_sql = "UPDATE users SET " . implode(', ', $user_update_fields) . " WHERE id = $user_id";
+                    $conn->query($update_user_sql);
+                }
+            }
         }
 
-        // Build update query with file paths
+        // ===== UPDATE PERMANENT TABLE =====
+        // Build update query for permanent table
         $sql = "UPDATE permanent SET
-            full_name = '$full_name',
             position = '$position',
             office = '$office',
             monthly_salary = $monthly_salary,
             amount_accrued = $amount_accrued,
             first_name = '$first_name',
             last_name = '$last_name',
+            middle = '$middle_name',
             mobile_number = '$mobile_number',
             email_address = '$email_address',
             date_of_birth = '$date_of_birth',
@@ -215,34 +332,28 @@ function handleEditEmployee($conn)
             updated_at = NOW()";
 
         // Add profile image if uploaded
-        if (isset($uploaded_files['profile_image'])) {
+        if (isset($uploaded_files['profile_image']) && !empty($uploaded_files['profile_image'])) {
             $sql .= ", profile_image_path = '" . $uploaded_files['profile_image'] . "'";
         }
 
         // Add document paths if uploaded
         $doc_fields = ['doc_id', 'doc_resume', 'doc_service', 'doc_appointment', 'doc_transcript', 'doc_eligibility'];
         foreach ($doc_fields as $doc_field) {
-            if (isset($uploaded_files[$doc_field])) {
-                $db_field = str_replace('doc_', '', $doc_field) . '_path';
+            if (isset($uploaded_files[$doc_field]) && !empty($uploaded_files[$doc_field])) {
+                $db_field = $doc_field . '_path'; // Keep original field name with _path suffix
                 $sql .= ", $db_field = '" . $uploaded_files[$doc_field] . "'";
             }
         }
 
-        // Add password update if changed
-        $sql .= $password_update;
-
         $sql .= " WHERE employee_id = '$employee_id'";
 
         if ($conn->query($sql) === TRUE) {
-            if ($conn->affected_rows > 0) {
-                $conn->commit();
-                $form_submit_success = "Employee updated successfully!";
-            } else {
-                throw new Exception("No changes made or employee not found.");
-            }
+            $conn->commit();
+            $form_submit_success = "Employee updated successfully!";
         } else {
             throw new Exception("Error updating employee: " . $conn->error);
         }
+
     } catch (Exception $e) {
         $conn->rollback();
         $form_submit_error = $e->getMessage();
@@ -523,9 +634,19 @@ function handleEditRequest($conn, $employee_id)
                         <p class="text-xs text-gray-500 mt-1">Employee ID cannot be changed</p>
                     </div>
                     
-                    <div>
-                        <label for="edit_full_name" class="block mb-2 text-sm font-medium text-gray-900">Full Name *</label>
-                        <input type="text" name="full_name" id="edit_full_name" value="' . htmlspecialchars($employee['full_name']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label for="edit_first_name" class="block mb-2 text-sm font-medium text-gray-900">First Name *</label>
+                            <input type="text" name="first_name" id="edit_first_name" value="' . htmlspecialchars($employee['first_name']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                        </div>
+                        <div>
+                            <label for="edit_last_name" class="block mb-2 text-sm font-medium text-gray-900">Last Name *</label>
+                            <input type="text" name="last_name" id="edit_last_name" value="' . htmlspecialchars($employee['last_name']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                        </div>
+                        <div>
+                            <label for="edit_middle" class="block mb-2 text-sm font-medium text-gray-900">Middle Initial *</label>
+                            <input type="text" name="middle" id="edit_middle" value="' . htmlspecialchars($employee['middle']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -537,23 +658,23 @@ function handleEditRequest($conn, $employee_id)
                             <label for="edit_office" class="block mb-2 text-sm font-medium text-gray-900">Office/Department *</label>
                             <select name="office" id="edit_office" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 <option value="">Select Department</option>
-                                <option value="Office of the Municipal Mayor"' . ($employee['office'] === 'Office of the Municipal Mayor' ? ' selected' : '') . '>Office of the Municipal Mayor</option>
-                                <option value="Human Resource Management Division"' . ($employee['office'] === 'Human Resource Management Division' ? ' selected' : '') . '>Human Resource Management Division</option>
-                                <option value="Business Permit and Licensing Division"' . ($employee['office'] === 'Business Permit and Licensing Division' ? ' selected' : '') . '>Business Permit and Licensing Division</option>
-                                <option value="Sangguniang Bayan Office"' . ($employee['office'] === 'Sangguniang Bayan Office' ? ' selected' : '') . '>Sangguniang Bayan Office</option>
-                                <option value="Office of the Municipal Accountant"' . ($employee['office'] === 'Office of the Municipal Accountant' ? ' selected' : '') . '>Office of the Municipal Accountant</option>
-                                <option value="Office of the Assessor"' . ($employee['office'] === 'Office of the Assessor' ? ' selected' : '') . '>Office of the Assessor</option>
-                                <option value="Municipal Budget Office"' . ($employee['office'] === 'Municipal Budget Office' ? ' selected' : '') . '>Municipal Budget Office</option>
-                                <option value="Municipal Planning and Development Office"' . ($employee['office'] === 'Municipal Planning and Development Office' ? ' selected' : '') . '>Municipal Planning and Development Office</option>
-                                <option value="Municipal Engineering Office"' . ($employee['office'] === 'Municipal Engineering Office' ? ' selected' : '') . '>Municipal Engineering Office</option>
-                                <option value="Municipal Disaster Risk Reduction and Management Office"' . ($employee['office'] === 'Municipal Disaster Risk Reduction and Management Office' ? ' selected' : '') . '>Municipal Disaster Risk Reduction and Management Office</option>
-                                <option value="Municipal Social Welfare and Development Office"' . ($employee['office'] === 'Municipal Social Welfare and Development Office' ? ' selected' : '') . '>Municipal Social Welfare and Development Office</option>
-                                <option value="Municipal Environment and Natural Resources Office"' . ($employee['office'] === 'Municipal Environment and Natural Resources Office' ? ' selected' : '') . '>Municipal Environment and Natural Resources Office</option>
-                                <option value="Office of the Municipal Agriculturist"' . ($employee['office'] === 'Office of the Municipal Agriculturist' ? ' selected' : '') . '>Office of the Municipal Agriculturist</option>
-                                <option value="Municipal General Services Office"' . ($employee['office'] === 'Municipal General Services Office' ? ' selected' : '') . '>Municipal General Services Office</option>
-                                <option value="Municipal Public Employment Service Office"' . ($employee['office'] === 'Municipal Public Employment Service Office' ? ' selected' : '') . '>Municipal Public Employment Service Office</option>
-                                <option value="Municipal Health Office"' . ($employee['office'] === 'Municipal Health Office' ? ' selected' : '') . '>Municipal Health Office</option>
-                                <option value="Municipal Treasurer\'s Office"' . ($employee['office'] === 'Municipal Treasurer\'s Office' ? ' selected' : '') . '>Municipal Treasurer\'s Office</option>
+                                <option value="Office of the Municipal Mayor"' . ($employee['office'] == 'Office of the Municipal Mayor' ? ' selected' : '') . '>Office of the Municipal Mayor</option>
+                                <option value="Human Resource Management Division"' . ($employee['office'] == 'Human Resource Management Division' ? ' selected' : '') . '>Human Resource Management Division</option>
+                                <option value="Business Permit and Licensing Division"' . ($employee['office'] == 'Business Permit and Licensing Division' ? ' selected' : '') . '>Business Permit and Licensing Division</option>
+                                <option value="Sangguniang Bayan Office"' . ($employee['office'] == 'Sangguniang Bayan Office' ? ' selected' : '') . '>Sangguniang Bayan Office</option>
+                                <option value="Office of the Municipal Accountant"' . ($employee['office'] == 'Office of the Municipal Accountant' ? ' selected' : '') . '>Office of the Municipal Accountant</option>
+                                <option value="Office of the Assessor"' . ($employee['office'] == 'Office of the Assessor' ? ' selected' : '') . '>Office of the Assessor</option>
+                                <option value="Municipal Budget Office"' . ($employee['office'] == 'Municipal Budget Office' ? ' selected' : '') . '>Municipal Budget Office</option>
+                                <option value="Municipal Planning and Development Office"' . ($employee['office'] == 'Municipal Planning and Development Office' ? ' selected' : '') . '>Municipal Planning and Development Office</option>
+                                <option value="Municipal Engineering Office"' . ($employee['office'] == 'Municipal Engineering Office' ? ' selected' : '') . '>Municipal Engineering Office</option>
+                                <option value="Municipal Disaster Risk Reduction and Management Office"' . ($employee['office'] == 'Municipal Disaster Risk Reduction and Management Office' ? ' selected' : '') . '>Municipal Disaster Risk Reduction and Management Office</option>
+                                <option value="Municipal Social Welfare and Development Office"' . ($employee['office'] == 'Municipal Social Welfare and Development Office' ? ' selected' : '') . '>Municipal Social Welfare and Development Office</option>
+                                <option value="Municipal Environment and Natural Resources Office"' . ($employee['office'] == 'Municipal Environment and Natural Resources Office' ? ' selected' : '') . '>Municipal Environment and Natural Resources Office</option>
+                                <option value="Office of the Municipal Agriculturist"' . ($employee['office'] == 'Office of the Municipal Agriculturist' ? ' selected' : '') . '>Office of the Municipal Agriculturist</option>
+                                <option value="Municipal General Services Office"' . ($employee['office'] == 'Municipal General Services Office' ? ' selected' : '') . '>Municipal General Services Office</option>
+                                <option value="Municipal Public Employment Service Office"' . ($employee['office'] == 'Municipal Public Employment Service Office' ? ' selected' : '') . '>Municipal Public Employment Service Office</option>
+                                <option value="Municipal Health Office"' . ($employee['office'] == 'Municipal Health Office' ? ' selected' : '') . '>Municipal Health Office</option>
+                                <option value="Municipal Treasurer\'s Office"' . ($employee['office'] == 'Municipal Treasurer\'s Office' ? ' selected' : '') . '>Municipal Treasurer\'s Office</option>
                             </select>
                         </div>
                     </div>
@@ -585,8 +706,7 @@ function handleEditRequest($conn, $employee_id)
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="md:col-span-1">
                             <div class="flex flex-col items-center">
-                                <div id="editProfileImageContainer" class="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center mb-4 overflow-hidden">
-        ';
+                                <div id="editProfileImageContainer" class="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center mb-4 overflow-hidden">';
 
         if (!empty($employee['profile_image_path'])) {
             $html .= '<img src="' . htmlspecialchars($employee['profile_image_path']) . '" class="w-full h-full object-cover rounded-full" alt="Profile Image">';
@@ -600,17 +720,7 @@ function handleEditRequest($conn, $employee_id)
                                 <label for="edit_profile_image" class="cursor-pointer text-blue-600 hover:text-blue-800 text-sm font-medium text-center">
                                     <i class="fas fa-upload mr-1"></i>Change Photo
                                 </label>
-                                <input type="hidden" id="edit_current_profile_image" name="current_profile_image" value="' . htmlspecialchars($employee['profile_image_path']) . '">
-                            </div>
-                        </div>
-                        <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label for="edit_first_name" class="block mb-2 text-sm font-medium text-gray-900">First Name *</label>
-                                <input type="text" name="first_name" id="edit_first_name" value="' . htmlspecialchars($employee['first_name']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
-                            </div>
-                            <div>
-                                <label for="edit_last_name" class="block mb-2 text-sm font-medium text-gray-900">Last Name *</label>
-                                <input type="text" name="last_name" id="edit_last_name" value="' . htmlspecialchars($employee['last_name']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                <input type="hidden" id="edit_current_profile_image" name="current_profile_image" value="' . htmlspecialchars($employee['profile_image_path'] ?? '') . '">
                             </div>
                         </div>
                     </div>
@@ -635,10 +745,10 @@ function handleEditRequest($conn, $employee_id)
                             <label for="edit_marital_status" class="block mb-2 text-sm font-medium text-gray-900">Marital Status *</label>
                             <select name="marital_status" id="edit_marital_status" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 <option value="">Select Status</option>
-                                <option value="Single"' . ($employee['marital_status'] === 'Single' ? ' selected' : '') . '>Single</option>
-                                <option value="Married"' . ($employee['marital_status'] === 'Married' ? ' selected' : '') . '>Married</option>
-                                <option value="Divorced"' . ($employee['marital_status'] === 'Divorced' ? ' selected' : '') . '>Divorced</option>
-                                <option value="Widowed"' . ($employee['marital_status'] === 'Widowed' ? ' selected' : '') . '>Widowed</option>
+                                <option value="Single"' . ($employee['marital_status'] == 'Single' ? ' selected' : '') . '>Single</option>
+                                <option value="Married"' . ($employee['marital_status'] == 'Married' ? ' selected' : '') . '>Married</option>
+                                <option value="Divorced"' . ($employee['marital_status'] == 'Divorced' ? ' selected' : '') . '>Divorced</option>
+                                <option value="Widowed"' . ($employee['marital_status'] == 'Widowed' ? ' selected' : '') . '>Widowed</option>
                             </select>
                         </div>
                     </div>
@@ -648,9 +758,9 @@ function handleEditRequest($conn, $employee_id)
                             <label for="edit_gender" class="block mb-2 text-sm font-medium text-gray-900">Gender *</label>
                             <select name="gender" id="edit_gender" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 <option value="">Select Gender</option>
-                                <option value="Male"' . ($employee['gender'] === 'Male' ? ' selected' : '') . '>Male</option>
-                                <option value="Female"' . ($employee['gender'] === 'Female' ? ' selected' : '') . '>Female</option>
-                                <option value="Other"' . ($employee['gender'] === 'Other' ? ' selected' : '') . '>Other</option>
+                                <option value="Male"' . ($employee['gender'] == 'Male' ? ' selected' : '') . '>Male</option>
+                                <option value="Female"' . ($employee['gender'] == 'Female' ? ' selected' : '') . '>Female</option>
+                                <option value="Other"' . ($employee['gender'] == 'Other' ? ' selected' : '') . '>Other</option>
                             </select>
                         </div>
                         <div>
@@ -678,17 +788,7 @@ function handleEditRequest($conn, $employee_id)
                             <input type="text" name="ip_code" id="edit_ip_code" value="' . htmlspecialchars($employee['ip_code']) . '" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                         </div>
                     </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="edit_password" class="block mb-2 text-sm font-medium text-gray-900">Password (Leave blank to keep current)</label>
-                            <input type="password" name="password" id="edit_password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" placeholder="Enter new password">
-                        </div>
-                        <div>
-                            <label for="edit_confirm_password" class="block mb-2 text-sm font-medium text-gray-900">Confirm Password</label>
-                            <input type="password" name="confirm_password" id="edit_confirm_password" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" placeholder="Confirm new password">
-                        </div>
-                    </div>
+                                   
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -699,11 +799,11 @@ function handleEditRequest($conn, $employee_id)
                             <label class="block mb-2 text-sm font-medium text-gray-900">Civil Service Eligibility *</label>
                             <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
                                 <label class="inline-flex items-center">
-                                    <input type="radio" name="eligibility" value="Eligible" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"' . ($employee['eligibility'] === 'Eligible' ? ' checked' : '') . '>
+                                    <input type="radio" name="eligibility" value="Eligible" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"' . ($employee['eligibility'] == 'Eligible' ? ' checked' : '') . '>
                                     <span class="ml-2 text-sm font-medium text-gray-900">Eligible</span>
                                 </label>
                                 <label class="inline-flex items-center">
-                                    <input type="radio" name="eligibility" value="Not Eligible" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"' . ($employee['eligibility'] === 'Not Eligible' ? ' checked' : '') . '>
+                                    <input type="radio" name="eligibility" value="Not Eligible" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"' . ($employee['eligibility'] == 'Not Eligible' ? ' checked' : '') . '>
                                     <span class="ml-2 text-sm font-medium text-gray-900">Not Eligible</span>
                                 </label>
                             </div>
@@ -940,19 +1040,90 @@ if ($total_pages > 0 && $current_page > $total_pages) {
 }
 
 // Fetch employees for current page
-$sql = "SELECT id, employee_id, full_name, position, office, monthly_salary, amount_accrued, status 
+$sql = "SELECT id, employee_id, first_name, last_name, middle, position, office, monthly_salary, amount_accrued, status 
         FROM permanent 
         $where_clause 
-        ORDER BY full_name ASC 
+        ORDER BY first_name ASC 
         LIMIT $offset, $records_per_page";
 
 $result = $conn->query($sql);
 $employees = [];
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
+        // CONSTRUCT FULL NAME FROM COMPONENTS
+        $first_name = isset($row['first_name']) ? trim($row['first_name']) : '';
+        $last_name = isset($row['last_name']) ? trim($row['last_name']) : '';
+        $middle = isset($row['middle']) ? trim($row['middle']) : '';
+
+        // Build the full name
+        $full_name_parts = [];
+
+        if (!empty($first_name)) {
+            $full_name_parts[] = $first_name;
+        }
+
+        if (!empty($middle)) {
+            $full_name_parts[] = substr($middle, 0, 1) . '.';
+        }
+
+        if (!empty($last_name)) {
+            $full_name_parts[] = $last_name;
+        }
+
+        $full_name = !empty($full_name_parts) ? implode(' ', $full_name_parts) : 'No Name Provided';
+
+        // ADD THE CONSTRUCTED FULL NAME TO THE ROW
+        $row['full_name'] = $full_name;
+
         $employees[] = $row;
     }
 }
+
+// Add this temporarily to see what's happening
+if (isset($_GET['debug'])) {
+    echo '<pre>';
+    echo "Total employees fetched: " . count($employees) . "\n\n";
+    foreach ($employees as $emp) {
+        if ($emp['id'] == 89) {
+            echo "EMPLOYEE ID 89 FOUND:\n";
+            print_r($emp);
+            break;
+        }
+    }
+    echo '</pre>';
+}
+
+// Add search parameter
+$search_term = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// Modify the WHERE clause to include search
+$where_clause = "WHERE 1=1";
+if ($show_inactive) {
+    $where_clause .= " AND status = 'Inactive'";
+} else {
+    $where_clause .= " AND status = 'Active'";
+}
+
+if (!empty($filter_office) && $filter_office !== 'all') {
+    $safe_office = mysqli_real_escape_string($conn, $filter_office);
+    $where_clause .= " AND office = '$safe_office'";
+}
+
+// Add search condition
+if (!empty($search_term)) {
+    $search_term_escaped = mysqli_real_escape_string($conn, $search_term);
+    $where_clause .= " AND (
+        employee_id LIKE '%$search_term_escaped%' OR 
+        first_name LIKE '%$search_term_escaped%' OR 
+        last_name LIKE '%$search_term_escaped%' OR 
+        middle LIKE '%$search_term_escaped%' OR 
+        CONCAT(first_name, ' ', last_name) LIKE '%$search_term_escaped%' OR
+        CONCAT(first_name, ' ', middle, ' ', last_name) LIKE '%$search_term_escaped%' OR
+        position LIKE '%$search_term_escaped%' OR 
+        office LIKE '%$search_term_escaped%'
+    )";
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -1943,21 +2114,31 @@ if ($result && $result->num_rows > 0) {
 
                 <div class="bg-white shadow-md sm:rounded-lg overflow-hidden">
                     <!-- Search and Filter Section -->
+                    <!-- Search and Filter Section -->
                     <div
                         class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
                         <div class="w-full md:w-1/3">
-                            <form class="flex items-center">
-                                <label for="simple-search" class="sr-only">Search</label>
+                            <form class="flex items-center" method="GET" action="permanent.php" id="searchForm">
+                                <?php if ($show_inactive): ?>
+                                    <input type="hidden" name="show_inactive" value="1">
+                                <?php endif; ?>
+                                <?php if (!empty($filter_office) && $filter_office !== 'all'): ?>
+                                    <input type="hidden" name="office"
+                                        value="<?php echo htmlspecialchars($filter_office); ?>">
+                                <?php endif; ?>
+                                <label for="search-input" class="sr-only">Search</label>
                                 <div class="relative w-full">
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                         <i class="fas fa-search text-gray-500"></i>
                                     </div>
-                                    <input type="text" id="simple-search"
+                                    <input type="text" id="search-input" name="search"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2"
-                                        placeholder="Search for Employee">
+                                        placeholder="Search for Employee (ID, Name, Position, Department)"
+                                        value="<?php echo htmlspecialchars($search_term); ?>">
                                 </div>
                             </form>
                         </div>
+                        <!-- Rest of your filter section remains exactly the same -->
                         <div
                             class="w-full md:w-auto flex flex-col md:flex-row space-y-2 md:space-y-0 items-stretch md:items-center justify-end md:space-x-3 flex-shrink-0">
                             <!-- Filter Dropdown -->
@@ -1973,58 +2154,58 @@ if ($result && $result->num_rows > 0) {
                                     class="z-10 hidden absolute w-48 bg-white rounded-lg shadow-lg mt-1">
                                     <ul class="py-1 text-sm text-gray-700 max-h-64 overflow-y-auto"
                                         aria-labelledby="filterDropdownButton">
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=all"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=all<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo ($filter_office === 'all' || empty($filter_office)) ? 'bg-blue-50 text-blue-600' : ''; ?>">All
                                                 Departments</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Municipal Mayor"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Municipal Mayor<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Office of the Municipal Mayor' ? 'bg-blue-50 text-blue-600' : ''; ?>">Office
                                                 of the Municipal Mayor</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Human Resource Management Division"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Human Resource Management Division<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Human Resource Management Division' ? 'bg-blue-50 text-blue-600' : ''; ?>">Human
                                                 Resource Management Division</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Business Permit and Licensing Division"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Business Permit and Licensing Division<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Business Permit and Licensing Division' ? 'bg-blue-50 text-blue-600' : ''; ?>">Business
                                                 Permit and Licensing Division</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Sangguniang Bayan Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Sangguniang Bayan Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Sangguniang Bayan Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Sangguniang
                                                 Bayan Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Municipal Accountant"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Municipal Accountant<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Office of the Municipal Accountant' ? 'bg-blue-50 text-blue-600' : ''; ?>">Office
                                                 of the Municipal Accountant</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Assessor"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Assessor<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Office of the Assessor' ? 'bg-blue-50 text-blue-600' : ''; ?>">Office
                                                 of the Assessor</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Budget Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Budget Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Budget Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Budget Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Planning and Development Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Planning and Development Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Planning and Development Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Planning and Development Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Engineering Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Engineering Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Engineering Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Engineering Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Disaster Risk Reduction and Management Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Disaster Risk Reduction and Management Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Disaster Risk Reduction and Management Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Disaster Risk Reduction and Management Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Social Welfare and Development Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Social Welfare and Development Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Social Welfare and Development Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Social Welfare and Development Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Environment and Natural Resources Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Environment and Natural Resources Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Environment and Natural Resources Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Environment and Natural Resources Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Municipal Agriculturist"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Office of the Municipal Agriculturist<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Office of the Municipal Agriculturist' ? 'bg-blue-50 text-blue-600' : ''; ?>">Office
                                                 of the Municipal Agriculturist</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal General Services Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal General Services Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal General Services Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 General Services Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Public Employment Service Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Public Employment Service Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Public Employment Service Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Public Employment Service Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Health Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Health Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Health Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Health Office</a></li>
-                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Treasurer's Office"
+                                        <li><a href="permanent.php?<?php echo $show_inactive ? 'show_inactive=1&' : ''; ?>office=Municipal Treasurer's Office<?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
                                                 class="block px-4 py-2 hover:bg-gray-100 <?php echo $filter_office === 'Municipal Treasurer\'s Office' ? 'bg-blue-50 text-blue-600' : ''; ?>">Municipal
                                                 Treasurer's Office</a></li>
                                     </ul>
@@ -2032,15 +2213,20 @@ if ($result && $result->num_rows > 0) {
                             </div>
 
                             <!-- Records per page selector -->
-                            <div class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-3 py-2.5 hover:border-blue-500 transition-colors">
+                            <div
+                                class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-3 py-2.5 hover:border-blue-500 transition-colors">
                                 <span class="text-sm text-gray-600 whitespace-nowrap">Show:</span>
                                 <select id="recordsPerPage" onchange="changeRecordsPerPage(this.value)"
                                     class="bg-transparent border-none text-gray-900 text-sm focus:outline-none focus:ring-0 cursor-pointer appearance-none">
                                     <option value="5" <?php echo ($records_per_page == 5) ? 'selected' : ''; ?>>5</option>
-                                    <option value="10" <?php echo ($records_per_page == 10) ? 'selected' : ''; ?>>10</option>
-                                    <option value="25" <?php echo ($records_per_page == 25) ? 'selected' : ''; ?>>25</option>
-                                    <option value="50" <?php echo ($records_per_page == 50) ? 'selected' : ''; ?>>50</option>
-                                    <option value="100" <?php echo ($records_per_page == 100) ? 'selected' : ''; ?>>100</option>
+                                    <option value="10" <?php echo ($records_per_page == 10) ? 'selected' : ''; ?>>10
+                                    </option>
+                                    <option value="25" <?php echo ($records_per_page == 25) ? 'selected' : ''; ?>>25
+                                    </option>
+                                    <option value="50" <?php echo ($records_per_page == 50) ? 'selected' : ''; ?>>50
+                                    </option>
+                                    <option value="100" <?php echo ($records_per_page == 100) ? 'selected' : ''; ?>>100
+                                    </option>
                                 </select>
                                 <span class="text-sm text-gray-600 whitespace-nowrap">per page</span>
                             </div>
@@ -2108,10 +2294,12 @@ if ($result && $result->num_rows > 0) {
                                                         ₱<?php echo number_format($employee['monthly_salary'], 2); ?> / month
                                                     </div>
                                                     <div class="text-sm text-gray-600 mt-1">Accrued:
-                                                        ₱<?php echo number_format($employee['amount_accrued'], 2); ?></div>
+                                                        ₱<?php echo number_format($employee['amount_accrued'], 2); ?>
+                                                    </div>
                                                 </div>
-                                                <span
-                                                    class="hidden md:inline"><?php echo htmlspecialchars($employee['full_name']); ?></span>
+                                                <span class="hidden md:inline">
+                                                    <?php echo htmlspecialchars($employee['full_name']); ?>
+                                                </span>
                                             </th>
                                             <td class="px-3 md:px-6 py-4 hidden md:table-cell">
                                                 <?php echo htmlspecialchars($employee['position']); ?>
@@ -2126,10 +2314,10 @@ if ($result && $result->num_rows > 0) {
                                                 </span>
                                             </td>
                                             <td class="px-3 md:px-6 py-4 text-right hidden md:table-cell">
-                                                <?php echo '₱' . number_format($employee['monthly_salary'], 2); ?>
+                                                ₱<?php echo number_format($employee['monthly_salary'], 2); ?>
                                             </td>
                                             <td class="px-3 md:px-6 py-4 text-right hidden md:table-cell">
-                                                <?php echo '₱' . number_format($employee['amount_accrued'], 2); ?>
+                                                ₱<?php echo number_format($employee['amount_accrued'], 2); ?>
                                             </td>
                                             <td class="px-3 md:px-6 py-4 text-center">
                                                 <div class="action-buttons">
@@ -2181,7 +2369,8 @@ if ($result && $result->num_rows > 0) {
                             of
                             <span class="font-semibold text-gray-900"><?php echo $total_records; ?></span>
                             <?php if (!empty($filter_office) && $filter_office !== 'all'): ?>
-                                <span class="text-blue-600 ml-2">[Filtered by: <?php echo htmlspecialchars($filter_office); ?>]</span>
+                                <span class="text-blue-600 ml-2">[Filtered by:
+                                    <?php echo htmlspecialchars($filter_office); ?>]</span>
                             <?php endif; ?>
                         </div>
 
@@ -2189,8 +2378,11 @@ if ($result && $result->num_rows > 0) {
                             <div class="pagination-nav">
                                 <!-- First Page Button -->
                                 <?php if ($current_page > 1): ?>
-                                    <a href="permanent.php?page=1<?php echo ($show_inactive ? '&show_inactive=1' : '') . (!empty($filter_office) ? '&office=' . urlencode($filter_office) : ''); ?>"
-                                        class="pagination-btn" title="First Page">
+                                    <a href="permanent.php?page=1<?php
+                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                    ?>" class="pagination-btn" title="First Page">
                                         <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
@@ -2199,15 +2391,18 @@ if ($result && $result->num_rows > 0) {
                                     </button>
                                 <?php endif; ?>
 
-                                <!-- Previous Button -->
+                                <!-- First Page Button -->
                                 <?php if ($current_page > 1): ?>
-                                    <a href="permanent.php?page=<?php echo $current_page - 1; ?><?php echo ($show_inactive ? '&show_inactive=1' : '') . (!empty($filter_office) ? '&office=' . urlencode($filter_office) : ''); ?>"
-                                        class="pagination-btn" title="Previous">
-                                        <i class="fas fa-angle-left"></i>
+                                    <a href="permanent.php?page=1<?php
+                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                    ?>" class="pagination-btn" title="First Page">
+                                        <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
                                     <button class="pagination-btn" disabled>
-                                        <i class="fas fa-angle-left"></i>
+                                        <i class="fas fa-angle-double-left"></i>
                                     </button>
                                 <?php endif; ?>
 
@@ -2227,7 +2422,7 @@ if ($result && $result->num_rows > 0) {
 
                                 // Show page numbers
                                 for ($i = $start_page; $i <= $end_page; $i++):
-                                ?>
+                                    ?>
                                     <a href="permanent.php?page=<?php echo $i; ?><?php echo ($show_inactive ? '&show_inactive=1' : '') . (!empty($filter_office) ? '&office=' . urlencode($filter_office) : ''); ?>"
                                         class="pagination-btn <?php echo ($i == $current_page) ? 'active' : ''; ?>">
                                         <?php echo $i; ?>
@@ -2242,27 +2437,33 @@ if ($result && $result->num_rows > 0) {
                                 }
                                 ?>
 
-                                <!-- Next Button -->
-                                <?php if ($current_page < $total_pages): ?>
-                                    <a href="permanent.php?page=<?php echo $current_page + 1; ?><?php echo ($show_inactive ? '&show_inactive=1' : '') . (!empty($filter_office) ? '&office=' . urlencode($filter_office) : ''); ?>"
-                                        class="pagination-btn" title="Next">
-                                        <i class="fas fa-angle-right"></i>
+                                <!-- First Page Button -->
+                                <?php if ($current_page > 1): ?>
+                                    <a href="permanent.php?page=1<?php
+                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                    ?>" class="pagination-btn" title="First Page">
+                                        <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
                                     <button class="pagination-btn" disabled>
-                                        <i class="fas fa-angle-right"></i>
+                                        <i class="fas fa-angle-double-left"></i>
                                     </button>
                                 <?php endif; ?>
 
-                                <!-- Last Page Button -->
-                                <?php if ($current_page < $total_pages): ?>
-                                    <a href="permanent.php?page=<?php echo $total_pages; ?><?php echo ($show_inactive ? '&show_inactive=1' : '') . (!empty($filter_office) ? '&office=' . urlencode($filter_office) : ''); ?>"
-                                        class="pagination-btn" title="Last Page">
-                                        <i class="fas fa-angle-double-right"></i>
+                                <!-- First Page Button -->
+                                <?php if ($current_page > 1): ?>
+                                    <a href="permanent.php?page=1<?php
+                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                    ?>" class="pagination-btn" title="First Page">
+                                        <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
                                     <button class="pagination-btn" disabled>
-                                        <i class="fas fa-angle-double-right"></i>
+                                        <i class="fas fa-angle-double-left"></i>
                                     </button>
                                 <?php endif; ?>
                             </div>
@@ -2318,13 +2519,13 @@ if ($result && $result->num_rows > 0) {
                             <!-- Employee ID Field - User Input -->
                             <div>
                                 <label for="employee_id" class="block mb-2 text-sm font-medium text-gray-900">
-                                    Employee ID * <span class="text-xs text-gray-500 ml-2">(Format: P-YYYY-MM-XXX or custom)</span>
+                                    Employee ID * <span class="text-xs text-gray-500 ml-2">(Format: P-YYYY-MM-XXX or
+                                        custom)</span>
                                 </label>
                                 <div class="relative">
                                     <input type="text" name="employee_id" id="employee_id"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                        placeholder="Enter Employee ID (e.g., P-2024-01-001)"
-                                        required
+                                        placeholder="Enter Employee ID (e.g., P-2024-01-001)" required
                                         pattern="^[A-Za-z0-9\-_]+$"
                                         title="Employee ID can contain letters, numbers, hyphens, and underscores">
                                     <div class="mt-1 text-xs text-gray-500">
@@ -2334,13 +2535,28 @@ if ($result && $result->num_rows > 0) {
                                 <div class="error-message" id="employee_id_error"></div>
                             </div>
 
-                            <div>
-                                <label for="full_name" class="block mb-2 text-sm font-medium text-gray-900">Full Name
-                                    *</label>
-                                <input type="text" name="full_name" id="full_name"
-                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                    placeholder="Enter full name" required>
-                                <div class="error-message" id="full_name_error"></div>
+                            <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="first_name" class="block mb-2 text-sm font-medium text-gray-900">First
+                                        Name *</label>
+                                    <input type="text" name="first_name" id="first_name"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                </div>
+                                <div>
+                                    <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Last
+                                        Name *</label>
+                                    <input type="text" name="last_name" id="last_name"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                </div>
+                                <div>
+                                    <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Middle
+                                        Initial *</label>
+                                    <input type="text" name="middle" id="middle"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                </div>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2443,22 +2659,6 @@ if ($result && $result->num_rows > 0) {
                                             value="">
                                     </div>
                                 </div>
-                                <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label for="first_name"
-                                            class="block mb-2 text-sm font-medium text-gray-900">First Name *</label>
-                                        <input type="text" name="first_name" id="first_name"
-                                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                            required>
-                                    </div>
-                                    <div>
-                                        <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Last
-                                            Name *</label>
-                                        <input type="text" name="last_name" id="last_name"
-                                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                                            required>
-                                    </div>
-                                </div>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2556,7 +2756,7 @@ if ($result && $result->num_rows > 0) {
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label for="password" class="block mb-2 text-sm font-medium text-gray-900">Password
                                         *</label>
@@ -2571,7 +2771,7 @@ if ($result && $result->num_rows > 0) {
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         required>
                                 </div>
-                            </div>
+                            </div> -->
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -2763,7 +2963,38 @@ if ($result && $result->num_rows > 0) {
     <!-- JavaScript Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Add debounced search functionality
+        let searchTimeout;
+        const searchInput = document.getElementById('search-input');
+        const searchForm = document.getElementById('searchForm');
 
+        if (searchInput && searchForm) {
+            searchInput.addEventListener('input', function () {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    searchForm.submit();
+                }, 500); // Wait 500ms after user stops typing before submitting
+            });
+
+            // Optional: Allow Enter key to submit immediately
+            searchInput.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    clearTimeout(searchTimeout);
+                    searchForm.submit();
+                }
+            });
+        }
+
+        // Update records per page function to preserve search
+        function changeRecordsPerPage(value) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('per_page', value);
+            url.searchParams.set('page', 1); // Reset to first page
+            window.location.href = url.toString();
+        }
+    </script>
     <!-- Custom JavaScript -->
     <script>
         // ===============================================
@@ -2998,10 +3229,10 @@ if ($result && $result->num_rows > 0) {
 
             // Show loading state
             document.getElementById('editFormContent').innerHTML = `
-                <div class="flex justify-center items-center h-64">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                </div>
-            `;
+        <div class="flex justify-center items-center h-64">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+    `;
 
             // Fetch employee data via AJAX for edit form
             try {
@@ -3011,12 +3242,20 @@ if ($result && $result->num_rows > 0) {
                 if (data.success) {
                     document.getElementById('editFormContent').innerHTML = data.html;
                     editCurrentStep = 1;
-                    setupEditFormNavigation();
+
+                    // IMPORTANT: Setup navigation after content is loaded
+                    setTimeout(() => {
+                        setupEditFormNavigation();
+
+                        // Show first step
+                        showEditStep(1);
+                        updateEditStepNavigation();
+                    }, 50);
 
                     // Add form validation for edit form
                     const editForm = document.getElementById('editEmployeeForm');
                     if (editForm) {
-                        editForm.addEventListener('submit', function(e) {
+                        editForm.addEventListener('submit', function (e) {
                             const submitBtn = editForm.querySelector('button[type="submit"]');
                             if (submitBtn) {
                                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
@@ -3107,7 +3346,7 @@ if ($result && $result->num_rows > 0) {
         }
 
         // Close modal when clicking on backdrop
-        document.getElementById('modalBackdrop').addEventListener('click', function() {
+        document.getElementById('modalBackdrop').addEventListener('click', function () {
             closeModal();
             closeEditModal();
             closeViewModal();
@@ -3176,99 +3415,138 @@ if ($result && $result->num_rows > 0) {
         }
 
         function setupEditFormNavigation() {
-            // Edit step navigation click
-            document.querySelectorAll('.edit-step-nav').forEach(nav => {
-                nav.addEventListener('click', function() {
-                    const step = parseInt(this.getAttribute('data-step'));
-                    editCurrentStep = step;
-                    showEditStep(editCurrentStep);
-                    updateEditStepNavigation();
+            // Wait a tiny bit for DOM to update
+            setTimeout(() => {
+                // Edit step navigation click
+                document.querySelectorAll('.edit-step-nav').forEach(nav => {
+                    nav.removeEventListener('click', handleEditStepClick);
+                    nav.addEventListener('click', handleEditStepClick);
                 });
-            });
 
-            // Edit next button click
-            document.querySelectorAll('.edit-next-step').forEach(button => {
-                button.addEventListener('click', function() {
-                    const nextStep = parseInt(this.getAttribute('data-next'));
-                    editCurrentStep = nextStep;
-                    showEditStep(editCurrentStep);
-                    updateEditStepNavigation();
+                // Edit next button click
+                document.querySelectorAll('.edit-next-step').forEach(button => {
+                    button.removeEventListener('click', handleEditNextClick);
+                    button.addEventListener('click', handleEditNextClick);
                 });
-            });
 
-            // Edit previous button click
-            document.querySelectorAll('.edit-prev-step').forEach(button => {
-                button.addEventListener('click', function() {
-                    editCurrentStep--;
-                    showEditStep(editCurrentStep);
-                    updateEditStepNavigation();
+                // Edit previous button click
+                document.querySelectorAll('.edit-prev-step').forEach(button => {
+                    button.removeEventListener('click', handleEditPrevClick);
+                    button.addEventListener('click', handleEditPrevClick);
                 });
-            });
 
-            // Edit form file upload functionality
-            document.querySelectorAll('.file-drop-zone').forEach(zone => {
-                const fileInput = zone.querySelector('input[type="file"]');
-                const fileStatus = zone.querySelector('.file-status');
+                // Edit form file upload functionality
+                document.querySelectorAll('#editEmployeeModal .file-drop-zone').forEach(zone => {
+                    const fileInput = zone.querySelector('input[type="file"]');
+                    const fileStatus = zone.querySelector('.file-status');
 
-                if (fileInput && fileStatus) {
-                    zone.addEventListener('click', function(e) {
-                        if (e.target !== fileInput) {
-                            fileInput.click();
-                        }
-                    });
+                    if (fileInput && fileStatus) {
+                        // Remove old listeners
+                        zone.removeEventListener('click', handleFileZoneClick);
+                        fileInput.removeEventListener('change', handleFileChange);
+                        zone.removeEventListener('dragover', handleDragOver);
+                        zone.removeEventListener('dragleave', handleDragLeave);
+                        zone.removeEventListener('drop', handleDrop);
 
-                    fileInput.addEventListener('change', function() {
-                        if (this.files.length > 0) {
-                            const fileName = this.files[0].name;
-                            fileStatus.textContent = `Selected: ${fileName}`;
-                            zone.classList.add('border-green-500', 'bg-green-50');
-                        } else {
-                            fileStatus.textContent = '';
-                            zone.classList.remove('border-green-500', 'bg-green-50');
-                        }
-                    });
-
-                    // Drag and drop
-                    zone.addEventListener('dragover', function(e) {
-                        e.preventDefault();
-                        zone.classList.add('border-blue-500');
-                    });
-
-                    zone.addEventListener('dragleave', function() {
-                        zone.classList.remove('border-blue-500');
-                    });
-
-                    zone.addEventListener('drop', function(e) {
-                        e.preventDefault();
-                        zone.classList.remove('border-blue-500');
-
-                        if (e.dataTransfer.files.length) {
-                            fileInput.files = e.dataTransfer.files;
-                            const fileName = e.dataTransfer.files[0].name;
-                            fileStatus.textContent = `Selected: ${fileName}`;
-                            zone.classList.add('border-green-500', 'bg-green-50');
-                        }
-                    });
-                }
-            });
-
-            // Edit profile image upload
-            const editProfileImageInput = document.getElementById('edit_profile_image');
-            const editProfileImageContainer = document.getElementById('editProfileImageContainer');
-
-            if (editProfileImageInput && editProfileImageContainer) {
-                editProfileImageInput.addEventListener('change', function() {
-                    if (this.files && this.files[0]) {
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            editProfileImageContainer.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
-                        };
-                        reader.readAsDataURL(this.files[0]);
+                        // Add new listeners
+                        zone.addEventListener('click', handleFileZoneClick);
+                        fileInput.addEventListener('change', handleFileChange);
+                        zone.addEventListener('dragover', handleDragOver);
+                        zone.addEventListener('dragleave', handleDragLeave);
+                        zone.addEventListener('drop', handleDrop);
                     }
                 });
+
+                // Edit profile image upload
+                const editProfileImageInput = document.getElementById('edit_profile_image');
+                const editProfileImageContainer = document.getElementById('editProfileImageContainer');
+
+                if (editProfileImageInput && editProfileImageContainer) {
+                    editProfileImageInput.removeEventListener('change', handleProfileImageChange);
+                    editProfileImageInput.addEventListener('change', handleProfileImageChange);
+                }
+            }, 100);
+        }
+
+        // Separate handler functions
+        function handleEditStepClick(e) {
+            e.preventDefault();
+            const step = parseInt(this.getAttribute('data-step'));
+            editCurrentStep = step;
+            showEditStep(editCurrentStep);
+            updateEditStepNavigation();
+        }
+
+        function handleEditNextClick(e) {
+            e.preventDefault();
+            const nextStep = parseInt(this.getAttribute('data-next'));
+            editCurrentStep = nextStep;
+            showEditStep(editCurrentStep);
+            updateEditStepNavigation();
+        }
+
+        function handleEditPrevClick(e) {
+            e.preventDefault();
+            editCurrentStep--;
+            showEditStep(editCurrentStep);
+            updateEditStepNavigation();
+        }
+
+        function handleFileZoneClick(e) {
+            const fileInput = this.querySelector('input[type="file"]');
+            if (fileInput && e.target !== fileInput) {
+                fileInput.click();
             }
         }
 
+        function handleFileChange(e) {
+            const zone = this.closest('.file-drop-zone');
+            const fileStatus = zone.querySelector('.file-status');
+            if (this.files.length > 0) {
+                const fileName = this.files[0].name;
+                fileStatus.textContent = `Selected: ${fileName}`;
+                zone.classList.add('border-green-500', 'bg-green-50');
+            } else {
+                fileStatus.textContent = '';
+                zone.classList.remove('border-green-500', 'bg-green-50');
+            }
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            this.classList.add('border-blue-500');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            this.classList.remove('border-blue-500');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            this.classList.remove('border-blue-500');
+
+            const fileInput = this.querySelector('input[type="file"]');
+            const fileStatus = this.querySelector('.file-status');
+
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                const fileName = e.dataTransfer.files[0].name;
+                fileStatus.textContent = `Selected: ${fileName}`;
+                this.classList.add('border-green-500', 'bg-green-50');
+            }
+        }
+
+        function handleProfileImageChange(e) {
+            const container = document.getElementById('editProfileImageContainer');
+            if (this.files && this.files[0] && container) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    container.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
+                };
+                reader.readAsDataURL(this.files[0]);
+            }
+        }
         function validateStep(stepIndex) {
             const currentStepElement = document.getElementById(`step${stepIndex}`);
             if (!currentStepElement) return true;
@@ -3361,7 +3639,7 @@ if ($result && $result->num_rows > 0) {
 
             // Add loading indicator for pagination clicks
             document.querySelectorAll('.pagination-btn[href]').forEach(link => {
-                link.addEventListener('click', function(e) {
+                link.addEventListener('click', function (e) {
                     // Only show loading for page changes, not first/last/prev/next icons
                     if (!this.querySelector('i')) {
                         this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -3372,11 +3650,11 @@ if ($result && $result->num_rows > 0) {
         }
 
         // Initialize pagination UI on load
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             updatePaginationUI();
 
             // Keyboard navigation for pagination
-            document.addEventListener('keydown', function(e) {
+            document.addEventListener('keydown', function (e) {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
                     return; // Don't interfere with form inputs
                 }
@@ -3404,7 +3682,7 @@ if ($result && $result->num_rows > 0) {
         // Records per page selector
         const recordsPerPageSelect = document.getElementById('recordsPerPage');
         if (recordsPerPageSelect) {
-            recordsPerPageSelect.addEventListener('change', function() {
+            recordsPerPageSelect.addEventListener('change', function () {
                 const recordsPerPage = this.value;
                 const url = new URL(window.location.href);
                 url.searchParams.set('per_page', recordsPerPage);
@@ -3416,15 +3694,15 @@ if ($result && $result->num_rows > 0) {
         // ===============================================
         // EVENT LISTENERS
         // ===============================================
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Real-time validation for Employee ID
             const employeeIdInput = document.getElementById('employee_id');
             if (employeeIdInput) {
-                employeeIdInput.addEventListener('input', function() {
+                employeeIdInput.addEventListener('input', function () {
                     validateEmployeeId(this);
                 });
 
-                employeeIdInput.addEventListener('blur', function() {
+                employeeIdInput.addEventListener('blur', function () {
                     validateEmployeeId(this);
                 });
             }
@@ -3432,11 +3710,11 @@ if ($result && $result->num_rows > 0) {
             // Real-time validation for full name
             const fullNameInput = document.getElementById('full_name');
             if (fullNameInput) {
-                fullNameInput.addEventListener('input', function() {
+                fullNameInput.addEventListener('input', function () {
                     validateFullName(this);
                 });
 
-                fullNameInput.addEventListener('blur', function() {
+                fullNameInput.addEventListener('blur', function () {
                     validateFullName(this);
                 });
             }
@@ -3445,12 +3723,12 @@ if ($result && $result->num_rows > 0) {
             const mobileInput = document.getElementById('mobile_number');
             if (mobileInput) {
                 // Prevent non-numeric input
-                mobileInput.addEventListener('input', function() {
+                mobileInput.addEventListener('input', function () {
                     this.value = this.value.replace(/\D/g, '').slice(0, 11);
                     validateMobileNumber(this);
                 });
 
-                mobileInput.addEventListener('blur', function() {
+                mobileInput.addEventListener('blur', function () {
                     validateMobileNumber(this);
                 });
             }
@@ -3458,29 +3736,29 @@ if ($result && $result->num_rows > 0) {
             // Real-time validation for salary fields
             const monthlySalaryInput = document.getElementById('monthly_salary');
             if (monthlySalaryInput) {
-                monthlySalaryInput.addEventListener('input', function() {
+                monthlySalaryInput.addEventListener('input', function () {
                     validateSalary(this);
                 });
 
-                monthlySalaryInput.addEventListener('blur', function() {
+                monthlySalaryInput.addEventListener('blur', function () {
                     validateSalary(this);
                 });
             }
 
             const amountAccruedInput = document.getElementById('amount_accrued');
             if (amountAccruedInput) {
-                amountAccruedInput.addEventListener('input', function() {
+                amountAccruedInput.addEventListener('input', function () {
                     validateSalary(this);
                 });
 
-                amountAccruedInput.addEventListener('blur', function() {
+                amountAccruedInput.addEventListener('blur', function () {
                     validateSalary(this);
                 });
             }
 
             // Step navigation click
             document.querySelectorAll('.step-nav').forEach(nav => {
-                nav.addEventListener('click', function() {
+                nav.addEventListener('click', function () {
                     const step = parseInt(this.getAttribute('data-step'));
                     if (validateStep(currentStep)) {
                         currentStep = step;
@@ -3492,7 +3770,7 @@ if ($result && $result->num_rows > 0) {
 
             // Next button click
             document.querySelectorAll('.next-step').forEach(button => {
-                button.addEventListener('click', function() {
+                button.addEventListener('click', function () {
                     const nextStep = parseInt(this.getAttribute('data-next'));
                     if (validateStep(currentStep)) {
                         currentStep = nextStep;
@@ -3504,7 +3782,7 @@ if ($result && $result->num_rows > 0) {
 
             // Previous button click
             document.querySelectorAll('.prev-step').forEach(button => {
-                button.addEventListener('click', function() {
+                button.addEventListener('click', function () {
                     currentStep--;
                     showStep(currentStep);
                     updateStepNavigation();
@@ -3517,13 +3795,13 @@ if ($result && $result->num_rows > 0) {
                 const fileStatus = zone.querySelector('.file-status');
 
                 if (fileInput && fileStatus) {
-                    zone.addEventListener('click', function(e) {
+                    zone.addEventListener('click', function (e) {
                         if (e.target !== fileInput) {
                             fileInput.click();
                         }
                     });
 
-                    fileInput.addEventListener('change', function() {
+                    fileInput.addEventListener('change', function () {
                         if (this.files.length > 0) {
                             const fileName = this.files[0].name;
                             fileStatus.textContent = `Selected: ${fileName}`;
@@ -3535,16 +3813,16 @@ if ($result && $result->num_rows > 0) {
                     });
 
                     // Drag and drop
-                    zone.addEventListener('dragover', function(e) {
+                    zone.addEventListener('dragover', function (e) {
                         e.preventDefault();
                         zone.classList.add('border-blue-500');
                     });
 
-                    zone.addEventListener('dragleave', function() {
+                    zone.addEventListener('dragleave', function () {
                         zone.classList.remove('border-blue-500');
                     });
 
-                    zone.addEventListener('drop', function(e) {
+                    zone.addEventListener('drop', function (e) {
                         e.preventDefault();
                         zone.classList.remove('border-blue-500');
 
@@ -3563,10 +3841,10 @@ if ($result && $result->num_rows > 0) {
             const profileImageContainer = document.getElementById('profileImageContainer');
 
             if (profileImageInput && profileImageContainer) {
-                profileImageInput.addEventListener('change', function() {
+                profileImageInput.addEventListener('change', function () {
                     if (this.files && this.files[0]) {
                         const reader = new FileReader();
-                        reader.onload = function(e) {
+                        reader.onload = function (e) {
                             profileImageContainer.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
                         };
                         reader.readAsDataURL(this.files[0]);
@@ -3577,7 +3855,7 @@ if ($result && $result->num_rows > 0) {
             // Form submission
             const form = document.getElementById('employeeForm');
             if (form) {
-                form.addEventListener('submit', function(e) {
+                form.addEventListener('submit', function (e) {
                     // Validate all steps before submission
                     let allValid = true;
                     for (let i = 1; i <= 3; i++) {
@@ -3607,7 +3885,7 @@ if ($result && $result->num_rows > 0) {
             // Search functionality
             const searchInput = document.getElementById('simple-search');
             if (searchInput) {
-                searchInput.addEventListener('input', function() {
+                searchInput.addEventListener('input', function () {
                     const searchTerm = this.value.toLowerCase();
                     const rows = document.querySelectorAll('tbody tr');
 
@@ -3639,12 +3917,12 @@ if ($result && $result->num_rows > 0) {
             const overlay = document.getElementById('overlay');
 
             if (sidebarToggle && sidebarContainer && overlay) {
-                sidebarToggle.addEventListener('click', function() {
+                sidebarToggle.addEventListener('click', function () {
                     sidebarContainer.classList.toggle('active');
                     overlay.classList.toggle('active');
                 });
 
-                overlay.addEventListener('click', function() {
+                overlay.addEventListener('click', function () {
                     sidebarContainer.classList.remove('active');
                     overlay.classList.remove('active');
                 });
@@ -3655,7 +3933,7 @@ if ($result && $result->num_rows > 0) {
             const payrollDropdown = document.getElementById('payroll-dropdown');
 
             if (payrollToggle && payrollDropdown) {
-                payrollToggle.addEventListener('click', function(e) {
+                payrollToggle.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
 
@@ -3676,13 +3954,13 @@ if ($result && $result->num_rows > 0) {
 
             if (filterDropdownButton && filterDropdown) {
                 // Toggle dropdown when button is clicked
-                filterDropdownButton.addEventListener('click', function(e) {
+                filterDropdownButton.addEventListener('click', function (e) {
                     e.stopPropagation();
                     filterDropdown.classList.toggle('hidden');
                 });
 
                 // Close dropdown when clicking outside
-                document.addEventListener('click', function(e) {
+                document.addEventListener('click', function (e) {
                     if (!filterDropdownButton.contains(e.target) && !filterDropdown.contains(e.target)) {
                         filterDropdown.classList.add('hidden');
                     }

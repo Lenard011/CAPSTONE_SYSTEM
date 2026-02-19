@@ -1,15 +1,4 @@
 <?php
-
-/**
- * PHP Script: Job_order.php
- * Handles the form submission for adding a new job order employee,
- * including validation, file uploads, and database insertion.
- * It also includes logic to fetch and display employee data.
- * 
- * Database: hrms_paluan
- * Table: job_order
- */
-
 // ===============================================
 // 1. CONFIGURATION AND PDO CONNECTION SETUP
 // ===============================================
@@ -135,6 +124,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_submit'])) {
   // Personal Details
   $first_name = isset($_POST['first_name']) ? filter_input(INPUT_POST, 'first_name', FILTER_SANITIZE_SPECIAL_CHARS) : '';
   $last_name = isset($_POST['last_name']) ? filter_input(INPUT_POST, 'last_name', FILTER_SANITIZE_SPECIAL_CHARS) : '';
+  $middle_name = isset($_POST['middle']) ? filter_input(INPUT_POST, 'middle', FILTER_SANITIZE_SPECIAL_CHARS) : '';
   $mobile_number = isset($_POST['mobile_number']) ? filter_input(INPUT_POST, 'mobile_number', FILTER_SANITIZE_SPECIAL_CHARS) : '';
   $email_address = isset($_POST['email_address']) ? filter_input(INPUT_POST, 'email_address', FILTER_VALIDATE_EMAIL) : '';
   $date_of_birth = isset($_POST['date_of_birth']) ? $_POST['date_of_birth'] : '';
@@ -154,7 +144,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_submit'])) {
   // Required fields validation
   $required_fields = [
     'Employee ID' => $employee_id,
-    'Employee Name' => $employee_name,
     'Occupation' => $occupation,
     'Office' => $office,
     'Rate per Day' => $rate_per_day,
@@ -163,6 +152,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_submit'])) {
     'Place of Issue' => $place_of_issue,
     'First Name' => $first_name,
     'Last Name' => $last_name,
+    'Middle Name' => $middle_name,
     'Mobile Number' => $mobile_number,
     'Email Address' => $email_address,
     'Date of Birth' => $date_of_birth,
@@ -257,7 +247,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_submit'])) {
       $sql = "INSERT INTO job_order (
                 employee_id, employee_name, occupation, office, rate_per_day, sss_contribution, 
                 ctc_number, ctc_date, place_of_issue,
-                profile_image_path, first_name, last_name, mobile_number, email_address, date_of_birth, 
+                profile_image_path, first_name, last_name, middle, mobile_number, email_address, date_of_birth, 
                 marital_status, gender, nationality, street_address, 
                 city, state_region, zip_code, joining_date, eligibility, 
                 doc_id_path, doc_resume_path, doc_service_path, doc_appointment_path, 
@@ -266,7 +256,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_submit'])) {
             ) VALUES (
                 :employee_id, :employee_name, :occupation, :office, :rate_per_day, :sss_contribution, 
                 :ctc_number, :ctc_date, :place_of_issue,
-                :profile_image_path, :first_name, :last_name, :mobile_number, :email_address, :date_of_birth, 
+                :profile_image_path, :first_name, :last_name, :middle, :mobile_number, :email_address, :date_of_birth, 
                 :marital_status, :gender, :nationality, :street_address, 
                 :city, :state_region, :zip_code, :joining_date, :eligibility, 
                 :doc_id_path, :doc_resume_path, :doc_service_path, :doc_appointment_path, 
@@ -290,6 +280,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_submit'])) {
         ':profile_image_path' => $profile_image_path,
         ':first_name' => $first_name,
         ':last_name' => $last_name,
+        ':middle' => $middle_name,
         ':mobile_number' => $mobile_number,
         ':email_address' => $email_address,
         ':date_of_birth' => $date_of_birth,
@@ -369,6 +360,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_submit'])) {
         // Personal Details
         $first_name = filter_input(INPUT_POST, 'first_name', FILTER_SANITIZE_SPECIAL_CHARS);
         $last_name = filter_input(INPUT_POST, 'last_name', FILTER_SANITIZE_SPECIAL_CHARS);
+        $middle_name = filter_input(INPUT_POST, 'middle', FILTER_SANITIZE_SPECIAL_CHARS);
         $mobile_number = filter_input(INPUT_POST, 'mobile_number', FILTER_SANITIZE_SPECIAL_CHARS);
         $email_address = filter_input(INPUT_POST, 'email_address', FILTER_VALIDATE_EMAIL);
         $date_of_birth = filter_input(INPUT_POST, 'date_of_birth');
@@ -387,7 +379,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_submit'])) {
         // Validation
         $required_fields = [
           'Employee ID' => $employee_id_field,
-          'Employee Name' => $employee_name,
           'Occupation' => $occupation,
           'Office' => $office,
           'Rate per Day' => $rate_per_day,
@@ -396,6 +387,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_submit'])) {
           'Place of Issue' => $place_of_issue,
           'First Name' => $first_name,
           'Last Name' => $last_name,
+          'Middle Name' => $middle_name,
           'Mobile Number' => $mobile_number,
           'Email Address' => $email_address,
           'Date of Birth' => $date_of_birth,
@@ -494,6 +486,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_submit'])) {
                         profile_image_path = :profile_image_path,
                         first_name = :first_name,
                         last_name = :last_name,
+                        middle = :middle,
                         mobile_number = :mobile_number,
                         email_address = :email_address,
                         date_of_birth = :date_of_birth,
@@ -532,6 +525,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_submit'])) {
             ':profile_image_path' => $profile_image_path,
             ':first_name' => $first_name,
             ':last_name' => $last_name,
+            ':middle' => $middle_name,
             ':mobile_number' => $mobile_number,
             ':email_address' => $email_address,
             ':date_of_birth' => $date_of_birth,
@@ -657,7 +651,9 @@ if (isset($pdo)) {
 
 // Build query with filters
 $query = "SELECT 
-    id, employee_id, employee_name, occupation, office, 
+    id, employee_id, 
+    first_name, last_name, middle,
+    employee_name, occupation, office, 
     rate_per_day, sss_contribution, ctc_number, 
     ctc_date, place_of_issue, eligibility, is_archived
 FROM job_order 
@@ -675,11 +671,13 @@ if (!$show_archived) {
 // Apply search filter
 if (!empty($search)) {
   $query .= " AND (
-        employee_name LIKE :search OR 
         employee_id LIKE :search OR 
+        first_name LIKE :search OR 
+        last_name LIKE :search OR 
+        middle LIKE :search OR
+        CONCAT(first_name, ' ', last_name) LIKE :search OR
+        CONCAT(first_name, ' ', middle, ' ', last_name) LIKE :search OR
         occupation LIKE :search OR
-        first_name LIKE :search OR
-        last_name LIKE :search OR
         email_address LIKE :search OR
         mobile_number LIKE :search
     )";
@@ -709,7 +707,7 @@ $total_records = 0;
 if (isset($pdo)) {
   try {
     $countQuery = "SELECT COUNT(*) FROM (" . str_replace(
-      "SELECT id, employee_id, employee_name, occupation, office, rate_per_day, sss_contribution, ctc_number, ctc_date, place_of_issue, eligibility, is_archived",
+      "SELECT id, employee_id, first_name, last_name, middle, employee_name, occupation, office, rate_per_day, sss_contribution, ctc_number, ctc_date, place_of_issue, eligibility, is_archived",
       "SELECT id",
       $query
     ) . ") as count_table";
@@ -719,21 +717,22 @@ if (isset($pdo)) {
     $total_records = $countStmt->fetchColumn();
   } catch (PDOException $e) {
     error_log("Count query error: " . $e->getMessage());
-    $_SESSION['error'] = "Count error: " . $e->getMessage();
     $total_records = 0;
   }
 }
 
 // Calculate total pages
 $total_pages = ceil($total_records / $records_per_page);
-if ($total_pages < 1) $total_pages = 1;
-if ($current_page > $total_pages) $current_page = $total_pages;
+if ($total_pages < 1)
+  $total_pages = 1;
+if ($current_page > $total_pages)
+  $current_page = $total_pages;
 
 // Adjust offset for current page
 $offset = ($current_page - 1) * $records_per_page;
 
 // Add ordering and pagination
-$query .= " ORDER BY is_archived ASC, employee_name ASC LIMIT :limit OFFSET :offset";
+$query .= " ORDER BY is_archived ASC, first_name ASC LIMIT :limit OFFSET :offset";
 
 if (isset($pdo)) {
   try {
@@ -751,37 +750,116 @@ if (isset($pdo)) {
     $stmt->execute();
     $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // CONSTRUCT FULL NAME FOR EACH EMPLOYEE
+    foreach ($employees as $key => $employee) {
+      $first_name = isset($employee['first_name']) ? trim($employee['first_name']) : '';
+      $last_name = isset($employee['last_name']) ? trim($employee['last_name']) : '';
+      $middle = isset($employee['middle']) ? trim($employee['middle']) : '';
+
+      // Build the full name
+      $full_name_parts = [];
+
+      if (!empty($first_name)) {
+        $full_name_parts[] = $first_name;
+      }
+
+      if (!empty($middle)) {
+        $full_name_parts[] = substr($middle, 0, 1) . '.';
+      }
+
+      if (!empty($last_name)) {
+        $full_name_parts[] = $last_name;
+      }
+
+      $full_name = !empty($full_name_parts) ? implode(' ', $full_name_parts) : $employee['employee_name'];
+
+      // ADD THE CONSTRUCTED FULL NAME TO THE EMPLOYEE ARRAY
+      $employees[$key]['display_name'] = $full_name;
+    }
+
     // Reset counter for current page
     $counter = ($current_page - 1) * $records_per_page + 1;
+
   } catch (PDOException $e) {
     error_log("Query execution error: " . $e->getMessage());
-    $_SESSION['error'] = "Query error: " . $e->getMessage();
     $employees = [];
   }
 } else {
   $employees = [];
 }
 
-// 4.1. GET EMPLOYEE DATA FOR EDITING (AJAX ENDPOINT)
-if (isset($_GET['get_employee_data']) && isset($_GET['id']) && isset($pdo)) {
+// 4.1. GET EMPLOYEE DATA FOR EDITING (AJAX ENDPOINT) - FIXED VERSION
+if (isset($_GET['get_employee_data']) && isset($_GET['id'])) {
+  header('Content-Type: application/json');
+
+  if (!isset($pdo)) {
+    echo json_encode(['error' => 'Database connection failed']);
+    exit;
+  }
+
   try {
     $id = filter_var($_GET['id'], FILTER_VALIDATE_INT);
-    if ($id) {
-      $stmt = $pdo->prepare("SELECT * FROM job_order WHERE id = :id");
-      $stmt->execute([':id' => $id]);
-      $employee = $stmt->fetch(PDO::FETCH_ASSOC);
-
-      if ($employee) {
-        header('Content-Type: application/json');
-        echo json_encode($employee);
-        exit;
-      }
+    if (!$id) {
+      echo json_encode(['error' => 'Invalid employee ID']);
+      exit;
     }
+
+    // Make sure we select ALL fields needed for the edit form
+    $stmt = $pdo->prepare("SELECT 
+        id, employee_id, employee_name, first_name, last_name, middle,
+        occupation, office, rate_per_day, sss_contribution,
+        ctc_number, ctc_date, place_of_issue,
+        mobile_number, email_address, date_of_birth,
+        marital_status, gender, nationality,
+        street_address, city, state_region, zip_code,
+        joining_date, eligibility,
+        profile_image_path,
+        doc_id_path, doc_resume_path, doc_service_path,
+        doc_appointment_path, doc_transcript_path, doc_eligibility_path,
+        is_archived
+        FROM job_order WHERE id = :id");
+
+    $stmt->execute([':id' => $id]);
+    $employee = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($employee) {
+      // Format dates for input fields (YYYY-MM-DD)
+      if (!empty($employee['ctc_date'])) {
+        $employee['ctc_date'] = date('Y-m-d', strtotime($employee['ctc_date']));
+      }
+      if (!empty($employee['date_of_birth'])) {
+        $employee['date_of_birth'] = date('Y-m-d', strtotime($employee['date_of_birth']));
+      }
+      if (!empty($employee['joining_date'])) {
+        $employee['joining_date'] = date('Y-m-d', strtotime($employee['joining_date']));
+      }
+
+      // Ensure numeric fields are properly formatted
+      $employee['rate_per_day'] = floatval($employee['rate_per_day']);
+
+      // Construct full name if employee_name is empty
+      if (empty($employee['employee_name'])) {
+        $name_parts = [];
+        if (!empty($employee['first_name']))
+          $name_parts[] = $employee['first_name'];
+        if (!empty($employee['last_name']))
+          $name_parts[] = $employee['last_name'];
+        if (!empty($employee['middle']))
+          $name_parts[] = $employee['middle'];
+        $employee['employee_name'] = implode(' ', $name_parts);
+      }
+
+      echo json_encode($employee);
+    } else {
+      echo json_encode(['error' => 'Employee not found']);
+    }
+    exit;
+
   } catch (PDOException $e) {
     error_log("Get employee data error: " . $e->getMessage());
+    echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+    exit;
   }
-  echo json_encode(['error' => 'Employee not found']);
-  exit;
 }
 
 // ===============================================
@@ -3003,7 +3081,6 @@ if (isset($_SESSION['error'])) {
   <!-- Notification Container -->
   <div class="notification-container" id="notificationContainer"></div>
 
-  <!-- Navigation and Sidebar remain the same -->
   <!-- Navigation Header -->
   <nav class="navbar">
     <div class="navbar-container">
@@ -3124,7 +3201,7 @@ if (isset($_SESSION['error'])) {
     </div>
   </div>
   <main class="main-content">
-    <div class="bg-white rounded-xl shadow-lg p-2 md:p-6">
+    <div class="bg-white rounded-xl shadow-lg p-2 md:p-6" style="margin-top: 2.7%;">
       <!-- Success/Error messages -->
       <?php if (!empty($success_message)): ?>
         <div id="successNotification" class="notification notification-success show">
@@ -3160,7 +3237,8 @@ if (isset($_SESSION['error'])) {
       <nav class="flex mb-4 overflow-x-auto">
         <ol class="inline-flex items-center space-x-1 md:space-x-2 rtl:space-x-reverse whitespace-nowrap">
           <li class="inline-flex items-center">
-            <a href="Employee.php" class="inline-flex items-center text-sm font-medium text-gray-700 hover:text-blue-600">
+            <a href="Employee.php"
+              class="inline-flex items-center text-sm font-medium text-gray-700 hover:text-blue-600">
               <i class="fas fa-home mr-2"></i>All Employee
             </a>
           </li>
@@ -3174,7 +3252,8 @@ if (isset($_SESSION['error'])) {
           </li>
           <li>
             <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-            <a href="Job_order.php" class="ms-1 text-sm font-medium text-blue-700 hover:text-blue-600 md:ms-2">Job Order</a>
+            <a href="Job_order.php" class="ms-1 text-sm font-medium text-blue-700 hover:text-blue-600 md:ms-2">Job
+              Order</a>
           </li>
         </ol>
       </nav>
@@ -3188,7 +3267,8 @@ if (isset($_SESSION['error'])) {
             <p class="text-sm text-gray-600">Manage active and archived employees</p>
           </div>
           <div class="flex items-center gap-3">
-            <a href="<?php echo $current_file . ($show_archived ? '' : '?show_archived=1'); ?>" class="btn <?php echo $show_archived ? 'btn-warning' : 'btn-secondary'; ?>">
+            <a href="<?php echo $current_file . ($show_archived ? '' : '?show_archived=1'); ?>"
+              class="btn <?php echo $show_archived ? 'btn-warning' : 'btn-secondary'; ?>">
               <i class="fas fa-<?php echo $show_archived ? 'history' : 'archive'; ?>"></i>
               <?php echo $show_archived ? 'View Active Employees' : 'View Archived Employees'; ?>
             </a>
@@ -3208,9 +3288,11 @@ if (isset($_SESSION['error'])) {
             </div>
           </div>
 
-          <div class="w-full md:w-auto flex flex-col md:flex-row space-y-2 md:space-y-0 items-stretch md:items-center justify-end md:space-x-3 flex-shrink-0">
+          <div
+            class="w-full md:w-auto flex flex-col md:flex-row space-y-2 md:space-y-0 items-stretch md:items-center justify-end md:space-x-3 flex-shrink-0">
             <!-- Records per page selector -->
-            <div class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-3 py-2.5 hover:border-blue-500 transition-colors">
+            <div
+              class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-3 py-2.5 hover:border-blue-500 transition-colors">
               <span class="text-sm text-gray-600 whitespace-nowrap">Show:</span>
               <select id="recordsPerPage" onchange="changeRecordsPerPage(this.value)"
                 class="bg-transparent border-none text-gray-900 text-sm focus:outline-none focus:ring-0 cursor-pointer appearance-none">
@@ -3230,7 +3312,7 @@ if (isset($_SESSION['error'])) {
           </div>
         </div>
 
-        
+
       </div>
 
       <div class="overflow-x-auto mb-4 md:mb-10">
@@ -3254,16 +3336,38 @@ if (isset($_SESSION['error'])) {
           <tbody>
             <?php if (!empty($employees)): ?>
               <?php foreach ($employees as $index => $employee): ?>
-                <tr class="bg-white border-b hover:bg-gray-50 transition-colors <?php echo $employee['is_archived'] ? 'archived' : ''; ?>">
+                <tr
+                  class="bg-white border-b hover:bg-gray-50 transition-colors <?php echo $employee['is_archived'] ? 'archived' : ''; ?>">
                   <td class="p-4"><?= $counter++ ?></td>
                   <td class="px-6 py-4 font-mono font-semibold"><?= htmlspecialchars($employee['employee_id']) ?></td>
-                  <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap"><?= htmlspecialchars($employee['employee_name']) ?></td>
+                  <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                    <?php
+                    // Display constructed name or fallback to employee_name
+                    $display_name = isset($employee['display_name']) ? $employee['display_name'] : $employee['employee_name'];
+                    echo htmlspecialchars($display_name);
+                    ?>
+                    <div class="text-xs text-gray-500">
+                      <?php
+                      // Show name components for reference
+                      $name_parts = [];
+                      if (!empty($employee['first_name']))
+                        $name_parts[] = $employee['first_name'];
+                      if (!empty($employee['last_name']))
+                        $name_parts[] = $employee['last_name'];
+                      if (!empty($employee['middle']))
+                        $name_parts[] = '(' . substr($employee['middle'], 0, 1) . '.)';
+                      echo !empty($name_parts) ? htmlspecialchars(implode(' ', $name_parts)) : '';
+                      ?>
+                    </div>
+                  </td>
                   <td class="px-6 py-4"><?= htmlspecialchars($employee['occupation']) ?></td>
                   <td class="px-6 py-4"><?= htmlspecialchars($employee['office']) ?></td>
                   <td class="px-6 py-4 font-semibold">₱<?= number_format($employee['rate_per_day'], 2) ?></td>
                   <td class="px-6 py-4"><?= htmlspecialchars($employee['sss_contribution']) ?></td>
                   <td class="px-6 py-4 font-mono"><?= htmlspecialchars($employee['ctc_number']) ?></td>
-                  <td class="px-6 py-4"><?= !empty($employee['ctc_date']) ? date('M d, Y', strtotime($employee['ctc_date'])) : 'N/A' ?></td>
+                  <td class="px-6 py-4">
+                    <?= !empty($employee['ctc_date']) ? date('M d, Y', strtotime($employee['ctc_date'])) : 'N/A' ?>
+                  </td>
                   <td class="px-6 py-4"><?= htmlspecialchars($employee['place_of_issue']) ?></td>
                   <td class="px-6 py-4">
                     <?php if ($employee['is_archived']): ?>
@@ -3281,13 +3385,17 @@ if (isset($_SESSION['error'])) {
                         data-employee-id="<?= $employee['id'] ?>"><i class="fas fa-edit"></i></button>
                       <span class="text-gray-300">|</span>
                       <?php if ($employee['is_archived']): ?>
-                        <button type="button" class="restore-trigger-btn text-purple-600 hover:text-purple-800 transition-colors"
+                        <button type="button"
+                          class="restore-trigger-btn text-purple-600 hover:text-purple-800 transition-colors"
                           data-employee-id="<?= $employee['id'] ?>"
-                          data-employee-name="<?= htmlspecialchars($employee['employee_name']) ?>"><i class="fas fa-history"></i></button>
+                          data-employee-name="<?= htmlspecialchars($employee['employee_name']) ?>"><i
+                            class="fas fa-history"></i></button>
                       <?php else: ?>
-                        <button type="button" class="archive-trigger-btn text-orange-600 hover:text-orange-800 transition-colors"
+                        <button type="button"
+                          class="archive-trigger-btn text-orange-600 hover:text-orange-800 transition-colors"
                           data-employee-id="<?= $employee['id'] ?>"
-                          data-employee-name="<?= htmlspecialchars($employee['employee_name']) ?>"><i class="fas fa-archive"></i></button>
+                          data-employee-name="<?= htmlspecialchars($employee['employee_name']) ?>"><i
+                            class="fas fa-archive"></i></button>
                       <?php endif; ?>
                     </div>
                   </td>
@@ -3302,8 +3410,11 @@ if (isset($_SESSION['error'])) {
                       <p class="text-lg font-medium mb-2">No employees found</p>
                       <p class="text-sm">Try adjusting your filters or search terms</p>
                     <?php else: ?>
-                      <p class="text-lg font-medium mb-2">No <?php echo $show_archived ? 'archived' : 'job order'; ?> records found</p>
-                      <p class="text-sm"><?php echo $show_archived ? 'No archived employees found' : 'Add your first job order employee using the button above'; ?></p>
+                      <p class="text-lg font-medium mb-2">No <?php echo $show_archived ? 'archived' : 'job order'; ?>
+                        records found</p>
+                      <p class="text-sm">
+                        <?php echo $show_archived ? 'No archived employees found' : 'Add your first job order employee using the button above'; ?>
+                      </p>
                     <?php endif; ?>
                   </div>
                 </td>
@@ -3339,8 +3450,8 @@ if (isset($_SESSION['error'])) {
               </button>
 
               <!-- Previous Page -->
-              <button onclick="goToPage(<?php echo $current_page - 1; ?>)" class="pagination-btn <?php echo ($current_page == 1) ? 'disabled' : ''; ?>"
-                <?php echo ($current_page == 1) ? 'disabled' : ''; ?> title="Previous Page">
+              <button onclick="goToPage(<?php echo $current_page - 1; ?>)"
+                class="pagination-btn <?php echo ($current_page == 1) ? 'disabled' : ''; ?>" <?php echo ($current_page == 1) ? 'disabled' : ''; ?> title="Previous Page">
                 <i class="fas fa-angle-left"></i>
               </button>
 
@@ -3374,14 +3485,14 @@ if (isset($_SESSION['error'])) {
               ?>
 
               <!-- Next Page -->
-              <button onclick="goToPage(<?php echo $current_page + 1; ?>)" class="pagination-btn <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>"
-                <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?> title="Next Page">
+              <button onclick="goToPage(<?php echo $current_page + 1; ?>)"
+                class="pagination-btn <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>" <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?> title="Next Page">
                 <i class="fas fa-angle-right"></i>
               </button>
 
               <!-- Last Page -->
-              <button onclick="goToPage(<?php echo $total_pages; ?>)" class="pagination-btn <?php echo ($current_page == $total_pages) ? 'disabled' : ''; ?>"
-                <?php echo ($current_page == $total_pages) ? 'disabled' : ''; ?> title="Last Page">
+              <button onclick="goToPage(<?php echo $total_pages; ?>)"
+                class="pagination-btn <?php echo ($current_page == $total_pages) ? 'disabled' : ''; ?>" <?php echo ($current_page == $total_pages) ? 'disabled' : ''; ?> title="Last Page">
                 <i class="fas fa-angle-double-right"></i>
               </button>
             </div>
@@ -3403,347 +3514,428 @@ if (isset($_SESSION['error'])) {
     </div>
   </main>
 
-  <!-- Add Employee Modal -->
-  <div class="modal-fixed-container" id="addEmployeeModal">
-    <div class="modal-content-wrapper modal-xl">
-      <!-- Modal Header -->
-      <div class="modal-header">
+  <!-- Add Job Order Employee Modal -->
+  <div id="addEmployeeModal" class="modal-fixed-container">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden mx-2">
+      <!-- Modal header -->
+      <div class="flex items-center justify-between p-3 md:p-5 border-b sticky top-0 bg-white z-10">
         <div>
-          <h3>Add New Job Order Employee</h3>
-          <p>Fill in the employee information below</p>
+          <h3 class="text-lg md:text-xl font-semibold text-gray-900">Add New Job Order Employee</h3>
+          <p class="text-sm text-gray-500 mt-1">Fill in the employee information below</p>
         </div>
-        <button type="button" class="modal-close-btn" onclick="closeModal('addEmployeeModal')">
+        <button type="button"
+          class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 inline-flex justify-center items-center"
+          onclick="closeModal('addEmployeeModal')">
           <i class="fas fa-times"></i>
+          <span class="sr-only">Close modal</span>
         </button>
       </div>
 
-      <!-- Step Navigation -->
-      <div class="step-navigation p-6 pb-0">
-        <div class="step-item active" data-step="1">
-          <div class="step-number">1</div>
-          <div class="step-label">Professional Info</div>
+      <!-- Modal body -->
+      <div class="p-3 md:p-5 overflow-y-auto max-h-[calc(90vh-120px)]">
+        <!-- Step Navigation -->
+        <div class="flex mb-4 border-b sticky top-0 bg-white z-10 pt-2">
+          <button type="button"
+            class="step-nav flex-1 py-2 px-2 md:px-4 text-center font-medium border-b-2 border-blue-600 text-blue-600 text-sm md:text-base"
+            data-step="1">Professional Info</button>
+          <button type="button"
+            class="step-nav flex-1 py-2 px-2 md:px-4 text-center font-medium border-b-2 border-transparent text-gray-500 text-sm md:text-base"
+            data-step="2">Personal Info</button>
+          <button type="button"
+            class="step-nav flex-1 py-2 px-2 md:px-4 text-center font-medium border-b-2 border-transparent text-gray-500 text-sm md:text-base"
+            data-step="3">Documents</button>
         </div>
-        <div class="step-item" data-step="2">
-          <div class="step-number">2</div>
-          <div class="step-label">Personal Info</div>
-        </div>
-        <div class="step-item" data-step="3">
-          <div class="step-number">3</div>
-          <div class="step-label">Documents</div>
-        </div>
-      </div>
 
-      <!-- Form -->
-      <form id="employeeForm" action="<?php echo htmlspecialchars($current_file); ?>" method="POST"
-        enctype="multipart/form-data" onsubmit="return validateAddForm()">
-        <input type="hidden" name="add_submit" value="1">
+        <!-- Form -->
+        <form id="employeeForm" action="<?php echo htmlspecialchars($current_file); ?>" method="POST"
+          enctype="multipart/form-data" onsubmit="return validateAddForm()">
+          <input type="hidden" name="add_submit" value="1">
 
-        <div class="modal-body">
+          <!-- Employee ID Field -->
+          <div class="mb-4">
+            <label for="employee_id" class="block mb-2 text-sm font-medium text-gray-900">
+              Employee ID * <span class="text-xs text-gray-500 ml-2">(Format: JO-YEAR-XXXX)</span>
+            </label>
+            <div class="relative">
+              <input type="text" name="employee_id" id="employee_id"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                placeholder="Enter Employee ID (e.g., JO-2024-0001)" required pattern="^[A-Za-z0-9\-_]+$"
+                title="Employee ID can contain letters, numbers, hyphens, and underscores">
+              <div class="mt-1 text-xs text-gray-500">
+                Format: JO-YEAR-XXXX (example: JO-2024-0001) or use your own format
+              </div>
+            </div>
+            <div class="error-message hidden" id="error-employee_id"></div>
+          </div>
+
           <!-- Step 1: Professional Information -->
           <div id="step1" class="form-step active">
-            <div class="grid-2 overflow-auto">
-              <!-- Employee ID Field -->
-              <div class="form-group">
-                <label for="employee_id" class="form-label">Employee ID *</label>
-                <input type="text" name="employee_id" id="employee_id" class="form-control" placeholder="e.g., JO-001"
-                  required>
-                <div class="error-message hidden" id="error-employee_id"></div>
+            <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Professional Details</h2>
+
+            <div class="grid gap-3 md:gap-4 mb-4">
+              <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="first_name" class="block mb-2 text-sm font-medium text-gray-900">First
+                    Name *</label>
+                  <input type="text" name="first_name" id="first_name"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                </div>
+                <div>
+                  <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Last
+                    Name *</label>
+                  <input type="text" name="last_name" id="last_name"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                </div>
+                <div>
+                  <label for="middle" class="block mb-2 text-sm font-medium text-gray-900">Middle
+                    Initial *</label>
+                  <input type="text" name="middle" id="middle"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="employee_name" class="form-label">Full Name *</label>
-                <input type="text" name="employee_name" id="employee_name" class="form-control"
-                  placeholder="Enter employee full name" required>
-                <div class="error-message hidden" id="error-employee_name"></div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="occupation" class="block mb-2 text-sm font-medium text-gray-900">Occupation
+                    *</label>
+                  <input type="text" name="occupation" id="occupation"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Job title/position" required>
+                  <div class="error-message hidden" id="error-occupation"></div>
+                </div>
+                <div>
+                  <label for="office" class="block mb-2 text-sm font-medium text-gray-900">Office
+                    Assignment *</label>
+                  <select name="office" id="office"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                    <option value="">Select Department</option>
+                    <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
+                    <option value="Human Resource Management Division">Human Resource Management Division
+                    </option>
+                    <option value="Business Permit and Licensing Division">Business Permit and Licensing
+                      Division</option>
+                    <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
+                    <option value="Office of the Municipal Accountant">Office of the Municipal
+                      Accountant</option>
+                    <option value="Office of the Assessor">Office of the Assessor</option>
+                    <option value="Municipal Budget Office">Municipal Budget Office</option>
+                    <option value="Municipal Planning and Development Office">Municipal Planning and
+                      Development Office</option>
+                    <option value="Municipal Engineering Office">Municipal Engineering Office</option>
+                    <option value="Municipal Disaster Risk Reduction and Management Office">Municipal
+                      Disaster Risk Reduction and Management Office</option>
+                    <option value="Municipal Social Welfare and Development Office">Municipal Social
+                      Welfare and Development Office</option>
+                    <option value="Municipal Environment and Natural Resources Office">Municipal
+                      Environment and Natural Resources Office</option>
+                    <option value="Office of the Municipal Agriculturist">Office of the Municipal
+                      Agriculturist</option>
+                    <option value="Municipal General Services Office">Municipal General Services Office
+                    </option>
+                    <option value="Municipal Public Employment Service Office">Municipal Public
+                      Employment Service Office</option>
+                    <option value="Municipal Health Office">Municipal Health Office</option>
+                    <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
+                  </select>
+                  <div class="error-message hidden" id="error-office"></div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="occupation" class="form-label">Occupation *</label>
-                <input type="text" name="occupation" id="occupation" class="form-control"
-                  placeholder="Job title/position" required>
-                <div class="error-message hidden" id="error-occupation"></div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="rate_per_day" class="block mb-2 text-sm font-medium text-gray-900">Rate per
+                    Day (₱) *</label>
+                  <input type="number" step="0.01" min="0" name="rate_per_day" id="rate_per_day"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="0.00" required>
+                  <div class="error-message hidden" id="error-rate_per_day"></div>
+                </div>
+                <div>
+                  <label for="sss_contribution" class="block mb-2 text-sm font-medium text-gray-900">SSS
+                    Contribution</label>
+                  <input type="text" name="sss_contribution" id="sss_contribution"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Enter SSS Contribution amount or details">
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="office" class="form-label">Office Assignment *</label>
-                <select name="office" id="office" class="form-control" required>
-                  <option value="">Select Department</option>
-                  <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
-                  <option value="Human Resource Management Division">Human Resource Management Division</option>
-                  <option value="Business Permit and Licensing Division">Business Permit and Licensing Division
-                  </option>
-                  <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
-                  <option value="Office of the Municipal Accountant">Office of the Municipal Accountant</option>
-                  <option value="Office of the Assessor">Office of the Assessor</option>
-                  <option value="Municipal Budget Office">Municipal Budget Office</option>
-                  <option value="Municipal Planning and Development Office">Municipal Planning and Development Office
-                  </option>
-                  <option value="Municipal Engineering Office">Municipal Engineering Office</option>
-                  <option value="Municipal Disaster Risk Reduction and Management Office">Municipal Disaster Risk
-                    Reduction and Management Office</option>
-                  <option value="Municipal Social Welfare and Development Office">Municipal Social Welfare and
-                    Development Office</option>
-                  <option value="Municipal Environment and Natural Resources Office">Municipal Environment and Natural
-                    Resources Office</option>
-                  <option value="Office of the Municipal Agriculturist">Office of the Municipal Agriculturist</option>
-                  <option value="Municipal General Services Office">Municipal General Services Office</option>
-                  <option value="Municipal Public Employment Service Office">Municipal Public Employment Service
-                    Office</option>
-                  <option value="Municipal Health Office">Municipal Health Office</option>
-                  <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
-                </select>
-                <div class="error-message hidden" id="error-office"></div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="ctc_number" class="block mb-2 text-sm font-medium text-gray-900">CTC Number
+                    *</label>
+                  <input type="text" name="ctc_number" id="ctc_number"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="CTC No." required>
+                  <div class="error-message hidden" id="error-ctc_number"></div>
+                </div>
+                <div>
+                  <label for="ctc_date" class="block mb-2 text-sm font-medium text-gray-900">CTC Date
+                    *</label>
+                  <input type="date" name="ctc_date" id="ctc_date"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                  <div class="error-message hidden" id="error-ctc_date"></div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="rate_per_day" class="form-label">Rate per Day (₱) *</label>
-                <input type="number" step="0.01" min="0" name="rate_per_day" id="rate_per_day" class="form-control"
-                  placeholder="0.00" required>
-                <div class="error-message hidden" id="error-rate_per_day"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="sss_contribution" class="form-label">SSS Contribution</label>
-                <input type="text" name="sss_contribution" id="sss_contribution" class="form-control"
-                  placeholder="Enter SSS Contribution amount or details">
-              </div>
-
-              <div class="form-group">
-                <label for="ctc_number" class="form-label">CTC Number *</label>
-                <input type="text" name="ctc_number" id="ctc_number" class="form-control" placeholder="CTC No."
-                  required>
-                <div class="error-message hidden" id="error-ctc_number"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="ctc_date" class="form-label">CTC Date *</label>
-                <input type="date" name="ctc_date" id="ctc_date" class="form-control" required>
-                <div class="error-message hidden" id="error-ctc_date"></div>
-              </div>
-
-              <div class="form-group col-span-2">
-                <label for="place_of_issue" class="form-label">Place of Issue *</label>
-                <input type="text" name="place_of_issue" id="place_of_issue" class="form-control"
+              <div>
+                <label for="place_of_issue" class="block mb-2 text-sm font-medium text-gray-900">Place of
+                  Issue *</label>
+                <input type="text" name="place_of_issue" id="place_of_issue"
+                  class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                   placeholder="City/Municipality where CTC was issued" required>
                 <div class="error-message hidden" id="error-place_of_issue"></div>
               </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="button"
+                class="next-step text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5"
+                data-next="2">
+                Next <i class="fas fa-arrow-right ml-2"></i>
+              </button>
             </div>
           </div>
 
           <!-- Step 2: Personal Information -->
           <div id="step2" class="form-step">
-            <!-- Profile Image Upload -->
-            <div class="profile-image-upload">
-              <div class="profile-image-container">
-                <div class="profile-image-placeholder">
-                  <i class="fas fa-user"></i>
+            <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Personal Details</h2>
+
+            <div class="grid gap-3 md:gap-4 mb-4">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-1">
+                  <div class="flex flex-col items-center">
+                    <div id="profileImageContainer"
+                      class="w-24 h-24 md:w-32 md:h-32 bg-gray-200 rounded-full flex items-center justify-center mb-3 md:mb-4 overflow-hidden">
+                      <i class="fas fa-user text-gray-400 text-3xl md:text-4xl"></i>
+                    </div>
+                    <input type="file" name="profile_image" id="profile_image" accept="image/*" class="hidden">
+                    <label for="profile_image"
+                      class="cursor-pointer text-blue-600 hover:text-blue-800 text-sm font-medium">
+                      <i class="fas fa-upload mr-1"></i>Upload Photo
+                    </label>
+                    <small class="text-gray-500 text-xs mt-1">JPG, JPEG, PNG (Max 5MB)</small>
+                  </div>
                 </div>
               </div>
-              <input type="file" name="profile_image" id="profile_image" accept="image/*" class="hidden">
-              <button type="button" class="profile-upload-btn"
-                onclick="document.getElementById('profile_image').click()">
-                <i class="fas fa-upload"></i>
-                Upload Profile Photo
-              </button>
-              <small class="text-gray-500">JPG, JPEG, PNG (Max 5MB)</small>
-            </div>
 
-            <div class="grid-2">
-              <div class="form-group">
-                <label for="first_name" class="form-label">First Name *</label>
-                <input type="text" name="first_name" id="first_name" class="form-control" required>
-                <div class="error-message hidden" id="error-first_name"></div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="mobile_number" class="block mb-2 text-sm font-medium text-gray-900">Mobile
+                    Number *</label>
+                  <input type="tel" name="mobile_number" id="mobile_number"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="09XXXXXXXXX" pattern="[0-9]{11}" required>
+                  <div class="error-message hidden" id="error-mobile_number"></div>
+                  <div class="validation-error hidden">Mobile number must be exactly 11 digits</div>
+                </div>
+                <div>
+                  <label for="email_address" class="block mb-2 text-sm font-medium text-gray-900">Email
+                    Address *</label>
+                  <input type="email" name="email_address" id="email_address"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="juan.delacruz@email.com" required>
+                  <div class="error-message hidden" id="error-email_address"></div>
+                  <div class="validation-error hidden">Please enter a valid email address</div>
+                </div>
+                <div>
+                  <label for="date_of_birth" class="block mb-2 text-sm font-medium text-gray-900">Date of
+                    Birth *</label>
+                  <input type="date" name="date_of_birth" id="date_of_birth"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                  <div class="error-message hidden" id="error-date_of_birth"></div>
+                  <div class="validation-error hidden">Date of birth must be in the past</div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="last_name" class="form-label">Last Name *</label>
-                <input type="text" name="last_name" id="last_name" class="form-control" required>
-                <div class="error-message hidden" id="error-last_name"></div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="marital_status" class="block mb-2 text-sm font-medium text-gray-900">Marital
+                    Status *</label>
+                  <select name="marital_status" id="marital_status"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                    <option value="">Select Status</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Widowed">Widowed</option>
+                  </select>
+                  <div class="error-message hidden" id="error-marital_status"></div>
+                </div>
+                <div>
+                  <label for="gender" class="block mb-2 text-sm font-medium text-gray-900">Gender
+                    *</label>
+                  <select name="gender" id="gender"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <div class="error-message hidden" id="error-gender"></div>
+                </div>
+                <div>
+                  <label for="nationality" class="block mb-2 text-sm font-medium text-gray-900">Nationality
+                    *</label>
+                  <input type="text" name="nationality" id="nationality"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    value="Filipino" required>
+                  <div class="validation-error hidden">Please enter a valid nationality</div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="mobile_number" class="form-label">Mobile Number *</label>
-                <input type="tel" name="mobile_number" id="mobile_number" class="form-control"
-                  placeholder="09XXXXXXXXX" required>
-                <div class="error-message hidden" id="error-mobile_number"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="email_address" class="form-label">Email Address *</label>
-                <input type="email" name="email_address" id="email_address" class="form-control" required>
-                <div class="error-message hidden" id="error-email_address"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="date_of_birth" class="form-label">Date of Birth *</label>
-                <input type="date" name="date_of_birth" id="date_of_birth" class="form-control" required>
-                <div class="error-message hidden" id="error-date_of_birth"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="marital_status" class="form-label">Marital Status *</label>
-                <select name="marital_status" id="marital_status" class="form-control" required>
-                  <option value="">Select Status</option>
-                  <option value="Single">Single</option>
-                  <option value="Married">Married</option>
-                  <option value="Divorced">Divorced</option>
-                  <option value="Widowed">Widowed</option>
-                </select>
-                <div class="error-message hidden" id="error-marital_status"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="gender" class="form-label">Gender *</label>
-                <select name="gender" id="gender" class="form-control" required>
-                  <option value="">Select Gender</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-                <div class="error-message hidden" id="error-gender"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="nationality" class="form-label">Nationality *</label>
-                <input type="text" name="nationality" id="nationality" class="form-control" value="Filipino" required>
-              </div>
-
-              <div class="form-group col-span-2">
-                <label for="street_address" class="form-label">Street Address *</label>
-                <input type="text" name="street_address" id="street_address" class="form-control" required>
+              <div>
+                <label for="street_address" class="block mb-2 text-sm font-medium text-gray-900">Street
+                  Address *</label>
+                <input type="text" name="street_address" id="street_address"
+                  class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                  placeholder="123 Main Street, Barangay Poblacion" required>
                 <div class="error-message hidden" id="error-street_address"></div>
               </div>
 
-              <div class="form-group">
-                <label for="city" class="form-label">City *</label>
-                <input type="text" name="city" id="city" class="form-control" required>
-                <div class="error-message hidden" id="error-city"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="state_region" class="form-label">State/Region *</label>
-                <input type="text" name="state_region" id="state_region" class="form-control" required>
-                <div class="error-message hidden" id="error-state_region"></div>
-              </div>
-
-              <div class="form-group">
-                <label for="zip_code" class="form-label">ZIP Code *</label>
-                <input type="text" name="zip_code" id="zip_code" class="form-control" required>
-                <div class="error-message hidden" id="error-zip_code"></div>
-              </div>
-
-              <!-- REMOVED: Password fields as job order employees don't need system login -->
-
-              <div class="form-group">
-                <label for="joining_date" class="form-label">Joining Date *</label>
-                <input type="date" name="joining_date" id="joining_date" class="form-control" required>
-                <div class="error-message hidden" id="error-joining_date"></div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Civil Service Eligibility *</label>
-                <div class="flex space-x-4 mt-2">
-                  <label class="inline-flex items-center">
-                    <input type="radio" name="eligibility" value="Eligible" class="w-4 h-4 text-blue-600" checked>
-                    <span class="ml-2">Eligible</span>
-                  </label>
-                  <label class="inline-flex items-center">
-                    <input type="radio" name="eligibility" value="Not Eligible" class="w-4 h-4 text-blue-600">
-                    <span class="ml-2">Not Eligible</span>
-                  </label>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="city" class="block mb-2 text-sm font-medium text-gray-900">City *</label>
+                  <input type="text" name="city" id="city"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Paluan" required>
+                  <div class="error-message hidden" id="error-city"></div>
+                  <div class="validation-error hidden">Please enter a valid city name</div>
+                </div>
+                <div>
+                  <label for="state_region" class="block mb-2 text-sm font-medium text-gray-900">State/Region
+                    *</label>
+                  <input type="text" name="state_region" id="state_region"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    value="Occidental Mindoro" required>
+                  <div class="error-message hidden" id="error-state_region"></div>
+                  <div class="validation-error hidden">Please enter a valid state/region</div>
+                </div>
+                <div>
+                  <label for="zip_code" class="block mb-2 text-sm font-medium text-gray-900">ZIP Code
+                    *</label>
+                  <input type="text" name="zip_code" id="zip_code"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="5104" pattern="[0-9]{4}" required>
+                  <div class="error-message hidden" id="error-zip_code"></div>
+                  <div class="validation-error hidden">ZIP code must be exactly 4 digits</div>
                 </div>
               </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="joining_date" class="block mb-2 text-sm font-medium text-gray-900">Joining
+                    Date *</label>
+                  <input type="date" name="joining_date" id="joining_date"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                  <div class="error-message hidden" id="error-joining_date"></div>
+                </div>
+                <div>
+                  <label class="block mb-2 text-sm font-medium text-gray-900">Civil Service
+                    Eligibility *</label>
+                  <div class="flex space-x-4">
+                    <label class="inline-flex items-center">
+                      <input type="radio" name="eligibility" value="Eligible"
+                        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+                      <span class="ml-2 text-sm font-medium text-gray-900">Eligible</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                      <input type="radio" name="eligibility" value="Not Eligible" checked
+                        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+                      <span class="ml-2 text-sm font-medium text-gray-900">Not Eligible</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button type="button"
+                class="prev-step text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5">
+                <i class="fas fa-arrow-left mr-2"></i>Previous
+              </button>
+              <button type="button"
+                class="next-step text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5"
+                data-next="3">
+                Next <i class="fas fa-arrow-right ml-2"></i>
+              </button>
             </div>
           </div>
 
           <!-- Step 3: Documents -->
           <div id="step3" class="form-step">
-            <div class="grid-2">
+            <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Documents</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
               <!-- Government ID -->
-              <div class="file-upload-zone" data-file-input="doc_id">
-                <div class="file-upload-icon">
-                  <i class="fas fa-id-card"></i>
-                </div>
-                <div class="file-upload-text">
-                  <h4>Government Issued ID</h4>
-                  <p>Upload government-issued identification</p>
-                  <small>JPG, JPEG, PDF, PNG (Max 5MB)</small>
-                </div>
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_id">
+                <i class="fas fa-id-card text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Government ID</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Government-issued identification</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
                 <input type="file" name="doc_id" id="doc_id" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
-                <div class="file-preview hidden"></div>
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
               </div>
 
               <!-- Resume -->
-              <div class="file-upload-zone" data-file-input="doc_resume">
-                <div class="file-upload-icon">
-                  <i class="fas fa-file-alt"></i>
-                </div>
-                <div class="file-upload-text">
-                  <h4>Resume / CV</h4>
-                  <p>Upload resume or curriculum vitae</p>
-                  <small>JPG, JPEG, PDF, PNG (Max 5MB)</small>
-                </div>
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_resume">
+                <i class="fas fa-file-alt text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Resume / CV</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Resume or curriculum vitae</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
                 <input type="file" name="doc_resume" id="doc_resume" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
-                <div class="file-preview hidden"></div>
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
               </div>
 
               <!-- Service Record -->
-              <div class="file-upload-zone" data-file-input="doc_service">
-                <div class="file-upload-icon">
-                  <i class="fas fa-history"></i>
-                </div>
-                <div class="file-upload-text">
-                  <h4>Service Record</h4>
-                  <p>Upload service record document</p>
-                  <small>JPG, JPEG, PDF, PNG (Max 5MB)</small>
-                </div>
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_service">
+                <i class="fas fa-history text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Service Record</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Service record document</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
                 <input type="file" name="doc_service" id="doc_service" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
-                <div class="file-preview hidden"></div>
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
               </div>
 
               <!-- Appointment Paper -->
-              <div class="file-upload-zone" data-file-input="doc_appointment">
-                <div class="file-upload-icon">
-                  <i class="fas fa-file-contract"></i>
-                </div>
-                <div class="file-upload-text">
-                  <h4>Appointment Paper</h4>
-                  <p>Upload appointment paper</p>
-                  <small>JPG, JPEG, PDF, PNG (Max 5MB)</small>
-                </div>
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_appointment">
+                <i class="fas fa-file-contract text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Appointment Paper</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Appointment paper</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
                 <input type="file" name="doc_appointment" id="doc_appointment" accept=".jpg,.jpeg,.pdf,.png"
                   class="hidden">
-                <div class="file-preview hidden"></div>
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
               </div>
 
               <!-- Transcript -->
-              <div class="file-upload-zone" data-file-input="doc_transcript">
-                <div class="file-upload-icon">
-                  <i class="fas fa-graduation-cap"></i>
-                </div>
-                <div class="file-upload-text">
-                  <h4>Transcript of Records</h4>
-                  <p>Upload transcript and diploma</p>
-                  <small>JPG, JPEG, PDF, PNG (Max 5MB)</small>
-                </div>
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_transcript">
+                <i class="fas fa-graduation-cap text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Transcript</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Transcript and diploma</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
                 <input type="file" name="doc_transcript" id="doc_transcript" accept=".jpg,.jpeg,.pdf,.png"
                   class="hidden">
-                <div class="file-preview hidden"></div>
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
               </div>
 
               <!-- Eligibility Certificate -->
-              <div class="file-upload-zone" data-file-input="doc_eligibility">
-                <div class="file-upload-icon">
-                  <i class="fas fa-award"></i>
-                </div>
-                <div class="file-upload-text">
-                  <h4>Eligibility Certificate</h4>
-                  <p>Upload civil service eligibility</p>
-                  <small>JPG, JPEG, PDF, PNG (Max 5MB)</small>
-                </div>
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="doc_eligibility">
+                <i class="fas fa-award text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Eligibility</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Civil service eligibility</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
                 <input type="file" name="doc_eligibility" id="doc_eligibility" accept=".jpg,.jpeg,.pdf,.png"
                   class="hidden">
-                <div class="file-preview hidden"></div>
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
               </div>
             </div>
 
@@ -3761,24 +3953,21 @@ if (isset($_SESSION['error'])) {
                 </div>
               </div>
             </div>
+
+            <div class="flex justify-between mt-4">
+              <button type="button"
+                class="prev-step text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5">
+                <i class="fas fa-arrow-left mr-2"></i>Previous
+              </button>
+              <button type="submit"
+                class="text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5"
+                id="submitFormBtn">
+                <i class="fas fa-check-circle mr-2"></i>Submit Employee
+              </button>
+            </div>
           </div>
-
-
-          <!-- Modal Footer -->
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" id="prevStepBtn" onclick="prevStep()" disabled>
-              <i class="fas fa-arrow-left"></i> Previous
-            </button>
-            <button type="button" class="btn btn-primary" id="nextStepBtn" onclick="nextStep()">
-              Next <i class="fas fa-arrow-right"></i>
-            </button>
-            <button type="submit" class="btn btn-success hidden" id="submitFormBtn">
-              <i class="fas fa-check-circle"></i> Submit Employee
-            </button>
-          </div>
-        </div>
-
-      </form>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -3925,7 +4114,7 @@ if (isset($_SESSION['error'])) {
                   ];
 
                   foreach ($documents as $doc_name => $doc_path):
-                  ?>
+                    ?>
                     <div class="document-item">
                       <div class="document-icon">
                         <?php if (!empty($doc_path)): ?>
@@ -4083,272 +4272,430 @@ if (isset($_SESSION['error'])) {
     </div>
   <?php endif; ?>
 
-  <!-- Edit Employee Modal -->
-  <div class="modal-fixed-container" id="editEmployeeModal">
-    <div class="modal-content-wrapper modal-xl">
-      <!-- Modal Header -->
-      <div class="modal-header">
+  <!-- Edit Job Order Employee Modal -->
+  <div id="editEmployeeModal" class="modal-fixed-container">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden mx-2">
+      <!-- Modal header -->
+      <div class="flex items-center justify-between p-3 md:p-5 border-b sticky top-0 bg-white z-10">
         <div>
-          <h3>Edit Employee</h3>
-          <p>Update employee information</p>
+          <h3 class="text-lg md:text-xl font-semibold text-gray-900">Edit Job Order Employee</h3>
+          <p class="text-sm text-gray-500 mt-1">Update employee information below</p>
         </div>
-        <button type="button" class="modal-close-btn" onclick="closeModal('editEmployeeModal')">
+        <button type="button"
+          class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 inline-flex justify-center items-center"
+          onclick="closeModal('editEmployeeModal')">
           <i class="fas fa-times"></i>
+          <span class="sr-only">Close modal</span>
         </button>
       </div>
 
-      <!-- Tab Navigation -->
-      <div class="modal-tabs">
-        <div class="modal-tab active" data-tab="professional">
-          <i class="fas fa-briefcase"></i>
-          <span>Professional Info</span>
+      <!-- Modal body -->
+      <div class="p-3 md:p-5 overflow-y-auto max-h-[calc(90vh-120px)]">
+        <!-- Step Navigation -->
+        <div class="flex mb-4 border-b sticky top-0 bg-white z-10 pt-2">
+          <button type="button"
+            class="step-nav flex-1 py-2 px-2 md:px-4 text-center font-medium border-b-2 border-blue-600 text-blue-600 text-sm md:text-base"
+            data-step="1">Professional Info</button>
+          <button type="button"
+            class="step-nav flex-1 py-2 px-2 md:px-4 text-center font-medium border-b-2 border-transparent text-gray-500 text-sm md:text-base"
+            data-step="2">Personal Info</button>
+          <button type="button"
+            class="step-nav flex-1 py-2 px-2 md:px-4 text-center font-medium border-b-2 border-transparent text-gray-500 text-sm md:text-base"
+            data-step="3">Documents</button>
         </div>
-        <div class="modal-tab" data-tab="personal">
-          <i class="fas fa-user"></i>
-          <span>Personal Info</span>
-        </div>
-        <div class="modal-tab" data-tab="documents">
-          <i class="fas fa-file-alt"></i>
-          <span>Documents</span>
-        </div>
-      </div>
 
-      <!-- Form -->
-      <form id="editEmployeeForm" action="<?php echo htmlspecialchars($current_file); ?>" method="POST"
-        enctype="multipart/form-data" onsubmit="return validateEditForm()">
-        <input type="hidden" name="employee_id" id="edit_employee_id">
-        <input type="hidden" name="update_submit" value="1">
+        <!-- Form -->
+        <form id="editEmployeeForm" action="<?php echo htmlspecialchars($current_file); ?>" method="POST"
+          enctype="multipart/form-data" onsubmit="return validateEditForm()">
+          <input type="hidden" name="employee_id" id="edit_employee_id">
+          <input type="hidden" name="update_submit" value="1">
 
-        <div class="modal-body">
-          <!-- Professional Info Tab -->
-          <div id="edit-tab-professional" class="edit-tab-content active">
-            <div class="grid-2">
+          <!-- Step 1: Professional Information -->
+          <div id="step1" class="form-step active">
+            <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Professional Details</h2>
+
+            <div class="grid gap-3 md:gap-4 mb-4">
               <!-- Employee ID Field -->
-              <div class="form-group">
-                <label for="edit_employee_id_field" class="form-label">Employee ID *</label>
-                <input type="text" name="employee_id_field" id="edit_employee_id_field" class="form-control" required>
+              <div>
+                <label for="edit_employee_id_field" class="block mb-2 text-sm font-medium text-gray-900">
+                  Employee ID * <span class="text-xs text-gray-500 ml-2">(Format: JO-YEAR-XXXX)</span>
+                </label>
+                <div class="relative">
+                  <input type="text" name="employee_id_field" id="edit_employee_id_field"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Enter Employee ID (e.g., JO-2024-0001)" required pattern="^[A-Za-z0-9\-_]+$"
+                    title="Employee ID can contain letters, numbers, hyphens, and underscores">
+                  <div class="mt-1 text-xs text-gray-500">
+                    Format: JO-YEAR-XXXX (example: JO-2024-0001) or use your own format
+                  </div>
+                </div>
+                <div class="error-message hidden" id="error-employee_id"></div>
               </div>
 
-              <div class="form-group">
-                <label for="edit_employee_name" class="form-label">Full Name *</label>
-                <input type="text" name="employee_name" id="edit_employee_name" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_occupation" class="form-label">Occupation *</label>
-                <input type="text" name="occupation" id="edit_occupation" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_office" class="form-label">Office Assignment *</label>
-                <select name="office" id="edit_office" class="form-control" required>
-                  <option value="">Select Department</option>
-                  <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
-                  <option value="Human Resource Management Division">Human Resource Management Division</option>
-                  <option value="Business Permit and Licensing Division">Business Permit and Licensing Division
-                  </option>
-                  <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
-                  <option value="Office of the Municipal Accountant">Office of the Municipal Accountant</option>
-                  <option value="Office of the Assessor">Office of the Assessor</option>
-                  <option value="Municipal Budget Office">Municipal Budget Office</option>
-                  <option value="Municipal Planning and Development Office">Municipal Planning and Development Office
-                  </option>
-                  <option value="Municipal Engineering Office">Municipal Engineering Office</option>
-                  <option value="Municipal Disaster Risk Reduction and Management Office">Municipal Disaster Risk
-                    Reduction and Management Office</option>
-                  <option value="Municipal Social Welfare and Development Office">Municipal Social Welfare and
-                    Development Office</option>
-                  <option value="Municipal Environment and Natural Resources Office">Municipal Environment and Natural
-                    Resources Office</option>
-                  <option value="Office of the Municipal Agriculturist">Office of the Municipal Agriculturist</option>
-                  <option value="Municipal General Services Office">Municipal General Services Office</option>
-                  <option value="Municipal Public Employment Service Office">Municipal Public Employment Service
-                    Office</option>
-                  <option value="Municipal Health Office">Municipal Health Office</option>
-                  <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_rate_per_day" class="form-label">Rate per Day (₱) *</label>
-                <input type="number" step="0.01" min="0" name="rate_per_day" id="edit_rate_per_day"
-                  class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_sss_contribution" class="form-label">SSS Contribution</label>
-                <input type="text" name="sss_contribution" id="edit_sss_contribution" class="form-control"
-                  placeholder="Enter SSS Contribution amount or details">
-              </div>
-
-              <div class="form-group">
-                <label for="edit_ctc_number" class="form-label">CTC Number *</label>
-                <input type="text" name="ctc_number" id="edit_ctc_number" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_ctc_date" class="form-label">CTC Date *</label>
-                <input type="date" name="ctc_date" id="edit_ctc_date" class="form-control" required>
-              </div>
-
-              <div class="form-group col-span-2">
-                <label for="edit_place_of_issue" class="form-label">Place of Issue *</label>
-                <input type="text" name="place_of_issue" id="edit_place_of_issue" class="form-control" required>
-              </div>
-            </div>
-          </div>
-
-          <!-- Personal Info Tab -->
-          <div id="edit-tab-personal" class="edit-tab-content hidden">
-            <!-- Profile Image Upload -->
-            <div class="profile-image-upload">
-              <div class="profile-image-container" id="edit-profile-image-container">
-                <div class="profile-image-placeholder">
-                  <i class="fas fa-user"></i>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="edit_first_name" class="block mb-2 text-sm font-medium text-gray-900">First
+                    Name *</label>
+                  <input type="text" name="first_name" id="edit_first_name"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                </div>
+                <div>
+                  <label for="edit_last_name" class="block mb-2 text-sm font-medium text-gray-900">Last
+                    Name *</label>
+                  <input type="text" name="last_name" id="edit_last_name"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                </div>
+                <div>
+                  <label for="edit_middle" class="block mb-2 text-sm font-medium text-gray-900">Middle
+                    Initial *</label>
+                  <input type="text" name="middle" id="edit_middle"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
                 </div>
               </div>
-              <input type="file" name="profile_image" id="edit_profile_image" accept="image/*" class="hidden">
-              <button type="button" class="profile-upload-btn"
-                onclick="document.getElementById('edit_profile_image').click()">
-                <i class="fas fa-upload"></i>
-                Update Profile Photo
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="edit_occupation" class="block mb-2 text-sm font-medium text-gray-900">Occupation
+                    *</label>
+                  <input type="text" name="occupation" id="edit_occupation"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Job title/position" required>
+                  <div class="error-message hidden" id="error-occupation"></div>
+                </div>
+                <div>
+                  <label for="edit_office" class="block mb-2 text-sm font-medium text-gray-900">Office
+                    Assignment *</label>
+                  <select name="office" id="edit_office"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                    <option value="">Select Department</option>
+                    <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
+                    <option value="Human Resource Management Division">Human Resource Management Division
+                    </option>
+                    <option value="Business Permit and Licensing Division">Business Permit and Licensing
+                      Division</option>
+                    <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
+                    <option value="Office of the Municipal Accountant">Office of the Municipal
+                      Accountant</option>
+                    <option value="Office of the Assessor">Office of the Assessor</option>
+                    <option value="Municipal Budget Office">Municipal Budget Office</option>
+                    <option value="Municipal Planning and Development Office">Municipal Planning and
+                      Development Office</option>
+                    <option value="Municipal Engineering Office">Municipal Engineering Office</option>
+                    <option value="Municipal Disaster Risk Reduction and Management Office">Municipal
+                      Disaster Risk Reduction and Management Office</option>
+                    <option value="Municipal Social Welfare and Development Office">Municipal Social
+                      Welfare and Development Office</option>
+                    <option value="Municipal Environment and Natural Resources Office">Municipal
+                      Environment and Natural Resources Office</option>
+                    <option value="Office of the Municipal Agriculturist">Office of the Municipal
+                      Agriculturist</option>
+                    <option value="Municipal General Services Office">Municipal General Services Office
+                    </option>
+                    <option value="Municipal Public Employment Service Office">Municipal Public
+                      Employment Service Office</option>
+                    <option value="Municipal Health Office">Municipal Health Office</option>
+                    <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
+                  </select>
+                  <div class="error-message hidden" id="error-office"></div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="edit_rate_per_day" class="block mb-2 text-sm font-medium text-gray-900">Rate per
+                    Day (₱) *</label>
+                  <input type="number" step="0.01" min="0" name="rate_per_day" id="edit_rate_per_day"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="0.00" required>
+                  <div class="error-message hidden" id="error-rate_per_day"></div>
+                </div>
+                <div>
+                  <label for="edit_sss_contribution" class="block mb-2 text-sm font-medium text-gray-900">SSS
+                    Contribution</label>
+                  <input type="text" name="sss_contribution" id="edit_sss_contribution"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Enter SSS Contribution amount or details">
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="edit_ctc_number" class="block mb-2 text-sm font-medium text-gray-900">CTC Number
+                    *</label>
+                  <input type="text" name="ctc_number" id="edit_ctc_number"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="CTC No." required>
+                  <div class="error-message hidden" id="error-ctc_number"></div>
+                </div>
+                <div>
+                  <label for="edit_ctc_date" class="block mb-2 text-sm font-medium text-gray-900">CTC Date
+                    *</label>
+                  <input type="date" name="ctc_date" id="edit_ctc_date"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                  <div class="error-message hidden" id="error-ctc_date"></div>
+                </div>
+              </div>
+
+              <div>
+                <label for="edit_place_of_issue" class="block mb-2 text-sm font-medium text-gray-900">Place of
+                  Issue *</label>
+                <input type="text" name="place_of_issue" id="edit_place_of_issue"
+                  class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                  placeholder="City/Municipality where CTC was issued" required>
+                <div class="error-message hidden" id="error-place_of_issue"></div>
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="button"
+                class="next-step text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5"
+                data-next="2">
+                Next <i class="fas fa-arrow-right ml-2"></i>
               </button>
-              <small class="text-gray-500">Leave empty to keep current photo</small>
-            </div>
-
-            <div class="grid-2">
-              <div class="form-group">
-                <label for="edit_first_name" class="form-label">First Name *</label>
-                <input type="text" name="first_name" id="edit_first_name" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_last_name" class="form-label">Last Name *</label>
-                <input type="text" name="last_name" id="edit_last_name" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_mobile_number" class="form-label">Mobile Number *</label>
-                <input type="tel" name="mobile_number" id="edit_mobile_number" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_email_address" class="form-label">Email Address *</label>
-                <input type="email" name="email_address" id="edit_email_address" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_date_of_birth" class="form-label">Date of Birth *</label>
-                <input type="date" name="date_of_birth" id="edit_date_of_birth" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_marital_status" class="form-label">Marital Status *</label>
-                <select name="marital_status" id="edit_marital_status" class="form-control" required>
-                  <option value="">Select Status</option>
-                  <option value="Single">Single</option>
-                  <option value="Married">Married</option>
-                  <option value="Divorced">Divorced</option>
-                  <option value="Widowed">Widowed</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_gender" class="form-label">Gender *</label>
-                <select name="gender" id="edit_gender" class="form-control" required>
-                  <option value="">Select Gender</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_nationality" class="form-label">Nationality *</label>
-                <input type="text" name="nationality" id="edit_nationality" class="form-control" value="Filipino"
-                  required>
-              </div>
-
-              <div class="form-group col-span-2">
-                <label for="edit_street_address" class="form-label">Street Address *</label>
-                <input type="text" name="street_address" id="edit_street_address" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_city" class="form-label">City *</label>
-                <input type="text" name="city" id="edit_city" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_state_region" class="form-label">State/Region *</label>
-                <input type="text" name="state_region" id="edit_state_region" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_zip_code" class="form-label">ZIP Code *</label>
-                <input type="text" name="zip_code" id="edit_zip_code" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label for="edit_joining_date" class="form-label">Joining Date *</label>
-                <input type="date" name="joining_date" id="edit_joining_date" class="form-control" required>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Civil Service Eligibility *</label>
-                <div class="flex space-x-4 mt-2">
-                  <label class="inline-flex items-center">
-                    <input type="radio" name="eligibility" value="Eligible" class="w-4 h-4 text-blue-600">
-                    <span class="ml-2">Eligible</span>
-                  </label>
-                  <label class="inline-flex items-center">
-                    <input type="radio" name="eligibility" value="Not Eligible" class="w-4 h-4 text-blue-600">
-                    <span class="ml-2">Not Eligible</span>
-                  </label>
-                </div>
-              </div>
-
-              <!-- REMOVED: Password update section as job order employees don't need system login -->
             </div>
           </div>
 
-          <!-- Documents Tab -->
-          <div id="edit-tab-documents" class="edit-tab-content hidden">
-            <div class="grid-2">
-              <div class="form-group">
-                <label class="form-label">Government ID</label>
-                <input type="file" name="doc_id" class="form-control">
-                <small class="text-gray-500">Upload to replace existing file</small>
+          <!-- Step 2: Personal Information -->
+          <div id="step2" class="form-step hidden">
+            <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Personal Details</h2>
+
+            <div class="grid gap-3 md:gap-4 mb-4">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-1">
+                  <div class="flex flex-col items-center">
+                    <div id="editProfileImageContainer"
+                      class="w-24 h-24 md:w-32 md:h-32 bg-gray-200 rounded-full flex items-center justify-center mb-3 md:mb-4 overflow-hidden">
+                      <i class="fas fa-user text-gray-400 text-3xl md:text-4xl"></i>
+                    </div>
+                    <input type="file" name="profile_image" id="edit_profile_image" accept="image/*" class="hidden">
+                    <label for="edit_profile_image"
+                      class="cursor-pointer text-blue-600 hover:text-blue-800 text-sm font-medium">
+                      <i class="fas fa-upload mr-1"></i>Update Photo
+                    </label>
+                    <small class="text-gray-500 text-xs mt-1">JPG, JPEG, PNG (Max 5MB)</small>
+                    <small class="text-gray-500 text-xs">Leave empty to keep current</small>
+                  </div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Resume/CV</label>
-                <input type="file" name="doc_resume" class="form-control">
-                <small class="text-gray-500">Upload to replace existing file</small>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="edit_mobile_number" class="block mb-2 text-sm font-medium text-gray-900">Mobile
+                    Number *</label>
+                  <input type="tel" name="mobile_number" id="edit_mobile_number"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="09XXXXXXXXX" pattern="[0-9]{11}" required>
+                  <div class="error-message hidden" id="error-mobile_number"></div>
+                </div>
+                <div>
+                  <label for="edit_email_address" class="block mb-2 text-sm font-medium text-gray-900">Email
+                    Address *</label>
+                  <input type="email" name="email_address" id="edit_email_address"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="juan.delacruz@email.com" required>
+                  <div class="error-message hidden" id="error-email_address"></div>
+                </div>
+                <div>
+                  <label for="edit_date_of_birth" class="block mb-2 text-sm font-medium text-gray-900">Date of
+                    Birth *</label>
+                  <input type="date" name="date_of_birth" id="edit_date_of_birth"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                  <div class="error-message hidden" id="error-date_of_birth"></div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Service Record</label>
-                <input type="file" name="doc_service" class="form-control">
-                <small class="text-gray-500">Upload to replace existing file</small>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="edit_marital_status" class="block mb-2 text-sm font-medium text-gray-900">Marital
+                    Status *</label>
+                  <select name="marital_status" id="edit_marital_status"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                    <option value="">Select Status</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Widowed">Widowed</option>
+                  </select>
+                  <div class="error-message hidden" id="error-marital_status"></div>
+                </div>
+                <div>
+                  <label for="edit_gender" class="block mb-2 text-sm font-medium text-gray-900">Gender
+                    *</label>
+                  <select name="gender" id="edit_gender"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <div class="error-message hidden" id="error-gender"></div>
+                </div>
+                <div>
+                  <label for="edit_nationality" class="block mb-2 text-sm font-medium text-gray-900">Nationality
+                    *</label>
+                  <input type="text" name="nationality" id="edit_nationality"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    value="Filipino" required>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Appointment Paper</label>
-                <input type="file" name="doc_appointment" class="form-control">
-                <small class="text-gray-500">Upload to replace existing file</small>
+              <div>
+                <label for="edit_street_address" class="block mb-2 text-sm font-medium text-gray-900">Street
+                  Address *</label>
+                <input type="text" name="street_address" id="edit_street_address"
+                  class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                  placeholder="123 Main Street, Barangay Poblacion" required>
+                <div class="error-message hidden" id="error-street_address"></div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Transcript</label>
-                <input type="file" name="doc_transcript" class="form-control">
-                <small class="text-gray-500">Upload to replace existing file</small>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label for="edit_city" class="block mb-2 text-sm font-medium text-gray-900">City *</label>
+                  <input type="text" name="city" id="edit_city"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="Paluan" required>
+                  <div class="error-message hidden" id="error-city"></div>
+                </div>
+                <div>
+                  <label for="edit_state_region" class="block mb-2 text-sm font-medium text-gray-900">State/Region
+                    *</label>
+                  <input type="text" name="state_region" id="edit_state_region"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    value="Occidental Mindoro" required>
+                  <div class="error-message hidden" id="error-state_region"></div>
+                </div>
+                <div>
+                  <label for="edit_zip_code" class="block mb-2 text-sm font-medium text-gray-900">ZIP Code
+                    *</label>
+                  <input type="text" name="zip_code" id="edit_zip_code"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    placeholder="5104" pattern="[0-9]{4}" required>
+                  <div class="error-message hidden" id="error-zip_code"></div>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Eligibility Certificate</label>
-                <input type="file" name="doc_eligibility" class="form-control">
-                <small class="text-gray-500">Upload to replace existing file</small>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="edit_joining_date" class="block mb-2 text-sm font-medium text-gray-900">Joining
+                    Date *</label>
+                  <input type="date" name="joining_date" id="edit_joining_date"
+                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    required>
+                  <div class="error-message hidden" id="error-joining_date"></div>
+                </div>
+                <div>
+                  <label class="block mb-2 text-sm font-medium text-gray-900">Civil Service
+                    Eligibility *</label>
+                  <div class="flex space-x-4">
+                    <label class="inline-flex items-center">
+                      <input type="radio" name="eligibility" value="Eligible"
+                        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+                      <span class="ml-2 text-sm font-medium text-gray-900">Eligible</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                      <input type="radio" name="eligibility" value="Not Eligible" checked
+                        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500">
+                      <span class="ml-2 text-sm font-medium text-gray-900">Not Eligible</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button type="button"
+                class="prev-step text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5">
+                <i class="fas fa-arrow-left mr-2"></i>Previous
+              </button>
+              <button type="button"
+                class="next-step text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5"
+                data-next="3">
+                Next <i class="fas fa-arrow-right ml-2"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Documents -->
+          <div id="step3" class="form-step hidden">
+            <h2 class="text-base md:text-lg font-semibold text-gray-800 mb-3 md:mb-4">Documents</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
+              <!-- Government ID -->
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="edit_doc_id">
+                <i class="fas fa-id-card text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Government ID</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Government-issued identification</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
+                <input type="file" name="doc_id" id="edit_doc_id" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
+                <small class="text-gray-500 block mt-2">Leave empty to keep existing</small>
+              </div>
+
+              <!-- Resume -->
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="edit_doc_resume">
+                <i class="fas fa-file-alt text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Resume / CV</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Resume or curriculum vitae</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
+                <input type="file" name="doc_resume" id="edit_doc_resume" accept=".jpg,.jpeg,.pdf,.png" class="hidden">
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
+                <small class="text-gray-500 block mt-2">Leave empty to keep existing</small>
+              </div>
+
+              <!-- Service Record -->
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="edit_doc_service">
+                <i class="fas fa-history text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Service Record</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Service record document</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
+                <input type="file" name="doc_service" id="edit_doc_service" accept=".jpg,.jpeg,.pdf,.png"
+                  class="hidden">
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
+                <small class="text-gray-500 block mt-2">Leave empty to keep existing</small>
+              </div>
+
+              <!-- Appointment Paper -->
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="edit_doc_appointment">
+                <i class="fas fa-file-contract text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Appointment Paper</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Appointment paper</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
+                <input type="file" name="doc_appointment" id="edit_doc_appointment" accept=".jpg,.jpeg,.pdf,.png"
+                  class="hidden">
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
+                <small class="text-gray-500 block mt-2">Leave empty to keep existing</small>
+              </div>
+
+              <!-- Transcript -->
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="edit_doc_transcript">
+                <i class="fas fa-graduation-cap text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Transcript</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Transcript and diploma</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
+                <input type="file" name="doc_transcript" id="edit_doc_transcript" accept=".jpg,.jpeg,.pdf,.png"
+                  class="hidden">
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
+                <small class="text-gray-500 block mt-2">Leave empty to keep existing</small>
+              </div>
+
+              <!-- Eligibility Certificate -->
+              <div class="file-drop-zone p-4 md:p-6 text-center" data-file-input="edit_doc_eligibility">
+                <i class="fas fa-award text-3xl md:text-4xl text-blue-400 mb-2 md:mb-3"></i>
+                <h4 class="text-base md:text-lg font-medium text-gray-900 mb-1 md:mb-2">Eligibility</h4>
+                <p class="text-xs md:text-sm text-gray-600 mb-1 md:mb-2">Civil service eligibility</p>
+                <p class="text-xs text-gray-500 mb-2 md:mb-3">JPG, JPEG, PDF, PNG</p>
+                <input type="file" name="doc_eligibility" id="edit_doc_eligibility" accept=".jpg,.jpeg,.pdf,.png"
+                  class="hidden">
+                <div class="file-status text-xs md:text-sm text-green-600"></div>
+                <small class="text-gray-500 block mt-2">Leave empty to keep existing</small>
               </div>
             </div>
 
@@ -4356,28 +4703,31 @@ if (isset($_SESSION['error'])) {
               <div class="flex items-start gap-3">
                 <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
                 <div>
-                  <p class="text-sm text-blue-800 font-medium">Document Update Note</p>
-                  <p class="text-xs text-blue-700 mt-1">Existing documents will be kept if no new files are uploaded.
-                  </p>
+                  <p class="text-sm text-blue-800 font-medium">Document Update Guidelines</p>
+                  <ul class="text-xs text-blue-700 mt-1 space-y-1">
+                    <li>• Allowed file types: JPG, JPEG, PNG, PDF</li>
+                    <li>• Maximum file size: 5MB per document</li>
+                    <li>• Leave empty to keep existing documents</li>
+                    <li>• Upload new files only to replace existing ones</li>
+                  </ul>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Modal Footer -->
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary edit-tab-prev hidden">
-            <i class="fas fa-arrow-left"></i> Previous
-          </button>
-          <button type="button" class="btn btn-primary edit-tab-next">
-            Next <i class="fas fa-arrow-right"></i>
-          </button>
-          <button type="submit" class="btn btn-success edit-tab-submit hidden">
-            <i class="fas fa-save"></i> Save Changes
-          </button>
-        </div>
-      </form>
+            <div class="flex justify-between mt-4">
+              <button type="button"
+                class="prev-step text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5">
+                <i class="fas fa-arrow-left mr-2"></i>Previous
+              </button>
+              <button type="submit"
+                class="text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-4 py-2.5 md:px-5"
+                id="submitFormBtn">
+                <i class="fas fa-save mr-2"></i>Save Changes
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -4484,7 +4834,458 @@ if (isset($_SESSION['error'])) {
   <!-- JavaScript Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Inside the edit button click handler, after openModal('editEmployeeModal');
 
+    // Reset and reinitialize step navigation
+    setTimeout(() => {
+      // Reset to step 1
+      const editModal = document.getElementById('editEmployeeModal');
+      const steps = editModal.querySelectorAll('.form-step');
+      const stepNavs = editModal.querySelectorAll('.step-nav');
+      const nextBtns = editModal.querySelectorAll('.next-step');
+      const prevBtns = editModal.querySelectorAll('.prev-step');
+
+      // Reset all steps to hidden except step 1
+      steps.forEach((step, index) => {
+        if (index === 0) {
+          step.classList.add('active');
+          step.classList.remove('hidden');
+        } else {
+          step.classList.remove('active');
+          step.classList.add('hidden');
+        }
+      });
+
+      // Reset step navigation active states
+      stepNavs.forEach((nav, index) => {
+        if (index === 0) {
+          nav.classList.remove('border-transparent', 'text-gray-500');
+          nav.classList.add('border-blue-600', 'text-blue-600');
+        } else {
+          nav.classList.remove('border-blue-600', 'text-blue-600');
+          nav.classList.add('border-transparent', 'text-gray-500');
+        }
+      });
+
+      // Reattach event listeners if needed
+      attachStepEventListeners(editModal);
+
+    }, 100);
+    // Function to attach step navigation event listeners
+    function attachStepEventListeners(modal) {
+      if (!modal) return;
+
+      // Get all step navigation elements
+      const stepNavs = modal.querySelectorAll('.step-nav');
+      const steps = modal.querySelectorAll('.form-step');
+      const nextBtns = modal.querySelectorAll('.next-step');
+      const prevBtns = modal.querySelectorAll('.prev-step');
+
+      // Remove existing listeners by cloning and replacing
+      // This prevents duplicate event listeners
+
+      // Step navigation click handlers
+      stepNavs.forEach(nav => {
+        // Remove old listener by cloning
+        const newNav = nav.cloneNode(true);
+        nav.parentNode.replaceChild(newNav, nav);
+
+        newNav.addEventListener('click', function (e) {
+          e.preventDefault();
+          const stepNumber = parseInt(this.getAttribute('data-step'));
+
+          // Update active states
+          stepNavs.forEach(n => {
+            n.classList.remove('border-blue-600', 'text-blue-600');
+            n.classList.add('border-transparent', 'text-gray-500');
+          });
+          this.classList.remove('border-transparent', 'text-gray-500');
+          this.classList.add('border-blue-600', 'text-blue-600');
+
+          // Show corresponding step
+          steps.forEach(step => {
+            step.classList.remove('active');
+            step.classList.add('hidden');
+          });
+
+          const targetStep = modal.querySelector(`#step${stepNumber}`);
+          if (targetStep) {
+            targetStep.classList.add('active');
+            targetStep.classList.remove('hidden');
+          }
+        });
+      });
+
+      // Next button click handlers
+      nextBtns.forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+
+        newBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+
+          // Find current active step
+          let currentStepNum = 1;
+          steps.forEach((step, index) => {
+            if (step.classList.contains('active')) {
+              currentStepNum = index + 1;
+            }
+          });
+
+          // Validate current step before proceeding
+          if (validateEditStep(currentStepNum, modal)) {
+            const nextStepNum = currentStepNum + 1;
+            if (nextStepNum <= steps.length) {
+              // Update step navigation
+              stepNavs.forEach(nav => {
+                const navStep = parseInt(nav.getAttribute('data-step'));
+                nav.classList.remove('border-blue-600', 'text-blue-600');
+                nav.classList.add('border-transparent', 'text-gray-500');
+
+                if (navStep === nextStepNum) {
+                  nav.classList.remove('border-transparent', 'text-gray-500');
+                  nav.classList.add('border-blue-600', 'text-blue-600');
+                }
+              });
+
+              // Show next step
+              steps.forEach(step => {
+                step.classList.remove('active');
+                step.classList.add('hidden');
+              });
+
+              const nextStep = modal.querySelector(`#step${nextStepNum}`);
+              if (nextStep) {
+                nextStep.classList.add('active');
+                nextStep.classList.remove('hidden');
+              }
+            }
+          }
+        });
+      });
+
+      // Previous button click handlers
+      prevBtns.forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+
+        newBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+
+          // Find current active step
+          let currentStepNum = 1;
+          steps.forEach((step, index) => {
+            if (step.classList.contains('active')) {
+              currentStepNum = index + 1;
+            }
+          });
+
+          const prevStepNum = currentStepNum - 1;
+          if (prevStepNum >= 1) {
+            // Update step navigation
+            stepNavs.forEach(nav => {
+              const navStep = parseInt(nav.getAttribute('data-step'));
+              nav.classList.remove('border-blue-600', 'text-blue-600');
+              nav.classList.add('border-transparent', 'text-gray-500');
+
+              if (navStep === prevStepNum) {
+                nav.classList.remove('border-transparent', 'text-gray-500');
+                nav.classList.add('border-blue-600', 'text-blue-600');
+              }
+            });
+
+            // Show previous step
+            steps.forEach(step => {
+              step.classList.remove('active');
+              step.classList.add('hidden');
+            });
+
+            const prevStep = modal.querySelector(`#step${prevStepNum}`);
+            if (prevStep) {
+              prevStep.classList.add('active');
+              prevStep.classList.remove('hidden');
+            }
+          }
+        });
+      });
+    }
+  </script>
+  <script>
+    // =========================================
+    // EDIT MODAL STEP NAVIGATION
+    // =========================================
+
+    // Initialize edit modal step navigation
+    function initEditModalSteps() {
+      const editModal = document.getElementById('editEmployeeModal');
+      if (!editModal) return;
+
+      // Get all step navigation buttons in edit modal
+      const stepNavs = editModal.querySelectorAll('.step-nav');
+      const steps = editModal.querySelectorAll('.form-step');
+      const nextBtns = editModal.querySelectorAll('.next-step');
+      const prevBtns = editModal.querySelectorAll('.prev-step');
+
+      // Step navigation click handlers
+      stepNavs.forEach(nav => {
+        nav.addEventListener('click', function () {
+          const stepNumber = parseInt(this.getAttribute('data-step'));
+
+          // Update active states
+          stepNavs.forEach(n => {
+            n.classList.remove('border-blue-600', 'text-blue-600');
+            n.classList.add('border-transparent', 'text-gray-500');
+          });
+          this.classList.remove('border-transparent', 'text-gray-500');
+          this.classList.add('border-blue-600', 'text-blue-600');
+
+          // Show corresponding step
+          steps.forEach(step => {
+            step.classList.remove('active');
+            step.classList.add('hidden');
+          });
+
+          const targetStep = editModal.querySelector(`#step${stepNumber}`);
+          if (targetStep) {
+            targetStep.classList.add('active');
+            targetStep.classList.remove('hidden');
+          }
+
+          currentStep = stepNumber;
+        });
+      });
+
+      // Next button click handlers
+      nextBtns.forEach(btn => {
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+
+          // Find current active step
+          let currentStepNum = 1;
+          steps.forEach((step, index) => {
+            if (step.classList.contains('active')) {
+              currentStepNum = index + 1;
+            }
+          });
+
+          // Validate current step before proceeding
+          if (validateEditStep(currentStepNum)) {
+            const nextStepNum = currentStepNum + 1;
+            if (nextStepNum <= steps.length) {
+              // Update step navigation
+              stepNavs.forEach(nav => {
+                const navStep = parseInt(nav.getAttribute('data-step'));
+                nav.classList.remove('border-blue-600', 'text-blue-600');
+                nav.classList.add('border-transparent', 'text-gray-500');
+
+                if (navStep === nextStepNum) {
+                  nav.classList.remove('border-transparent', 'text-gray-500');
+                  nav.classList.add('border-blue-600', 'text-blue-600');
+                }
+              });
+
+              // Show next step
+              steps.forEach(step => {
+                step.classList.remove('active');
+                step.classList.add('hidden');
+              });
+
+              const nextStep = editModal.querySelector(`#step${nextStepNum}`);
+              if (nextStep) {
+                nextStep.classList.add('active');
+                nextStep.classList.remove('hidden');
+              }
+            }
+          }
+        });
+      });
+
+      // Previous button click handlers
+      prevBtns.forEach(btn => {
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+
+          // Find current active step
+          let currentStepNum = 1;
+          steps.forEach((step, index) => {
+            if (step.classList.contains('active')) {
+              currentStepNum = index + 1;
+            }
+          });
+
+          const prevStepNum = currentStepNum - 1;
+          if (prevStepNum >= 1) {
+            // Update step navigation
+            stepNavs.forEach(nav => {
+              const navStep = parseInt(nav.getAttribute('data-step'));
+              nav.classList.remove('border-blue-600', 'text-blue-600');
+              nav.classList.add('border-transparent', 'text-gray-500');
+
+              if (navStep === prevStepNum) {
+                nav.classList.remove('border-transparent', 'text-gray-500');
+                nav.classList.add('border-blue-600', 'text-blue-600');
+              }
+            });
+
+            // Show previous step
+            steps.forEach(step => {
+              step.classList.remove('active');
+              step.classList.add('hidden');
+            });
+
+            const prevStep = editModal.querySelector(`#step${prevStepNum}`);
+            if (prevStep) {
+              prevStep.classList.add('active');
+              prevStep.classList.remove('hidden');
+            }
+          }
+        });
+      });
+    }
+
+    // Validate edit step function
+    function validateEditStep(stepNumber) {
+      const editModal = document.getElementById('editEmployeeModal');
+      const step = editModal.querySelector(`#step${stepNumber}`);
+      let isValid = true;
+
+      if (!step) return true;
+
+      // Get all required fields in this step
+      const requiredFields = step.querySelectorAll('[required]');
+
+      requiredFields.forEach(field => {
+        if (!field.value.trim()) {
+          isValid = false;
+          field.classList.add('error', 'border-red-500');
+
+          // Show or create error message
+          let errorDiv = field.nextElementSibling;
+          if (!errorDiv || !errorDiv.classList.contains('error-message')) {
+            errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message text-red-500 text-xs mt-1';
+            field.parentNode.insertBefore(errorDiv, field.nextSibling);
+          }
+          errorDiv.textContent = 'This field is required';
+          errorDiv.classList.remove('hidden');
+        } else {
+          field.classList.remove('error', 'border-red-500');
+          const errorDiv = field.nextElementSibling;
+          if (errorDiv && errorDiv.classList.contains('error-message')) {
+            errorDiv.classList.add('hidden');
+          }
+        }
+      });
+
+      // Additional validation for specific fields
+      if (stepNumber === 1) {
+        // Validate email if present in step 1
+        const emailField = step.querySelector('#edit_email_address');
+        if (emailField && emailField.value.trim()) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(emailField.value)) {
+            isValid = false;
+            emailField.classList.add('error', 'border-red-500');
+
+            let errorDiv = emailField.nextElementSibling;
+            if (!errorDiv || !errorDiv.classList.contains('error-message')) {
+              errorDiv = document.createElement('div');
+              errorDiv.className = 'error-message text-red-500 text-xs mt-1';
+              emailField.parentNode.insertBefore(errorDiv, emailField.nextSibling);
+            }
+            errorDiv.textContent = 'Please enter a valid email address';
+            errorDiv.classList.remove('hidden');
+          }
+        }
+
+        // Validate rate per day
+        const rateField = step.querySelector('#edit_rate_per_day');
+        if (rateField && rateField.value) {
+          const rateValue = parseFloat(rateField.value);
+          if (isNaN(rateValue) || rateValue <= 0) {
+            isValid = false;
+            rateField.classList.add('error', 'border-red-500');
+
+            let errorDiv = rateField.nextElementSibling;
+            if (!errorDiv || !errorDiv.classList.contains('error-message')) {
+              errorDiv = document.createElement('div');
+              errorDiv.className = 'error-message text-red-500 text-xs mt-1';
+              rateField.parentNode.insertBefore(errorDiv, rateField.nextSibling);
+            }
+            errorDiv.textContent = 'Rate per day must be a positive number';
+            errorDiv.classList.remove('hidden');
+          }
+        }
+      }
+
+      if (!isValid) {
+        showToast('Please fill in all required fields correctly', 'error');
+      }
+
+      return isValid;
+    }
+
+    // Initialize edit modal steps when the modal is opened
+    const originalPopulateEditForm = populateEditForm;
+    populateEditForm = function (data) {
+      // Call the original function
+      originalPopulateEditForm(data);
+
+      // Initialize steps after data is loaded
+      setTimeout(() => {
+        initEditModalSteps();
+
+        // Reset to step 1
+        const editModal = document.getElementById('editEmployeeModal');
+        const steps = editModal.querySelectorAll('.form-step');
+        const stepNavs = editModal.querySelectorAll('.step-nav');
+
+        steps.forEach((step, index) => {
+          if (index === 0) {
+            step.classList.add('active');
+            step.classList.remove('hidden');
+          } else {
+            step.classList.remove('active');
+            step.classList.add('hidden');
+          }
+        });
+
+        stepNavs.forEach((nav, index) => {
+          if (index === 0) {
+            nav.classList.remove('border-transparent', 'text-gray-500');
+            nav.classList.add('border-blue-600', 'text-blue-600');
+          } else {
+            nav.classList.remove('border-blue-600', 'text-blue-600');
+            nav.classList.add('border-transparent', 'text-gray-500');
+          }
+        });
+      }, 100);
+    };
+
+    // Also initialize when the page loads
+    document.addEventListener('DOMContentLoaded', function () {
+      // Initialize edit modal steps
+      initEditModalSteps();
+
+      // Re-initialize when modal is opened via the edit button
+      const observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          if (mutation.attributeName === 'class') {
+            const modal = mutation.target;
+            if (modal.classList.contains('active') && modal.id === 'editEmployeeModal') {
+              initEditModalSteps();
+            }
+          }
+        });
+      });
+
+      const editModal = document.getElementById('editEmployeeModal');
+      if (editModal) {
+        observer.observe(editModal, { attributes: true });
+      }
+    });
+  </script>
   <script>
     // ===============================================
     // PAGINATION FUNCTIONS
@@ -4581,13 +5382,13 @@ if (isset($_SESSION['error'])) {
     // INITIALIZATION
     // ===============================================
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
       console.log('Pagination initialized');
 
       // Add Enter key support for search
       const searchInput = document.getElementById('simple-search');
       if (searchInput) {
-        searchInput.addEventListener('keypress', function(e) {
+        searchInput.addEventListener('keypress', function (e) {
           if (e.key === 'Enter') {
             searchEmployees();
           }
@@ -4611,7 +5412,7 @@ if (isset($_SESSION['error'])) {
 
       // Close notification buttons
       document.querySelectorAll('.notification-close').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
           const notification = this.closest('.notification');
           if (notification) {
             notification.classList.add('hide');
@@ -4667,10 +5468,10 @@ if (isset($_SESSION['error'])) {
     }
 
     // Update pagination buttons to use the new goToPage function
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
       // Add loading indicators to pagination buttons
       document.querySelectorAll('.pagination-btn[href]').forEach(link => {
-        link.addEventListener('click', function(e) {
+        link.addEventListener('click', function (e) {
           // Only show loading for page changes, not first/last/prev/next icons
           if (!this.querySelector('i')) {
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -5072,7 +5873,7 @@ if (isset($_SESSION['error'])) {
         payrollDropdown.classList.remove('open');
 
         // Add click event
-        payrollToggle.addEventListener('click', function(e) {
+        payrollToggle.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
           payrollDropdown.classList.toggle('open');
@@ -5085,7 +5886,7 @@ if (isset($_SESSION['error'])) {
         });
 
         // Close dropdown when clicking outside
-        document.addEventListener('click', function(event) {
+        document.addEventListener('click', function (event) {
           if (!payrollToggle.contains(event.target) && !payrollDropdown.contains(event.target)) {
             payrollDropdown.classList.remove('open');
             const chevron = payrollToggle.querySelector('.chevron');
@@ -5107,12 +5908,12 @@ if (isset($_SESSION['error'])) {
       const overlay = document.getElementById('overlay');
 
       if (sidebarToggle && sidebarContainer && overlay) {
-        sidebarToggle.addEventListener('click', function() {
+        sidebarToggle.addEventListener('click', function () {
           sidebarContainer.classList.toggle('active');
           overlay.classList.toggle('active');
         });
 
-        overlay.addEventListener('click', function() {
+        overlay.addEventListener('click', function () {
           sidebarContainer.classList.remove('active');
           overlay.classList.remove('active');
         });
@@ -5258,11 +6059,11 @@ if (isset($_SESSION['error'])) {
     // 9. INITIALIZATION
     // =========================================
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
       // Search functionality
       const searchInput = document.getElementById('simple-search');
       if (searchInput) {
-        searchInput.addEventListener('input', function() {
+        searchInput.addEventListener('input', function () {
           searchEmployees();
         });
 
@@ -5358,13 +6159,13 @@ if (isset($_SESSION['error'])) {
         const preview = zone.querySelector('.file-preview');
 
         if (fileInput) {
-          zone.addEventListener('click', function(e) {
+          zone.addEventListener('click', function (e) {
             if (e.target !== fileInput && !e.target.closest('.file-preview')) {
               fileInput.click();
             }
           });
 
-          fileInput.addEventListener('change', function() {
+          fileInput.addEventListener('change', function () {
             if (this.files.length > 0) {
               const file = this.files[0];
               if (preview) {
@@ -5383,7 +6184,7 @@ if (isset($_SESSION['error'])) {
       });
 
       // Remove file function
-      window.removeFile = function(button) {
+      window.removeFile = function (button) {
         const preview = button.closest('.file-preview');
         const fileInput = preview.parentElement.querySelector('input[type="file"]');
         if (fileInput) fileInput.value = '';
@@ -5393,37 +6194,326 @@ if (isset($_SESSION['error'])) {
       // Open add employee modal
       const openAddModalBtn = document.getElementById('openAddEmployeeModal');
       if (openAddModalBtn) {
-        openAddModalBtn.addEventListener('click', function() {
+        openAddModalBtn.addEventListener('click', function () {
           openModal('addEmployeeModal');
           showStep(1);
         });
       }
 
-      // Edit employee
+      // Edit employee - UPDATED VERSION with step navigation fix
       document.querySelectorAll('.edit-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
+        btn.addEventListener('click', async function (e) {
+          e.preventDefault();
+
           const employeeId = this.getAttribute('data-employee-id');
+          console.log('Edit button clicked for employee ID:', employeeId);
+
+          // Show loading state
+          const originalHtml = this.innerHTML;
+          this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+          this.disabled = true;
+
           try {
-            const response = await fetch(`?get_employee_data=1&id=${employeeId}`);
-            if (response.ok) {
-              const employee = await response.json();
-              // Populate form fields
-              document.getElementById('edit_employee_id').value = employee.id;
-              document.getElementById('edit_employee_id_field').value = employee.employee_id || '';
-              document.getElementById('edit_employee_name').value = employee.employee_name || '';
-              // ... (rest of your edit code remains the same)
-              openModal('editEmployeeModal');
+            const baseUrl = window.location.pathname;
+            const url = `${baseUrl}?get_employee_data=1&id=${employeeId}`;
+
+            const response = await fetch(url);
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
+
+            const data = await response.json();
+            console.log('Server response:', data);
+
+            if (data.error) {
+              throw new Error(data.error);
+            }
+
+            // Map the data to form fields
+            const mappedData = {
+              id: data.id || '',
+              employee_id_field: data.employee_id || '',
+              employee_name: data.employee_name || '',
+              first_name: data.first_name || '',
+              last_name: data.last_name || '',
+              middle: data.middle || '',
+              occupation: data.occupation || '',
+              office: data.office || '',
+              rate_per_day: data.rate_per_day || '',
+              sss_contribution: data.sss_contribution || '',
+              ctc_number: data.ctc_number || '',
+              ctc_date: data.ctc_date || '',
+              place_of_issue: data.place_of_issue || '',
+              mobile_number: data.mobile_number || '',
+              email_address: data.email_address || '',
+              date_of_birth: data.date_of_birth || '',
+              marital_status: data.marital_status || '',
+              gender: data.gender || '',
+              nationality: data.nationality || 'Filipino',
+              street_address: data.street_address || '',
+              city: data.city || '',
+              state_region: data.state_region || '',
+              zip_code: data.zip_code || '',
+              joining_date: data.joining_date || '',
+              eligibility: data.eligibility || 'Not Eligible',
+              profile_image_path: data.profile_image_path || '',
+              doc_id_path: data.doc_id_path || '',
+              doc_resume_path: data.doc_resume_path || '',
+              doc_service_path: data.doc_service_path || '',
+              doc_appointment_path: data.doc_appointment_path || '',
+              doc_transcript_path: data.doc_transcript_path || '',
+              doc_eligibility_path: data.doc_eligibility_path || ''
+            };
+
+            // Populate form fields
+            populateEditForm(mappedData);
+
+            // Open the modal
+            openModal('editEmployeeModal');
+
+            // Initialize step navigation after modal opens
+            setTimeout(() => {
+              const editModal = document.getElementById('editEmployeeModal');
+              attachStepEventListeners(editModal);
+
+              // Reset to step 1
+              const steps = editModal.querySelectorAll('.form-step');
+              const stepNavs = editModal.querySelectorAll('.step-nav');
+
+              steps.forEach((step, index) => {
+                if (index === 0) {
+                  step.classList.add('active');
+                  step.classList.remove('hidden');
+                } else {
+                  step.classList.remove('active');
+                  step.classList.add('hidden');
+                }
+              });
+
+              stepNavs.forEach((nav, index) => {
+                if (index === 0) {
+                  nav.classList.remove('border-transparent', 'text-gray-500');
+                  nav.classList.add('border-blue-600', 'text-blue-600');
+                } else {
+                  nav.classList.remove('border-blue-600', 'text-blue-600');
+                  nav.classList.add('border-transparent', 'text-gray-500');
+                }
+              });
+            }, 100);
+
+            showToast('Employee data loaded successfully', 'success');
+
           } catch (error) {
             console.error('Error:', error);
-            showToast('Failed to load employee data', 'error');
+            showToast('Failed to load employee data: ' + error.message, 'error');
+          } finally {
+            // Reset button state
+            this.innerHTML = originalHtml;
+            this.disabled = false;
           }
         });
       });
 
+      // Enhanced populateEditForm function with better field handling
+      function populateEditForm(data) {
+        console.log('Populating form with mapped data:', data);
+
+        // Set hidden ID field
+        const idField = document.getElementById('edit_employee_id');
+        if (idField) idField.value = data.id || '';
+
+        // Professional Info - with explicit field mapping
+        setFieldValue('edit_employee_id_field', data.employee_id_field);
+        setFieldValue('edit_employee_name', data.employee_name);
+        setFieldValue('edit_first_name', data.first_name);
+        setFieldValue('edit_last_name', data.last_name);
+        setFieldValue('edit_middle', data.middle);
+        setFieldValue('edit_occupation', data.occupation);
+        setFieldValue('edit_office', data.office);
+        setFieldValue('edit_rate_per_day', data.rate_per_day);
+        setFieldValue('edit_sss_contribution', data.sss_contribution);
+        setFieldValue('edit_ctc_number', data.ctc_number);
+        setFieldValue('edit_ctc_date', data.ctc_date);
+        setFieldValue('edit_place_of_issue', data.place_of_issue);
+
+        // Personal Info
+        setFieldValue('edit_mobile_number', data.mobile_number);
+        setFieldValue('edit_email_address', data.email_address);
+        setFieldValue('edit_date_of_birth', data.date_of_birth);
+        setFieldValue('edit_marital_status', data.marital_status);
+        setFieldValue('edit_gender', data.gender);
+        setFieldValue('edit_nationality', data.nationality || 'Filipino');
+        setFieldValue('edit_street_address', data.street_address);
+        setFieldValue('edit_city', data.city);
+        setFieldValue('edit_state_region', data.state_region);
+        setFieldValue('edit_zip_code', data.zip_code);
+        setFieldValue('edit_joining_date', data.joining_date);
+
+        // Set eligibility radio
+        const eligibilityValue = data.eligibility || 'Not Eligible';
+        const eligibilityRadios = document.querySelectorAll('#editEmployeeModal input[name="eligibility"]');
+        eligibilityRadios.forEach(radio => {
+          radio.checked = (radio.value === eligibilityValue);
+        });
+
+        // Show profile image if exists
+        if (data.profile_image_path) {
+          const profileContainer = document.getElementById('editProfileImageContainer');
+          if (profileContainer) {
+            const imagePath = `uploads/job_order_documents/${data.profile_image_path}`;
+            // Create new image element
+            const img = new Image();
+            img.onload = function () {
+              profileContainer.innerHTML = '';
+              profileContainer.appendChild(img);
+              img.className = 'w-full h-full object-cover';
+            };
+            img.onerror = function () {
+              profileContainer.innerHTML = '<i class="fas fa-user text-gray-400 text-4xl"></i>';
+            };
+            img.src = imagePath;
+          }
+        }
+
+        // Update document status
+        const docFields = [
+          { input: 'edit_doc_id', path: data.doc_id_path },
+          { input: 'edit_doc_resume', path: data.doc_resume_path },
+          { input: 'edit_doc_service', path: data.doc_service_path },
+          { input: 'edit_doc_appointment', path: data.doc_appointment_path },
+          { input: 'edit_doc_transcript', path: data.doc_transcript_path },
+          { input: 'edit_doc_eligibility', path: data.doc_eligibility_path }
+        ];
+
+        docFields.forEach(doc => {
+          const statusDiv = document.querySelector(`#editEmployeeModal [data-file-input="${doc.input}"] .file-status`);
+          if (statusDiv && doc.path) {
+            const fileName = doc.path.split('/').pop();
+            statusDiv.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-1"></i> Current: ${fileName}`;
+            statusDiv.classList.add('text-green-600');
+          } else if (statusDiv) {
+            statusDiv.innerHTML = '<i class="fas fa-times-circle text-gray-400 mr-1"></i> No file uploaded';
+            statusDiv.classList.add('text-gray-500');
+          }
+        });
+      }
+
+      // Helper function to set field values safely with validation
+      function setFieldValue(fieldId, value) {
+        const field = document.getElementById(fieldId);
+        if (field) {
+          // Handle different field types
+          if (field.tagName === 'SELECT') {
+            // For select elements, set value if option exists
+            const optionExists = Array.from(field.options).some(opt => opt.value === value);
+            field.value = optionExists ? value : '';
+          } else if (field.type === 'radio' || field.type === 'checkbox') {
+            // Radio and checkbox are handled separately
+            field.checked = (field.value === value);
+          } else {
+            // Regular input fields
+            field.value = value !== undefined && value !== null ? value : '';
+          }
+
+          // Remove any error styling
+          field.classList.remove('error', 'border-red-500');
+
+          // Hide any associated error messages
+          const errorDiv = field.closest('.form-group')?.querySelector('.error-message');
+          if (errorDiv) {
+            errorDiv.classList.add('hidden');
+          }
+
+          // Debug log to verify value is set
+          console.log(`Set field ${fieldId} = ${field.value}`);
+        } else {
+          console.warn(`Field not found: ${fieldId}`);
+        }
+      }
+
+      // Function to populate the edit form
+      function populateEditForm(data) {
+        console.log('Populating form with data:', data);
+
+        // Set hidden ID field
+        const idField = document.getElementById('edit_employee_id');
+        if (idField) idField.value = data.id || '';
+
+        // Professional Info - EXPLICITLY set employee_id_field
+        const employeeIdField = document.getElementById('edit_employee_id_field');
+        if (employeeIdField) {
+          employeeIdField.value = data.employee_id_field || data.employee_id || '';
+          console.log('Employee ID set to:', employeeIdField.value);
+        }
+
+        setFieldValue('edit_first_name', data.first_name);
+        setFieldValue('edit_last_name', data.last_name);
+        setFieldValue('edit_middle', data.middle);
+        setFieldValue('edit_employee_name', data.employee_name);
+        setFieldValue('edit_occupation', data.occupation);
+        setFieldValue('edit_office', data.office);
+        setFieldValue('edit_rate_per_day', data.rate_per_day);
+        setFieldValue('edit_sss_contribution', data.sss_contribution);
+        setFieldValue('edit_ctc_number', data.ctc_number);
+        setFieldValue('edit_ctc_date', data.ctc_date);
+        setFieldValue('edit_place_of_issue', data.place_of_issue);
+
+        // Personal Info
+        setFieldValue('edit_mobile_number', data.mobile_number);
+        setFieldValue('edit_email_address', data.email_address);
+        setFieldValue('edit_date_of_birth', data.date_of_birth);
+        setFieldValue('edit_marital_status', data.marital_status);
+        setFieldValue('edit_gender', data.gender);
+        setFieldValue('edit_nationality', data.nationality || 'Filipino');
+        setFieldValue('edit_street_address', data.street_address);
+        setFieldValue('edit_city', data.city);
+        setFieldValue('edit_state_region', data.state_region);
+        setFieldValue('edit_zip_code', data.zip_code);
+        setFieldValue('edit_joining_date', data.joining_date);
+
+        // Set eligibility radio
+        const eligibilityValue = data.eligibility || 'Not Eligible';
+        const eligibilityRadios = document.querySelectorAll('#editEmployeeModal input[name="eligibility"]');
+        eligibilityRadios.forEach(radio => {
+          radio.checked = (radio.value === eligibilityValue);
+        });
+
+        // Show profile image if exists
+        if (data.profile_image_path) {
+          const profileContainer = document.getElementById('editProfileImageContainer');
+          if (profileContainer) {
+            const imagePath = `uploads/job_order_documents/${data.profile_image_path}`;
+            profileContainer.innerHTML = `<img src="${imagePath}" class="w-full h-full object-cover" onerror="this.onerror=null; this.parentElement.innerHTML='<i class=\'fas fa-user text-gray-400 text-4xl\'></i>';">`;
+          }
+        }
+
+        // Update document status
+        const docFields = ['doc_id', 'doc_resume', 'doc_service', 'doc_appointment', 'doc_transcript', 'doc_eligibility'];
+        docFields.forEach(field => {
+          const statusDiv = document.querySelector(`#editEmployeeModal [data-file-input="edit_${field}"] .file-status`);
+          if (statusDiv && data[`${field}_path`]) {
+            const fileName = data[`${field}_path`].split('/').pop();
+            statusDiv.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-1"></i> Current: ${fileName}`;
+          } else if (statusDiv) {
+            statusDiv.innerHTML = '';
+          }
+        });
+      }
+
+      // Helper function to set field values safely
+      function setFieldValue(fieldId, value) {
+        const field = document.getElementById(fieldId);
+        if (field) {
+          field.value = value || '';
+        } else {
+          console.warn(`Field not found: ${fieldId}`);
+        }
+      }
+
       // Archive employee
       document.querySelectorAll('.archive-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
           const employeeId = this.getAttribute('data-employee-id');
           const employeeName = this.getAttribute('data-employee-name');
           document.getElementById('archive_employee_id').value = employeeId;
@@ -5434,7 +6524,7 @@ if (isset($_SESSION['error'])) {
 
       // Restore employee
       document.querySelectorAll('.restore-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
           const employeeId = this.getAttribute('data-employee-id');
           const employeeName = this.getAttribute('data-employee-name');
           document.getElementById('restore_employee_id').value = employeeId;
@@ -5445,7 +6535,7 @@ if (isset($_SESSION['error'])) {
 
       // View employee
       document.querySelectorAll('.view-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
           const employeeId = this.getAttribute('data-employee-id');
           const url = new URL(window.location.href);
           url.searchParams.set('view_id', employeeId);
