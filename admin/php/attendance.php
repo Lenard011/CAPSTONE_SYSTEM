@@ -230,7 +230,7 @@ function getEmployeeTypes($pdo)
     }
 
     // Get contractual employees
-    $contractual_sql = "SELECT employee_id, full_name, office_assignment as department FROM contractofservice WHERE status = 'active'";
+    $contractual_sql = "SELECT employee_id, full_name, office as department FROM contractofservice WHERE status = 'active'";
     $stmt = $pdo->query($contractual_sql);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $employees[] = [
@@ -290,7 +290,7 @@ function getEmployeeById($pdo, $employee_id)
     }
 
     // Search in contractual table
-    $contractual_sql = "SELECT employee_id, full_name, office_assignment as department FROM contractofservice WHERE employee_id = ? AND status = 'active'";
+    $contractual_sql = "SELECT employee_id, full_name, office as department FROM contractofservice WHERE employee_id = ? AND status = 'active'";
     $stmt = $pdo->prepare($contractual_sql);
     $stmt->execute([$employee_id]);
     if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {

@@ -437,6 +437,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'period_from',
             'period_to',
             'wages',
+            'ctc_number',
+            'ctc_date',
             'first_name',
             'last_name',
             'mobile_number',
@@ -587,39 +589,45 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         throw new Exception("Cannot update: Employee ID is missing");
                     }
 
-                    // UPDATE existing record
+                    $full_name = trim($_POST['first_name'] . ' ' .
+                        (!empty($_POST['middle']) ? substr($_POST['middle'], 0, 1) . '. ' : '') .
+                        $_POST['last_name']);
+
                     $sql = "UPDATE contractofservice SET
-                        employee_id = :employee_id,
-                        designation = :designation,
-                        office = :office,
-                        period_from = :period_from,
-                        period_to = :period_to,
-                        wages = :wages,
-                        contribution = :contribution,
-                        profile_image_path = :profile_image_path,
-                        first_name = :first_name,
-                        last_name = :last_name,
-                        middle = :middle,
-                        mobile_number = :mobile_number,
-                        email_address = :email_address,
-                        date_of_birth = :date_of_birth,
-                        marital_status = :marital_status,
-                        gender = :gender,
-                        nationality = :nationality,
-                        street_address = :street_address,
-                        city = :city,
-                        state_region = :state_region,
-                        zip_code = :zip_code,
-                        joining_date = :joining_date,
-                        eligibility = :eligibility,
-                        doc_id_path = :doc_id_path,
-                        doc_resume_path = :doc_resume_path,
-                        doc_service_path = :doc_service_path,
-                        doc_appointment_path = :doc_appointment_path,
-                        doc_transcript_path = :doc_transcript_path,
-                        doc_eligibility_path = :doc_eligibility_path,
-                        updated_at = CURRENT_TIMESTAMP 
-                        WHERE id = :id";
+                    employee_id = :employee_id,
+                    designation = :designation,
+                    office = :office,
+                    period_from = :period_from,
+                    period_to = :period_to,
+                    wages = :wages,
+                    contribution = :contribution,
+                    ctc_number = :ctc_number,
+                    ctc_date = :ctc_date, 
+                    profile_image_path = :profile_image_path,
+                    first_name = :first_name,
+                    last_name = :last_name,
+                    middle = :middle,
+                    full_name = :full_name,
+                    mobile_number = :mobile_number,
+                    email_address = :email_address,
+                    date_of_birth = :date_of_birth,
+                    marital_status = :marital_status,
+                    gender = :gender,
+                    nationality = :nationality,
+                    street_address = :street_address,
+                    city = :city,
+                    state_region = :state_region,
+                    zip_code = :zip_code,
+                    joining_date = :joining_date,
+                    eligibility = :eligibility,
+                    doc_id_path = :doc_id_path,
+                    doc_resume_path = :doc_resume_path,
+                    doc_service_path = :doc_service_path,
+                    doc_appointment_path = :doc_appointment_path,
+                    doc_transcript_path = :doc_transcript_path,
+                    doc_eligibility_path = :doc_eligibility_path,
+                    updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = :id";
 
                     $stmt = $pdo->prepare($sql);
 
@@ -631,10 +639,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         ':period_to' => $_POST['period_to'],
                         ':wages' => $wages,
                         ':contribution' => $_POST['contribution'] ?? null,
+                        ':ctc_number' => $_POST['ctc_number'] ?? null,
+                        ':ctc_date' => $_POST['ctc_date'] ?? null,
                         ':profile_image_path' => $profile_image_path,
                         ':first_name' => $_POST['first_name'],
                         ':last_name' => $_POST['last_name'],
                         ':middle' => $_POST['middle'] ?? '',
+                        ':full_name' => $full_name,
                         ':mobile_number' => $_POST['mobile_number'],
                         ':email_address' => $_POST['email_address'],
                         ':date_of_birth' => $_POST['date_of_birth'],
@@ -662,22 +673,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     error_log("Employee updated successfully. ID: " . $edit_id);
 
                 } else {
-                    // INSERT new record
+                    $full_name = trim($_POST['first_name'] . ' ' .
+                        (!empty($_POST['middle']) ? substr($_POST['middle'], 0, 1) . '. ' : '') .
+                        $_POST['last_name']);
+
                     $sql = "INSERT INTO contractofservice (
-                        employee_id, designation, office, period_from, period_to, wages, contribution, 
-                        profile_image_path, first_name, last_name, middle, mobile_number, email_address, date_of_birth, 
-                        marital_status, gender, nationality, street_address, 
-                        city, state_region, zip_code, joining_date, eligibility, 
-                        doc_id_path, doc_resume_path, doc_service_path, doc_appointment_path, doc_transcript_path, doc_eligibility_path,
-                        status, created_at, updated_at
-                    ) VALUES (
-                        :employee_id, :designation, :office, :period_from, :period_to, :wages, :contribution, 
-                        :profile_image_path, :first_name, :last_name, :middle, :mobile_number, :email_address, :date_of_birth, 
-                        :marital_status, :gender, :nationality, :street_address, 
-                        :city, :state_region, :zip_code, :joining_date, :eligibility, 
-                        :doc_id_path, :doc_resume_path, :doc_service_path, :doc_appointment_path, :doc_transcript_path, :doc_eligibility_path,
-                        'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                    )";
+                    employee_id, designation, office, period_from, period_to, wages, contribution, 
+                    ctc_number, ctc_date, full_name,
+                    profile_image_path, first_name, last_name, middle, mobile_number, email_address, date_of_birth, 
+                    marital_status, gender, nationality, street_address, 
+                    city, state_region, zip_code, joining_date, eligibility, 
+                    doc_id_path, doc_resume_path, doc_service_path, doc_appointment_path, doc_transcript_path, doc_eligibility_path,
+                    status, created_at, updated_at
+                ) VALUES (
+                    :employee_id, :designation, :office, :period_from, :period_to, :wages, :contribution,
+                    :ctc_number, :ctc_date, :full_name,
+                    :profile_image_path, :first_name, :last_name, :middle, :mobile_number, :email_address, :date_of_birth, 
+                    :marital_status, :gender, :nationality, :street_address, 
+                    :city, :state_region, :zip_code, :joining_date, :eligibility, 
+                    :doc_id_path, :doc_resume_path, :doc_service_path, :doc_appointment_path, :doc_transcript_path, :doc_eligibility_path,
+                    'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )";
 
                     $stmt = $pdo->prepare($sql);
 
@@ -689,6 +705,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         ':period_to' => $_POST['period_to'],
                         ':wages' => $wages,
                         ':contribution' => $_POST['contribution'] ?? null,
+                        ':ctc_number' => $_POST['ctc_number'] ?? null,
+                        ':ctc_date' => $_POST['ctc_date'] ?? null,
+                        ':full_name' => $full_name,
                         ':profile_image_path' => $profile_image_path,
                         ':first_name' => $_POST['first_name'],
                         ':last_name' => $_POST['last_name'],
@@ -759,15 +778,14 @@ try {
     // Calculate offset
     $offset = ($current_page - 1) * $records_per_page;
 
-    // Fetch employees - FIXED: Get individual name components instead of full_name
     $sql = "SELECT 
-                id, employee_id, first_name, last_name, middle, designation, office, 
-                period_from, period_to, wages, contribution,
-                email_address, mobile_number, status
-            FROM contractofservice 
-            WHERE $status_condition
-            ORDER BY first_name ASC
-            LIMIT :limit OFFSET :offset";
+        id, employee_id, first_name, last_name, middle, full_name, designation, office, 
+        period_from, period_to, wages, contribution,
+        email_address, mobile_number, status
+    FROM contractofservice 
+    WHERE $status_condition
+    ORDER BY first_name ASC
+    LIMIT :limit OFFSET :offset";
 
     $stmt = $pdo->prepare($sql);
     $stmt->bindValue(':limit', $records_per_page, PDO::PARAM_INT);
@@ -789,6 +807,7 @@ try {
         }
 
         if (!empty($middle)) {
+            // Show middle initial with dot
             $full_name_parts[] = substr($middle, 0, 1) . '.';
         }
 
@@ -796,10 +815,24 @@ try {
             $full_name_parts[] = $last_name;
         }
 
+        // Format: First M. Last (e.g., Dexter C. Balanza)
         $full_name = !empty($full_name_parts) ? implode(' ', $full_name_parts) : 'No Name Provided';
 
         // ADD THE CONSTRUCTED FULL NAME TO THE EMPLOYEE ARRAY
         $employees[$key]['full_name'] = $full_name;
+
+        // Also create an alternative format (Last, First M.) if needed
+        $alt_name_parts = [];
+        if (!empty($last_name)) {
+            $alt_name_parts[] = $last_name . ',';
+        }
+        if (!empty($first_name)) {
+            $alt_name_parts[] = $first_name;
+        }
+        if (!empty($middle)) {
+            $alt_name_parts[] = substr($middle, 0, 1) . '.';
+        }
+        $employees[$key]['full_name_alt'] = !empty($alt_name_parts) ? implode(' ', $alt_name_parts) : 'No Name Provided';
     }
 
 } catch (PDOException $e) {
@@ -2675,7 +2708,7 @@ $office_options = [
                                         Employee ID
                                     </th>
                                     <th scope="col"
-                                        class="px-4 md:px-6 py-3 md:py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                                        class="px-6 md:px-8 py-6 md:py-6 text-left text-xs font-semibold text-white uppercase tracking-wider">
                                         Name
                                     </th>
                                     <th scope="col"
@@ -3036,7 +3069,7 @@ $office_options = [
                                         required>
                                 </div>
                                 <div>
-                                    <label for="last_name" class="block mb-2 text-sm font-medium text-gray-900">Middle
+                                    <label for="middle" class="block mb-2 text-sm font-medium text-gray-900">Middle
                                         Initial *</label>
                                     <input type="text" name="middle" id="middle"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
@@ -3099,6 +3132,25 @@ $office_options = [
                                     <input type="text" name="contribution" id="contribution"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                                         placeholder="SSS, PhilHealth, etc.">
+                                </div>
+                            </div>
+                            <!-- Add this right after the wages and contribution fields in Step 1 -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="ctc_number" class="block mb-2 text-sm font-medium text-gray-900">CTC
+                                        Number *</label>
+                                    <input type="text" name="ctc_number" id="ctc_number"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        placeholder="Enter CTC Number" required>
+                                    <div class="validation-error hidden">CTC Number is required</div>
+                                </div>
+                                <div>
+                                    <label for="ctc_date" class="block mb-2 text-sm font-medium text-gray-900">CTC Date
+                                        *</label>
+                                    <input type="date" name="ctc_date" id="ctc_date"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                        required>
+                                    <div class="validation-error hidden">CTC Date is required</div>
                                 </div>
                             </div>
                         </div>
@@ -3616,7 +3668,6 @@ $office_options = [
             document.getElementById('employeeId').value = employeeId;
             document.getElementById('submitButtonText').textContent = 'Update Employee';
 
-            // FIXED: Explicitly set form action and method
             const form = document.getElementById('employeeForm');
             if (form) {
                 form.action = 'contractofservice.php';
@@ -3651,18 +3702,17 @@ $office_options = [
                 });
         }
 
-
         function openEditModal(employeeData) {
             isEditMode = true;
 
-            // FIXED: Ensure hidden ID field is properly set
+            // Set hidden ID field
             const employeeIdHidden = document.getElementById('employeeId');
             if (employeeIdHidden) {
                 employeeIdHidden.value = employeeData.id;
                 console.log('Set employeeId to:', employeeData.id);
             }
 
-            // Also set a hidden field for id as backup
+            // Set backup hidden field
             let idField = document.getElementById('hidden_id_field');
             if (!idField) {
                 idField = document.createElement('input');
@@ -3673,9 +3723,6 @@ $office_options = [
             }
             idField.value = employeeData.id;
 
-            // Set all form fields (rest of your existing code)
-            setFieldValue('employee_id', employeeData.employee_id);
-
             // Set all form fields
             setFieldValue('employee_id', employeeData.employee_id);
             setFieldValue('designation', employeeData.designation);
@@ -3683,6 +3730,8 @@ $office_options = [
             setFieldValue('period_from', employeeData.period_from);
             setFieldValue('period_to', employeeData.period_to);
             setFieldValue('wages', employeeData.wages);
+            setFieldValue('ctc_number', employeeData.ctc_number);
+            setFieldValue('ctc_date', employeeData.ctc_date);
             setFieldValue('contribution', employeeData.contribution);
             setFieldValue('first_name', employeeData.first_name);
             setFieldValue('last_name', employeeData.last_name);
@@ -3774,11 +3823,11 @@ $office_options = [
             const content = document.getElementById('viewEmployeeContent');
             if (content) {
                 content.innerHTML = `
-                <div class="flex justify-center items-center h-64">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                    <p class="ml-3 text-gray-600">Loading employee data...</p>
-                </div>
-            `;
+            <div class="flex justify-center items-center h-64">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <p class="ml-3 text-gray-600">Loading employee data...</p>
+            </div>
+        `;
             }
 
             showModal('viewEmployeeModal');
@@ -3791,12 +3840,12 @@ $office_options = [
                             content.innerHTML = data.html;
                         } else {
                             content.innerHTML = `
-                            <div class="text-center p-8">
-                                <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
-                                <p class="text-red-600 font-medium">Error loading employee data</p>
-                                <p class="text-gray-500 text-sm mt-2">${data.error || 'Unknown error'}</p>
-                            </div>
-                        `;
+                        <div class="text-center p-8">
+                            <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+                            <p class="text-red-600 font-medium">Error loading employee data</p>
+                            <p class="text-gray-500 text-sm mt-2">${data.error || 'Unknown error'}</p>
+                        </div>
+                    `;
                         }
                     }
                 })
@@ -3804,12 +3853,12 @@ $office_options = [
                     console.error('Error:', error);
                     if (content) {
                         content.innerHTML = `
-                        <div class="text-center p-8">
-                            <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
-                            <p class="text-red-600 font-medium">Error loading employee data</p>
-                            <p class="text-gray-500 text-sm mt-2">Network error. Please try again.</p>
-                        </div>
-                    `;
+                    <div class="text-center p-8">
+                        <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+                        <p class="text-red-600 font-medium">Error loading employee data</p>
+                        <p class="text-gray-500 text-sm mt-2">Network error. Please try again.</p>
+                    </div>
+                `;
                     }
                 });
         }
@@ -3894,6 +3943,31 @@ $office_options = [
                     input.classList.add('border-red-500');
                 }
             });
+
+            // Additional validation for CTC date (step 1)
+            if (step === 1) {
+                const ctcDate = document.getElementById('ctc_date');
+                const ctcNumber = document.getElementById('ctc_number');
+
+                // CTC Number validation (alphanumeric with hyphens allowed)
+                if (ctcNumber && ctcNumber.value.trim()) {
+                    const ctcRegex = /^[A-Za-z0-9\-]+$/;
+                    if (!ctcRegex.test(ctcNumber.value.trim())) {
+                        isValid = false;
+                        ctcNumber.classList.add('border-red-500');
+                    }
+                }
+
+                // CTC Date validation (not in future)
+                if (ctcDate && ctcDate.value) {
+                    const today = new Date().toISOString().split('T')[0];
+                    if (ctcDate.value > today) {
+                        isValid = false;
+                        ctcDate.classList.add('border-red-500');
+                    }
+                }
+            }
+
             return isValid;
         }
 
@@ -3930,81 +4004,10 @@ $office_options = [
                         console.log('Action:', document.getElementById('formAction').value);
                         console.log('Employee ID:', document.getElementById('employeeId').value);
 
-                        this.submit();
+                        form.submit();
                     }
                 });
             }
-        });
-
-        // ===============================================
-        // PAGINATION FUNCTIONS
-        // ===============================================
-        function goToPage(page) {
-            const viewParam = <?php echo isset($view_inactive) && $view_inactive ? "'&view=inactive'" : "''"; ?>;
-            window.location.href = `contractofservice.php?page=${page}${viewParam}&per_page=<?php echo $records_per_page ?? 10; ?>`;
-        }
-
-        function changeRecordsPerPage(perPage) {
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set('per_page', perPage);
-            currentUrl.searchParams.set('page', 1);
-            window.location.href = currentUrl.toString();
-        }
-
-        // ===============================================
-        // SEARCH FUNCTIONALITY
-        // ===============================================
-        function searchEmployees() {
-            const searchTerm = document.getElementById('search-employee').value.toLowerCase();
-            const rows = document.querySelectorAll('tbody tr');
-
-            rows.forEach(row => {
-                if (row.querySelector('td[colspan]')) return;
-
-                let shouldShow = false;
-                row.querySelectorAll('td, th').forEach(cell => {
-                    if (cell.textContent.toLowerCase().includes(searchTerm)) {
-                        shouldShow = true;
-                    }
-                });
-                row.style.display = shouldShow ? '' : 'none';
-            });
-        }
-
-        // ===============================================
-        // DATE & TIME FUNCTIONALITY
-        // ===============================================
-        function updateDateTime() {
-            try {
-                const now = new Date();
-                const dateString = now.toLocaleDateString('en-US', {
-                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                });
-
-                let hours = now.getHours();
-                let minutes = now.getMinutes();
-                let seconds = now.getSeconds();
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                hours = hours % 12 || 12;
-
-                const timeString = `${hours}:${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds} ${ampm}`;
-
-                const dateElement = document.getElementById('current-date');
-                const timeElement = document.getElementById('current-time');
-                if (dateElement) dateElement.textContent = dateString;
-                if (timeElement) timeElement.textContent = timeString;
-            } catch (error) {
-                console.error('Error updating date/time:', error);
-            }
-        }
-
-        // ===============================================
-        // INITIALIZATION
-        // ===============================================
-        document.addEventListener('DOMContentLoaded', function () {
-            // Initialize date/time
-            updateDateTime();
-            setInterval(updateDateTime, 1000);
 
             // Step navigation
             document.querySelectorAll('.step-nav').forEach(nav => {
@@ -4125,6 +4128,72 @@ $office_options = [
                 searchInput.addEventListener('input', searchEmployees);
             }
         });
+
+        // ===============================================
+        // PAGINATION FUNCTIONS
+        // ===============================================
+        function goToPage(page) {
+            const viewParam = <?php echo isset($view_inactive) && $view_inactive ? "'&view=inactive'" : "''"; ?>;
+            window.location.href = `contractofservice.php?page=${page}${viewParam}&per_page=<?php echo $records_per_page ?? 10; ?>`;
+        }
+
+        function changeRecordsPerPage(perPage) {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('per_page', perPage);
+            currentUrl.searchParams.set('page', 1);
+            window.location.href = currentUrl.toString();
+        }
+
+        // ===============================================
+        // SEARCH FUNCTIONALITY
+        // ===============================================
+        function searchEmployees() {
+            const searchTerm = document.getElementById('search-employee').value.toLowerCase();
+            const rows = document.querySelectorAll('tbody tr');
+
+            rows.forEach(row => {
+                if (row.querySelector('td[colspan]')) return;
+
+                let shouldShow = false;
+                row.querySelectorAll('td, th').forEach(cell => {
+                    if (cell.textContent.toLowerCase().includes(searchTerm)) {
+                        shouldShow = true;
+                    }
+                });
+                row.style.display = shouldShow ? '' : 'none';
+            });
+        }
+
+        // ===============================================
+        // DATE & TIME FUNCTIONALITY
+        // ===============================================
+        function updateDateTime() {
+            try {
+                const now = new Date();
+                const dateString = now.toLocaleDateString('en-US', {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                });
+
+                let hours = now.getHours();
+                let minutes = now.getMinutes();
+                let seconds = now.getSeconds();
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12 || 12;
+
+                const timeString = `${hours}:${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds} ${ampm}`;
+
+                const dateElement = document.getElementById('current-date');
+                const timeElement = document.getElementById('current-time');
+                if (dateElement) dateElement.textContent = dateString;
+                if (timeElement) timeElement.textContent = timeString;
+            } catch (error) {
+                console.error('Error updating date/time:', error);
+            }
+        }
+
+        // Initialize date/time
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
     </script>
 </body>
 

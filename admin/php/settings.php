@@ -152,9 +152,465 @@ function logAuditTrail($conn, $user_id, $action_type, $description): void
     $stmt->close();
 }
 
-// Initialize messages
-$success_message = "";
-$error_message = "";
+// Function to get complete user data including employee-specific details
+function getCompleteUserData($conn, $user_id, $employment_type)
+{
+    $user_data = [];
+
+    // Get base user data
+    $sql = "SELECT * FROM users WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $user_data = $result->fetch_assoc();
+    }
+    $stmt->close();
+
+    // Get employee-specific data based on employment type
+    switch ($employment_type) {
+        case 'permanent':
+            $sql = "SELECT * FROM permanent WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $emp_data = $result->fetch_assoc();
+                $user_data = array_merge($user_data, $emp_data);
+            }
+            $stmt->close();
+            break;
+
+        case 'job_order':
+            $sql = "SELECT * FROM job_order WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $emp_data = $result->fetch_assoc();
+                $user_data = array_merge($user_data, $emp_data);
+            }
+            $stmt->close();
+            break;
+
+        case 'contract_of_service':
+            $sql = "SELECT * FROM contractofservice WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $emp_data = $result->fetch_assoc();
+                $user_data = array_merge($user_data, $emp_data);
+            }
+            $stmt->close();
+            break;
+    }
+
+    return $user_data;
+}
+
+// Helper function to update employee-specific tables
+function updateEmployeeTable($conn, $employment_type, $user_id, $post_data, $user_data)
+{
+    switch ($employment_type) {
+        case 'contractofservice':
+        case 'contractual':
+            updateContractOfService($conn, $user_id, $post_data, $user_data);
+            break;
+        case 'job_order':
+            updateJobOrder($conn, $user_id, $post_data, $user_data);
+            break;
+        case 'permanent':
+            updatePermanent($conn, $user_id, $post_data, $user_data);
+            break;
+    }
+}
+
+// Update Contract of Service employee
+function updateContractOfService($conn, $user_id, $post_data, $user_data)
+{
+    // Check if record exists
+    $check_sql = "SELECT id FROM contractofservice WHERE user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+
+    $designation = $conn->real_escape_string($post_data['cos_designation'] ?? '');
+    $office = $conn->real_escape_string($post_data['cos_office'] ?? '');
+    $period_from = $post_data['cos_period_from'] ?? null;
+    $period_to = $post_data['cos_period_to'] ?? null;
+    $wages = floatval($post_data['cos_wages'] ?? 0);
+    $contribution = $conn->real_escape_string($post_data['cos_contribution'] ?? '');
+    $status = $conn->real_escape_string($post_data['cos_status'] ?? 'active');
+
+    if ($check_result->num_rows > 0) {
+        // Update existing record
+        $sql = "UPDATE contractofservice SET 
+            designation = ?,
+            office = ?,
+            period_from = ?,
+            period_to = ?,
+            wages = ?,
+            contribution = ?,
+            status = ?,
+            updated_at = NOW()
+            WHERE user_id = ?";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "ssssdssi",
+            $designation,
+            $office,
+            $period_from,
+            $period_to,
+            $wages,
+            $contribution,
+            $status,
+            $user_id
+        );
+        $stmt->execute();
+        $stmt->close();
+    }
+    $check_stmt->close();
+}
+
+// Update Job Order employee
+function updateJobOrder($conn, $user_id, $post_data, $user_data)
+{
+    // Check if record exists
+    $check_sql = "SELECT id FROM job_order WHERE user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+
+    $employee_id = $conn->real_escape_string($post_data['jo_employee_id'] ?? '');
+    $occupation = $conn->real_escape_string($post_data['jo_occupation'] ?? '');
+    $office = $conn->real_escape_string($post_data['jo_office'] ?? '');
+    $rate_per_day = floatval($post_data['jo_rate_per_day'] ?? 0);
+    $sss_contribution = $conn->real_escape_string($post_data['jo_sss_contribution'] ?? '');
+    $place_of_issue = $conn->real_escape_string($post_data['jo_place_of_issue'] ?? '');
+
+    if ($check_result->num_rows > 0) {
+        // Update existing record
+        $sql = "UPDATE job_order SET 
+            employee_id = ?,
+            occupation = ?,
+            office = ?,
+            rate_per_day = ?,
+            sss_contribution = ?,
+            place_of_issue = ?,
+            updated_at = NOW()
+            WHERE user_id = ?";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "sssdssi",
+            $employee_id,
+            $occupation,
+            $office,
+            $rate_per_day,
+            $sss_contribution,
+            $place_of_issue,
+            $user_id
+        );
+        $stmt->execute();
+        $stmt->close();
+    } else {
+        // Insert new record
+        $sql = "INSERT INTO job_order (
+            user_id, employee_id, employee_name, occupation, office, 
+            rate_per_day, sss_contribution, 
+            place_of_issue, first_name, last_name, middle, 
+            email_address, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+
+        $employee_name = $user_data['full_name'] ?? '';
+        $first_name = $user_data['first_name'] ?? '';
+        $last_name = $user_data['last_name'] ?? '';
+        $middle = $user_data['middle_name'] ?? '';
+        $email = $user_data['email'] ?? '';
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "issssdssssss",
+            $user_id,
+            $employee_id,
+            $employee_name,
+            $occupation,
+            $office,
+            $rate_per_day,
+            $sss_contribution,
+            $place_of_issue,
+            $first_name,
+            $last_name,
+            $middle,
+            $email
+        );
+        $stmt->execute();
+        $stmt->close();
+    }
+    $check_stmt->close();
+}
+
+// Update Permanent employee
+function updatePermanent($conn, $user_id, $post_data, $user_data)
+{
+    // First, check if record exists in permanent_employees
+    $check_sql = "SELECT id, employee_id FROM permanent WHERE user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    $record_exists = $check_result->num_rows > 0;
+    $existing_record = $record_exists ? $check_result->fetch_assoc() : null;
+    $check_stmt->close();
+
+    $employee_id = $conn->real_escape_string($post_data['employee_id'] ?? '');
+    $position = $conn->real_escape_string($post_data['position'] ?? '');
+    $office = $conn->real_escape_string($post_data['office'] ?? '');
+    $monthly_salary = floatval($post_data['monthly_salary'] ?? 0);
+    $amount_accrued = floatval($post_data['amount_accrued'] ?? 0);
+    $mobile_number = $conn->real_escape_string($post_data['mobile_number'] ?? '');
+    $email = $conn->real_escape_string($post_data['email'] ?? '');
+
+    // Handle date fields - convert null to empty string
+    $date_of_birth = !empty($post_data['dob']) ? $post_data['dob'] : null;
+    $joining_date = !empty($post_data['joining_date']) ? $post_data['joining_date'] : null;
+
+    $marital_status = $conn->real_escape_string($post_data['marital_status'] ?? 'Single');
+    $gender = $conn->real_escape_string($post_data['gender'] ?? 'Male');
+    $nationality = $conn->real_escape_string($post_data['nationality'] ?? 'Filipino');
+    $street_address = $conn->real_escape_string($post_data['street_address'] ?? '');
+    $city = $conn->real_escape_string($post_data['city'] ?? '');
+    $state_region = $conn->real_escape_string($post_data['state_region'] ?? '');
+    $zip_code = $conn->real_escape_string($post_data['zip_code'] ?? '');
+    $eligibility = $conn->real_escape_string($post_data['eligibility'] ?? 'Eligible');
+    $status = $conn->real_escape_string($post_data['status'] ?? 'Active');
+
+    // Create full name
+    $full_name = trim(
+        ($user_data['full_name'] ?? '') ?:
+        ($user_data['first_name'] ?? '') . ' ' .
+        ($user_data['middle_name'] ?? '') . ' ' .
+        ($user_data['last_name'] ?? '')
+    );
+
+    // Check if employee_id already exists in another record (excluding current user)
+    if (!empty($employee_id)) {
+        $dup_check = $conn->prepare("SELECT id FROM permanent WHERE employee_id = ? AND user_id != ?");
+        $dup_check->bind_param("si", $employee_id, $user_id);
+        $dup_check->execute();
+        $dup_result = $dup_check->get_result();
+        if ($dup_result->num_rows > 0) {
+            // Employee ID already exists in another record
+            error_log("Duplicate employee_id: $employee_id for another user");
+            // You might want to handle this by generating a unique ID or showing an error
+            $employee_id = $employee_id . '_' . uniqid(); // Make it unique
+        }
+        $dup_check->close();
+    }
+
+    if ($record_exists) {
+        // UPDATE existing record
+        $sql = "UPDATE permanent SET 
+                employee_id = ?,
+                full_name = ?,
+                position = ?,
+                office = ?,
+                monthly_salary = ?,
+                amount_accrued = ?,
+                mobile_number = ?,
+                email_address = ?,
+                date_of_birth = ?,
+                marital_status = ?,
+                gender = ?,
+                nationality = ?,
+                street_address = ?,
+                city = ?,
+                state_region = ?,
+                zip_code = ?,
+                joining_date = ?,
+                eligibility = ?,
+                status = ?,
+                updated_at = NOW()
+                WHERE user_id = ?";
+
+        $stmt = $conn->prepare($sql);
+
+        // Handle null dates properly - if null, set to NULL in database
+        if ($date_of_birth === null) {
+            $date_of_birth = null;
+        }
+        if ($joining_date === null) {
+            $joining_date = null;
+        }
+
+        $stmt->bind_param(
+            "ssssddsssssssssssssi",
+            $employee_id,
+            $full_name,
+            $position,
+            $office,
+            $monthly_salary,
+            $amount_accrued,
+            $mobile_number,
+            $email,
+            $date_of_birth,
+            $marital_status,
+            $gender,
+            $nationality,
+            $street_address,
+            $city,
+            $state_region,
+            $zip_code,
+            $joining_date,
+            $eligibility,
+            $status,
+            $user_id
+        );
+
+        if (!$stmt->execute()) {
+            error_log("Error updating permanent employee: " . $stmt->error);
+
+            // If duplicate entry error, try with modified employee_id
+            if ($stmt->errno == 1062) { // Duplicate entry error
+                $employee_id = $employee_id . '_' . date('His');
+
+                // Retry with new employee_id
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param(
+                    "ssssddsssssssssssssi",
+                    $employee_id,
+                    $full_name,
+                    $position,
+                    $office,
+                    $monthly_salary,
+                    $amount_accrued,
+                    $mobile_number,
+                    $email,
+                    $date_of_birth,
+                    $marital_status,
+                    $gender,
+                    $nationality,
+                    $street_address,
+                    $city,
+                    $state_region,
+                    $zip_code,
+                    $joining_date,
+                    $eligibility,
+                    $status,
+                    $user_id
+                );
+                $stmt->execute();
+            }
+        }
+        $stmt->close();
+    } else {
+        // INSERT new record
+        // First check if employee_id already exists
+        if (!empty($employee_id)) {
+            $dup_check = $conn->prepare("SELECT id FROM permanent WHERE employee_id = ?");
+            $dup_check->bind_param("s", $employee_id);
+            $dup_check->execute();
+            $dup_result = $dup_check->get_result();
+            if ($dup_result->num_rows > 0) {
+                // Generate unique employee_id
+                $employee_id = $employee_id . '_' . uniqid();
+            }
+            $dup_check->close();
+        }
+
+        $sql = "INSERT INTO permanent (
+                user_id, employee_id, full_name, position, office,
+                monthly_salary, amount_accrued, first_name, last_name, middle,
+                mobile_number, email_address, date_of_birth, marital_status,
+                gender, nationality, street_address, city, state_region,
+                zip_code, joining_date, eligibility, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+
+        $stmt = $conn->prepare($sql);
+
+        $first_name = $user_data['first_name'] ?? '';
+        $last_name = $user_data['last_name'] ?? '';
+        $middle = $user_data['middle_name'] ?? '';
+
+        // Handle null dates
+        $date_of_birth_param = $date_of_birth;
+        $joining_date_param = $joining_date;
+
+        $stmt->bind_param(
+            "issssddssssssssssssssss",
+            $user_id,
+            $employee_id,
+            $full_name,
+            $position,
+            $office,
+            $monthly_salary,
+            $amount_accrued,
+            $first_name,
+            $last_name,
+            $middle,
+            $mobile_number,
+            $email,
+            $date_of_birth_param,
+            $marital_status,
+            $gender,
+            $nationality,
+            $street_address,
+            $city,
+            $state_region,
+            $zip_code,
+            $joining_date_param,
+            $eligibility,
+            $status
+        );
+
+        if (!$stmt->execute()) {
+            error_log("Error inserting permanent employee: " . $stmt->error);
+
+            // If duplicate entry error, retry with modified employee_id
+            if ($stmt->errno == 1062) { // Duplicate entry error
+                $employee_id = $employee_id . '_' . date('His');
+
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param(
+                    "issssddssssssssssssssss",
+                    $user_id,
+                    $employee_id,
+                    $full_name,
+                    $position,
+                    $office,
+                    $monthly_salary,
+                    $amount_accrued,
+                    $first_name,
+                    $last_name,
+                    $middle,
+                    $mobile_number,
+                    $email,
+                    $date_of_birth_param,
+                    $marital_status,
+                    $gender,
+                    $nationality,
+                    $street_address,
+                    $city,
+                    $state_region,
+                    $zip_code,
+                    $joining_date_param,
+                    $eligibility,
+                    $status
+                );
+                $stmt->execute();
+            }
+        }
+        $stmt->close();
+    }
+}
 
 // Function to validate password
 function validatePassword($password)
@@ -236,6 +692,10 @@ function createEmployeeRecord($conn, $user_id, $full_name, $employee_id, $employ
         }
     }
 }
+
+// Initialize messages
+$success_message = "";
+$error_message = "";
 
 // Handle Send Verification Invitation
 if (isset($_POST['send_verification_invitation']) && $is_admin) {
@@ -1059,187 +1519,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt->close();
     }
 
-    // 10. Update User
+    // 10. Update User - With all employee type fields
     if (isset($_POST['update_user']) && $is_admin) {
         $update_user_id = (int) $_POST['user_id'];
-        $update_first_name = $conn->real_escape_string($_POST['first_name']);
-        $update_middle_name = $conn->real_escape_string($_POST['middle_name'] ?? '');
-        $update_last_name = $conn->real_escape_string($_POST['last_name']);
-        $update_email = $conn->real_escape_string($_POST['email']);
         $update_role = $conn->real_escape_string($_POST['role']);
         $update_is_active = isset($_POST['is_active']) ? 1 : 0;
+        $update_access_level = $conn->real_escape_string($_POST['access_level'] ?? 'restricted');
 
-        // Create full name
-        $update_full_name = trim("$update_first_name " .
-            ($update_middle_name ? "$update_middle_name " : "") .
-            $update_last_name);
+        // Get employment type from hidden field
+        $employment_type = $conn->real_escape_string($_POST['employment_type'] ?? 'permanent');
 
-        // Check if email already exists (excluding current user)
-        $check_sql = "SELECT id FROM users WHERE email = ? AND id != ?";
-        $check_stmt = $conn->prepare($check_sql);
-        $check_stmt->bind_param("si", $update_email, $update_user_id);
-        $check_stmt->execute();
-        $check_result = $check_stmt->get_result();
+        // First, get the user's current data to preserve personal info
+        $get_user_sql = "SELECT first_name, middle_name, last_name, full_name, email FROM users WHERE id = ?";
+        $get_user_stmt = $conn->prepare($get_user_sql);
+        $get_user_stmt->bind_param("i", $update_user_id);
+        $get_user_stmt->execute();
+        $get_user_result = $get_user_stmt->get_result();
+        $user_data = $get_user_result->fetch_assoc();
+        $get_user_stmt->close();
 
-        if ($check_result->num_rows > 0) {
-            $error_message = "Email already exists! Please use a different email.";
-            $check_stmt->close();
-        } else {
-            $check_stmt->close();
+        // Update users table - only update non-personal fields
+        $sql = "UPDATE users SET 
+            role = ?,
+            access_level = ?,
+            is_active = ?,
+            updated_at = NOW() 
+            WHERE id = ?";
 
-            // First, let's check what columns exist in the users table
-            $check_columns = $conn->query("SHOW COLUMNS FROM users LIKE 'role'");
-            $has_role_column = $check_columns->num_rows > 0;
-
-            $check_columns2 = $conn->query("SHOW COLUMNS FROM users LIKE 'account_status'");
-            $has_account_status_column = $check_columns2->num_rows > 0;
-
-            // Build SQL query based on what columns exist
-            if ($has_role_column && $has_account_status_column) {
-                // Both columns exist
-                $sql = "UPDATE users SET 
-                    first_name = ?,
-                    middle_name = ?,
-                    last_name = ?,
-                    full_name = ?,
-                    email = ?,
-                    role = ?,
-                    account_status = ?,
-                    is_active = ?,
-                    updated_at = NOW() 
-                    WHERE id = ?";
-
-                $account_status = $update_is_active ? 'active' : 'inactive';
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param(
-                    "sssssssii",
-                    $update_first_name,
-                    $update_middle_name,
-                    $update_last_name,
-                    $update_full_name,
-                    $update_email,
-                    $update_role,
-                    $account_status,
-                    $update_is_active,
-                    $update_user_id
-                );
-
-            } elseif ($has_role_column) {
-                // Only role column exists
-                $sql = "UPDATE users SET 
-                    first_name = ?,
-                    middle_name = ?,
-                    last_name = ?,
-                    full_name = ?,
-                    email = ?,
-                    role = ?,
-                    is_active = ?,
-                    updated_at = NOW() 
-                    WHERE id = ?";
-
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param(
-                    "sssssiii",
-                    $update_first_name,
-                    $update_middle_name,
-                    $update_last_name,
-                    $update_full_name,
-                    $update_email,
-                    $update_role,
-                    $update_is_active,
-                    $update_user_id
-                );
-
-            } elseif ($has_account_status_column) {
-                // Only account_status column exists - use it for role
-                $sql = "UPDATE users SET 
-                    first_name = ?,
-                    middle_name = ?,
-                    last_name = ?,
-                    full_name = ?,
-                    email = ?,
-                    account_status = ?,
-                    is_active = ?,
-                    updated_at = NOW() 
-                    WHERE id = ?";
-
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param(
-                    "ssssssii",
-                    $update_first_name,
-                    $update_middle_name,
-                    $update_last_name,
-                    $update_full_name,
-                    $update_email,
-                    $update_role,
-                    $update_is_active,
-                    $update_user_id
-                );
-
-            } else {
-                // Neither column exists - try to update anyway without role
-                $sql = "UPDATE users SET 
-                    first_name = ?,
-                    middle_name = ?,
-                    last_name = ?,
-                    full_name = ?,
-                    email = ?,
-                    is_active = ?,
-                    updated_at = NOW() 
-                    WHERE id = ?";
-
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param(
-                    "sssssii",
-                    $update_first_name,
-                    $update_middle_name,
-                    $update_last_name,
-                    $update_full_name,
-                    $update_email,
-                    $update_is_active,
-                    $update_user_id
-                );
-            }
-
-            if ($stmt->execute()) {
-                $success_message = "User updated successfully!";
-                logAuditTrail($conn, $user_id, 'update', 'Updated user: ' . $update_email . ' (Role: ' . $update_role . ')');
-            } else {
-                $error_message = "Error updating user: " . $conn->error;
-            }
-            $stmt->close();
-        }
-    }
-
-    // 11. Delete User
-    if (isset($_POST['delete_user']) && $is_admin) {
-        $delete_user_id = (int) $_POST['user_id'];
-
-        // Get user email for audit log
-        $sql = "SELECT email FROM users WHERE id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $delete_user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $user = $result->fetch_assoc();
-        $stmt->close();
+        $stmt->bind_param("ssii", $update_role, $update_access_level, $update_is_active, $update_user_id);
 
-        // Don't allow deleting own account
-        if ($delete_user_id == $user_id) {
-            $error_message = "You cannot delete your own account!";
+        if ($stmt->execute()) {
+            $success_message = "User updated successfully!";
+            logAuditTrail($conn, $user_id, 'update', 'Updated user ID: ' . $update_user_id . ' (Role: ' . $update_role . ')');
+
+            // Now update the specific employee table based on employment type
+            updateEmployeeTable($conn, $employment_type, $update_user_id, $_POST, $user_data);
+
         } else {
-            $sql = "DELETE FROM users WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("i", $delete_user_id);
-
-            if ($stmt->execute()) {
-                $success_message = "User deleted successfully!";
-                logAuditTrail($conn, $user_id, 'delete', 'Deleted user: ' . $user['email']);
-            } else {
-                $error_message = "Error deleting user: " . $conn->error;
-            }
-            $stmt->close();
+            $error_message = "Error updating user: " . $conn->error;
         }
+        $stmt->close();
     }
 
     // 12. Reset User Password
@@ -1466,25 +1786,51 @@ if ($result && $result->num_rows > 0) {
     }
 }
 
-// Get users for user management with correct columns
+// Get current tab from URL or default to users for admin, profile for regular users
+$default_tab = $is_admin ? 'users' : 'profile';
+$current_tab = isset($_GET['tab']) ? $_GET['tab'] : $default_tab;
+
+// Validate that the tab exists and is accessible
+$valid_tabs = ['profile', 'security'];
+if ($is_admin) {
+    $valid_tabs = array_merge($valid_tabs, ['users', 'backup', 'logs', 'system-info']);
+}
+
+if (!in_array($current_tab, $valid_tabs)) {
+    $current_tab = $default_tab;
+}
+
+// Add this near the top after database connection, before fetching users
+// Get current page for pagination
+$page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+$records_per_page = isset($system_settings['pagination_limit']) ? (int) $system_settings['pagination_limit'] : 10;
+$offset = ($page - 1) * $records_per_page;
+
+// Get total users count for pagination
+$total_users_query = "SELECT COUNT(*) as total FROM users";
+$total_users_result = $conn->query($total_users_query);
+$total_users = $total_users_result->fetch_assoc()['total'];
+$total_pages = ceil($total_users / $records_per_page);
+
+// Get users for user management with pagination
 $users = [];
 $sql = "SELECT id, username, email, full_name, employee_id, 
                employment_type, employee_type,
                role, access_level, is_active, is_verified, 
                last_verification_sent, verified_at, created_at 
         FROM users 
-        ORDER BY full_name ASC";
-$result = $conn->query($sql);
+        ORDER BY full_name ASC 
+        LIMIT ? OFFSET ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("ii", $records_per_page, $offset);
+$stmt->execute();
+$result = $stmt->get_result();
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $users[] = $row;
     }
 }
-
-// Get current tab from URL or default to system
-$current_tab = isset($_GET['tab']) ? $_GET['tab'] : ($is_admin ? 'system' : 'profile');
-
-$conn->close();
+$stmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -2463,6 +2809,68 @@ $conn->close();
                 border-radius: 12px;
             }
         }
+
+        /* Employee Type Badge Styles */
+        .bg-purple-100 {
+            background-color: #f3e8ff;
+        }
+
+        .text-purple-800 {
+            color: #5b21b6;
+        }
+
+        .bg-yellow-100 {
+            background-color: #fef3c7;
+        }
+
+        .text-yellow-800 {
+            color: #92400e;
+        }
+
+        .bg-green-100 {
+            background-color: #dcfce7;
+        }
+
+        .text-green-800 {
+            color: #166534;
+        }
+
+        .bg-gray-100 {
+            background-color: #f3f4f6;
+        }
+
+        .text-gray-800 {
+            color: #1f2937;
+        }
+
+        /* Border utilities */
+        .border-t {
+            border-top: 1px solid var(--gray-200);
+        }
+
+        .border-b {
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .pt-3 {
+            padding-top: 0.75rem;
+        }
+
+        .pb-3 {
+            padding-bottom: 0.75rem;
+        }
+
+        .mt-3 {
+            margin-top: 0.75rem;
+        }
+
+        .mb-2 {
+            margin-bottom: 0.5rem;
+        }
+
+        .mb-3 {
+            margin-bottom: 0.75rem;
+        }
     </style>
 </head>
 
@@ -2895,7 +3303,7 @@ $conn->close();
                                                 <td>
                                                     <div class="action-buttons" style="display: flex; gap: 0.25rem;">
                                                         <button class="btn btn-secondary btn-sm"
-                                                            onclick="editUser(<?php echo $user['id']; ?>, <?php echo htmlspecialchars(json_encode($user), ENT_QUOTES, 'UTF-8'); ?>)">
+                                                            onclick="editUser(<?php echo $user['id']; ?>)">
                                                             <i class="fas fa-edit"></i>
                                                         </button>
                                                         <?php if ($has_username): ?>
@@ -2921,8 +3329,8 @@ $conn->close();
                                                                 <input type="hidden" name="user_id"
                                                                     value="<?php echo $user['id']; ?>">
                                                                 <input type="hidden" name="delete_user" value="1">
-                                                                <button type="submit" class="btn btn-danger btn-sm"
-                                                                    onclick="return confirm('Are you sure you want to delete <?php echo addslashes($user['full_name']); ?>? This action cannot be undone.')">
+                                                                <button class="btn btn-danger btn-sm"
+                                                                    onclick="openDeleteModal(<?php echo $user['id']; ?>, '<?php echo addslashes($user['full_name']); ?>')">
                                                                     <i class="fas fa-trash"></i>
                                                                 </button>
                                                             </form>
@@ -2934,6 +3342,71 @@ $conn->close();
                                     </tbody>
                                 </table>
                             </div>
+
+                            <!-- Pagination -->
+                            <?php if ($total_pages > 1): ?>
+                                <div class="pagination-container"
+                                    style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                                    <div class="pagination-info" style="color: var(--gray-600);">
+                                        Showing <?php echo $offset + 1; ?> to
+                                        <?php echo min($offset + $records_per_page, $total_users); ?> of
+                                        <?php echo $total_users; ?> users
+                                    </div>
+                                    <div class="pagination" style="display: flex; gap: 5px;">
+                                        <!-- Previous button -->
+                                        <?php if ($page > 1): ?>
+                                            <a href="?tab=users&page=<?php echo $page - 1; ?>" class="btn btn-secondary btn-sm">
+                                                <i class="fas fa-chevron-left"></i> Previous
+                                            </a>
+                                        <?php else: ?>
+                                            <button class="btn btn-secondary btn-sm" disabled>
+                                                <i class="fas fa-chevron-left"></i> Previous
+                                            </button>
+                                        <?php endif; ?>
+
+                                        <!-- Page numbers -->
+                                        <div class="page-numbers" style="display: flex; gap: 5px;">
+                                            <?php
+                                            $start_page = max(1, $page - 2);
+                                            $end_page = min($total_pages, $page + 2);
+
+                                            if ($start_page > 1) {
+                                                echo '<a href="?tab=users&page=1" class="btn btn-secondary btn-sm">1</a>';
+                                                if ($start_page > 2) {
+                                                    echo '<span class="btn btn-secondary btn-sm" disabled>...</span>';
+                                                }
+                                            }
+
+                                            for ($i = $start_page; $i <= $end_page; $i++) {
+                                                if ($i == $page) {
+                                                    echo '<button class="btn btn-primary btn-sm" style="background: var(--primary); color: white;" disabled>' . $i . '</button>';
+                                                } else {
+                                                    echo '<a href="?tab=users&page=' . $i . '" class="btn btn-secondary btn-sm">' . $i . '</a>';
+                                                }
+                                            }
+
+                                            if ($end_page < $total_pages) {
+                                                if ($end_page < $total_pages - 1) {
+                                                    echo '<span class="btn btn-secondary btn-sm" disabled>...</span>';
+                                                }
+                                                echo '<a href="?tab=users&page=' . $total_pages . '" class="btn btn-secondary btn-sm">' . $total_pages . '</a>';
+                                            }
+                                            ?>
+                                        </div>
+
+                                        <!-- Next button -->
+                                        <?php if ($page < $total_pages): ?>
+                                            <a href="?tab=users&page=<?php echo $page + 1; ?>" class="btn btn-secondary btn-sm">
+                                                Next <i class="fas fa-chevron-right"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <button class="btn btn-secondary btn-sm" disabled>
+                                                Next <i class="fas fa-chevron-right"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -3452,41 +3925,394 @@ $conn->close();
             <form method="POST" id="editUserForm">
                 <div class="modal-body">
                     <input type="hidden" name="user_id" id="editUserId">
+
+                    <!-- Employee Type Display (Read-only) -->
                     <div class="form-group">
-                        <label class="form-label">First Name</label>
-                        <input type="text" class="form-control" name="first_name" id="editUserFirstName" required>
+                        <label class="form-label">Employee Type</label>
+                        <div id="editUserTypeDisplay" class="p-3 bg-gray-50 rounded-lg">
+                            <span id="editUserTypeText" class="font-semibold"></span>
+                            <span id="editUserTypeBadge" class="ml-2 px-2 py-1 text-xs rounded-full"></span>
+                        </div>
+                        <input type="hidden" name="employment_type" id="editUserEmploymentType">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Middle Name</label>
-                        <input type="text" class="form-control" name="middle_name" id="editUserMiddleName">
+
+                    <!-- Basic Information Display (Read-only) -->
+                    <div class="border-b pb-3 mb-3">
+                        <h4 class="font-semibold text-gray-700 mb-2">Employee Information</h4>
+                        <div class="text-sm text-gray-600 grid grid-cols-2 gap-2" id="editUserBasicInfo">
+                            <!-- Will be populated with employee details -->
+                        </div>
                     </div>
+
+                    <!-- Role Selection - Important for access control -->
                     <div class="form-group">
-                        <label class="form-label">Last Name</label>
-                        <input type="text" class="form-control" name="last_name" id="editUserLastName" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Email Address</label>
-                        <input type="email" class="form-control" name="email" id="editUserEmail" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Role</label>
+                        <label class="form-label">System Role <span>*</span></label>
                         <select class="form-control form-select" name="role" id="editUserRole" required>
-                            <option value="admin">Administrator</option>
-                            <option value="manager">Manager</option>
                             <option value="user">Regular User</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin">Administrator</option>
                         </select>
+                        <div class="form-text">Determines system access level in HRMS</div>
                     </div>
-                    <div class="form-group">
+
+                    <!-- CONTRACT OF SERVICE EMPLOYEE FIELDS -->
+                    <div id="cosFields" class="employee-type-fields" style="display: none;">
+                        <div class="border-t pt-3 mt-3">
+                            <h4 class="font-semibold text-gray-700 mb-3">Contract of Service Details</h4>
+
+                            <div class="form-group">
+                                <label class="form-label">Designation <span>*</span></label>
+                                <input type="text" class="form-control" name="cos_designation" id="editCosDesignation"
+                                    placeholder="Job title/designation">
+                                <div class="form-text">Current job designation</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Office/Department <span>*</span></label>
+                                <select class="form-control form-select" name="cos_office" id="editCosOffice">
+                                    <option value="">Select Office</option>
+                                    <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
+                                    <option value="Human Resource Management Division">Human Resource Management
+                                        Division</option>
+                                    <option value="Business Permit and Licensing Division">Business Permit and Licensing
+                                        Division</option>
+                                    <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
+                                    <option value="Office of the Municipal Accountant">Office of the Municipal
+                                        Accountant</option>
+                                    <option value="Office of the Assessor">Office of the Assessor</option>
+                                    <option value="Municipal Budget Office">Municipal Budget Office</option>
+                                    <option value="Municipal Planning and Development Office">Municipal Planning and
+                                        Development Office</option>
+                                    <option value="Municipal Engineering Office">Municipal Engineering Office</option>
+                                    <option value="Municipal Disaster Risk Reduction and Management Office">Municipal
+                                        Disaster Risk Reduction and Management Office</option>
+                                    <option value="Municipal Social Welfare and Development Office">Municipal Social
+                                        Welfare and Development Office</option>
+                                    <option value="Municipal Environment and Natural Resources Office">Municipal
+                                        Environment and Natural Resources Office</option>
+                                    <option value="Office of the Municipal Agriculturist">Office of the Municipal
+                                        Agriculturist</option>
+                                    <option value="Municipal General Services Office">Municipal General Services Office
+                                    </option>
+                                    <option value="Municipal Public Employment Service Office">Municipal Public
+                                        Employment Service Office</option>
+                                    <option value="Municipal Health Office">Municipal Health Office</option>
+                                    <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
+                                </select>
+                            </div>
+
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Period From <span>*</span></label>
+                                    <input type="date" class="form-control" name="cos_period_from"
+                                        id="editCosPeriodFrom">
+                                    <div class="form-text">Contract start date</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Period To <span>*</span></label>
+                                    <input type="date" class="form-control" name="cos_period_to" id="editCosPeriodTo">
+                                    <div class="form-text">Contract end date</div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Wages (₱) <span>*</span></label>
+                                <div class="input-group" style="display: flex; align-items: center;">
+                                    <span
+                                        style="background: var(--gray-100); padding: 0.75rem 1rem; border: 1px solid var(--gray-300); border-right: none; border-radius: 8px 0 0 8px;">₱</span>
+                                    <input type="number" class="form-control" name="cos_wages" id="editCosWages"
+                                        step="0.01" min="0" style="border-radius: 0 8px 8px 0;" placeholder="0.00">
+                                </div>
+                                <div class="form-text">Contract amount/wages</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Contribution</label>
+                                <input type="text" class="form-control" name="cos_contribution" id="editCosContribution"
+                                    placeholder="SSS, PhilHealth, etc.">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Status</label>
+                                <select class="form-control form-select" name="cos_status" id="editCosStatus">
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- JOB ORDER EMPLOYEE FIELDS -->
+                    <div id="jobOrderFields" class="employee-type-fields" style="display: none;">
+                        <div class="border-t pt-3 mt-3">
+                            <h4 class="font-semibold text-gray-700 mb-3">Job Order Details</h4>
+
+                            <div class="form-group">
+                                <label class="form-label">Employee ID <span>*</span></label>
+                                <input type="text" class="form-control" name="jo_employee_id" id="editJoEmployeeId"
+                                    placeholder="JO-YYYY-MM-XXX">
+                                <div class="form-text">Format: JO-YYYY-MM-XXX (e.g., JO-2024-01-001)</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Occupation <span>*</span></label>
+                                <input type="text" class="form-control" name="jo_occupation" id="editJoOccupation"
+                                    placeholder="Job title/position">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Office/Department <span>*</span></label>
+                                <select class="form-control form-select" name="jo_office" id="editJoOffice">
+                                    <option value="">Select Office</option>
+                                    <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
+                                    <option value="Human Resource Management Division">Human Resource Management
+                                        Division</option>
+                                    <option value="Business Permit and Licensing Division">Business Permit and Licensing
+                                        Division</option>
+                                    <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
+                                    <option value="Office of the Municipal Accountant">Office of the Municipal
+                                        Accountant</option>
+                                    <option value="Office of the Assessor">Office of the Assessor</option>
+                                    <option value="Municipal Budget Office">Municipal Budget Office</option>
+                                    <option value="Municipal Planning and Development Office">Municipal Planning and
+                                        Development Office</option>
+                                    <option value="Municipal Engineering Office">Municipal Engineering Office</option>
+                                    <option value="Municipal Disaster Risk Reduction and Management Office">Municipal
+                                        Disaster Risk Reduction and Management Office</option>
+                                    <option value="Municipal Social Welfare and Development Office">Municipal Social
+                                        Welfare and Development Office</option>
+                                    <option value="Municipal Environment and Natural Resources Office">Municipal
+                                        Environment and Natural Resources Office</option>
+                                    <option value="Office of the Municipal Agriculturist">Office of the Municipal
+                                        Agriculturist</option>
+                                    <option value="Municipal General Services Office">Municipal General Services Office
+                                    </option>
+                                    <option value="Municipal Public Employment Service Office">Municipal Public
+                                        Employment Service Office</option>
+                                    <option value="Municipal Health Office">Municipal Health Office</option>
+                                    <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Rate per Day (₱) <span>*</span></label>
+                                <div class="input-group" style="display: flex; align-items: center;">
+                                    <span
+                                        style="background: var(--gray-100); padding: 0.75rem 1rem; border: 1px solid var(--gray-300); border-right: none; border-radius: 8px 0 0 8px;">₱</span>
+                                    <input type="number" class="form-control" name="jo_rate_per_day"
+                                        id="editJoRatePerDay" step="0.01" min="0" style="border-radius: 0 8px 8px 0;"
+                                        placeholder="0.00">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">SSS Contribution</label>
+                                <input type="text" class="form-control" name="jo_sss_contribution"
+                                    id="editJoSssContribution" placeholder="Enter SSS Contribution">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Place of Issue</label>
+                                <input type="text" class="form-control" name="jo_place_of_issue" id="editJoPlaceOfIssue"
+                                    placeholder="City/Municipality where CTC was issued">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PERMANENT EMPLOYEE FIELDS -->
+                    <div id="permanentFields" class="employee-type-fields" style="display: none;">
+                        <div class="border-t pt-3 mt-3">
+                            <h4 class="font-semibold text-gray-700 mb-3">Permanent Employee Details</h4>
+
+                            <div class="form-group">
+                                <label class="form-label">Employee ID <span>*</span></label>
+                                <input type="text" class="form-control" name="perm_employee_id" id="editPermEmployeeId"
+                                    placeholder="P-YYYY-MM-XXX">
+                                <div class="form-text">Format: P-YYYY-MM-XXX (e.g., P-2024-01-001)</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Position <span>*</span></label>
+                                <input type="text" class="form-control" name="perm_position" id="editPermPosition"
+                                    placeholder="Job title">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Office/Department <span>*</span></label>
+                                <select class="form-control form-select" name="perm_office" id="editPermOffice">
+                                    <option value="">Select Office</option>
+                                    <option value="Office of the Municipal Mayor">Office of the Municipal Mayor</option>
+                                    <option value="Human Resource Management Division">Human Resource Management
+                                        Division</option>
+                                    <option value="Business Permit and Licensing Division">Business Permit and Licensing
+                                        Division</option>
+                                    <option value="Sangguniang Bayan Office">Sangguniang Bayan Office</option>
+                                    <option value="Office of the Municipal Accountant">Office of the Municipal
+                                        Accountant</option>
+                                    <option value="Office of the Assessor">Office of the Assessor</option>
+                                    <option value="Municipal Budget Office">Municipal Budget Office</option>
+                                    <option value="Municipal Planning and Development Office">Municipal Planning and
+                                        Development Office</option>
+                                    <option value="Municipal Engineering Office">Municipal Engineering Office</option>
+                                    <option value="Municipal Disaster Risk Reduction and Management Office">Municipal
+                                        Disaster Risk Reduction and Management Office</option>
+                                    <option value="Municipal Social Welfare and Development Office">Municipal Social
+                                        Welfare and Development Office</option>
+                                    <option value="Municipal Environment and Natural Resources Office">Municipal
+                                        Environment and Natural Resources Office</option>
+                                    <option value="Office of the Municipal Agriculturist">Office of the Municipal
+                                        Agriculturist</option>
+                                    <option value="Municipal General Services Office">Municipal General Services Office
+                                    </option>
+                                    <option value="Municipal Public Employment Service Office">Municipal Public
+                                        Employment Service Office</option>
+                                    <option value="Municipal Health Office">Municipal Health Office</option>
+                                    <option value="Municipal Treasurer's Office">Municipal Treasurer's Office</option>
+                                </select>
+                            </div>
+
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Monthly Salary (₱) <span>*</span></label>
+                                    <div class="input-group" style="display: flex; align-items: center;">
+                                        <span
+                                            style="background: var(--gray-100); padding: 0.75rem 1rem; border: 1px solid var(--gray-300); border-right: none; border-radius: 8px 0 0 8px;">₱</span>
+                                        <input type="number" class="form-control" name="perm_monthly_salary"
+                                            id="editPermMonthlySalary" step="0.01" min="0"
+                                            style="border-radius: 0 8px 8px 0;" placeholder="0.00">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Amount Accrued (₱) <span>*</span></label>
+                                    <div class="input-group" style="display: flex; align-items: center;">
+                                        <span
+                                            style="background: var(--gray-100); padding: 0.75rem 1rem; border: 1px solid var(--gray-300); border-right: none; border-radius: 8px 0 0 8px;">₱</span>
+                                        <input type="number" class="form-control" name="perm_amount_accrued"
+                                            id="editPermAmountAccrued" step="0.01" min="0"
+                                            style="border-radius: 0 8px 8px 0;" placeholder="0.00">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Mobile Number</label>
+                                <input type="text" class="form-control" name="perm_mobile_number"
+                                    id="editPermMobileNumber" placeholder="09XXXXXXXXX">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Email Address</label>
+                                <input type="email" class="form-control" name="perm_email" id="editPermEmail"
+                                    placeholder="email@example.com">
+                            </div>
+
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Date of Birth</label>
+                                    <input type="date" class="form-control" name="perm_dob" id="editPermDob">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Marital Status</label>
+                                    <select class="form-control form-select" name="perm_marital_status"
+                                        id="editPermMaritalStatus">
+                                        <option value="Single">Single</option>
+                                        <option value="Married">Married</option>
+                                        <option value="Divorced">Divorced</option>
+                                        <option value="Widowed">Widowed</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Gender</label>
+                                    <select class="form-control form-select" name="perm_gender" id="editPermGender">
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Nationality</label>
+                                    <input type="text" class="form-control" name="perm_nationality"
+                                        id="editPermNationality" value="Filipino">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Street Address</label>
+                                <textarea class="form-control" name="perm_street_address" id="editPermStreetAddress"
+                                    rows="2" placeholder="House/Block/Lot No., Street, Subdivision"></textarea>
+                            </div>
+
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label class="form-label">City</label>
+                                    <input type="text" class="form-control" name="perm_city" id="editPermCity">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">State/Region</label>
+                                    <input type="text" class="form-control" name="perm_state_region"
+                                        id="editPermStateRegion">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Zip Code</label>
+                                    <input type="text" class="form-control" name="perm_zip_code" id="editPermZipCode">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Joining Date</label>
+                                <input type="date" class="form-control" name="perm_joining_date"
+                                    id="editPermJoiningDate">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Eligibility</label>
+                                <select class="form-control form-select" name="perm_eligibility"
+                                    id="editPermEligibility">
+                                    <option value="Eligible">Eligible</option>
+                                    <option value="Not Eligible">Not Eligible</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Status</label>
+                                <select class="form-control form-select" name="perm_status" id="editPermStatus">
+                                    <option value="Active">Active</option>
+                                    <option value="Inactive">Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Status -->
+                    <div class="form-group border-t pt-3 mt-3">
+                        <label class="form-label">Account Status</label>
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" name="is_active" id="editUserActive"
                                 value="1">
-                            <label class="form-check-label" for="editUserActive">Active User</label>
+                            <label class="form-check-label" for="editUserActive">Active User (can login to
+                                system)</label>
                         </div>
+                    </div>
+
+                    <!-- Access Level -->
+                    <div class="form-group">
+                        <label class="form-label">Access Level</label>
+                        <select class="form-control form-select" name="access_level" id="editUserAccessLevel">
+                            <option value="full">Full Access</option>
+                            <option value="elevated">Elevated Access</option>
+                            <option value="restricted">Restricted Access</option>
+                            <option value="view_only">View Only</option>
+                        </select>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeEditUserModal()">Cancel</button>
-                    <button type="submit" name="update_user" class="btn btn-primary">Update User</button>
+                    <button type="submit" name="update_user" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Update User
+                    </button>
                 </div>
             </form>
         </div>
@@ -4057,29 +4883,68 @@ $conn->close();
         }
     </script>
 
-    <script>
-        // Tab switching functionality
-        document.querySelectorAll('.settings-tab').forEach(tab => {
-            tab.addEventListener('click', function () {
-                const tabId = this.getAttribute('data-tab');
+    <script>// Tab switching functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            // Get current tab from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentTab = urlParams.get('tab') || '<?php echo $is_admin ? "users" : "profile"; ?>';
 
-                // Update URL without page reload
-                const url = new URL(window.location);
-                url.searchParams.set('tab', tabId);
-                window.history.pushState({}, '', url);
+            // Activate the correct tab
+            activateTab(currentTab);
 
-                // Remove active class from all tabs
-                document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            // Add click handlers to all tabs
+            document.querySelectorAll('.settings-tab').forEach(tab => {
+                tab.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const tabId = this.getAttribute('data-tab');
 
-                // Add active class to clicked tab
-                this.classList.add('active');
+                    // Update URL without page reload
+                    const url = new URL(window.location);
+                    url.searchParams.set('tab', tabId);
+                    window.history.pushState({}, '', url);
 
-                // Show corresponding content
-                document.getElementById(tabId).classList.add('active');
+                    // Activate the tab
+                    activateTab(tabId);
+                });
+            });
+
+            // Handle browser back/forward buttons
+            window.addEventListener('popstate', function () {
+                const urlParams = new URLSearchParams(window.location.search);
+                const tab = urlParams.get('tab') || '<?php echo $is_admin ? "users" : "profile"; ?>';
+                activateTab(tab);
             });
         });
 
+        // Function to activate a tab
+        function activateTab(tabId) {
+            // Remove active class from all tabs and contents
+            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+
+            // Add active class to the selected tab
+            const activeTab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
+            if (activeTab) {
+                activeTab.classList.add('active');
+            }
+
+            // Show corresponding content
+            const activeContent = document.getElementById(tabId);
+            if (activeContent) {
+                activeContent.classList.add('active');
+            } else {
+                // Fallback to default tab if content not found
+                const defaultTab = '<?php echo $is_admin ? "users" : "profile"; ?>';
+                const defaultContent = document.getElementById(defaultTab);
+                if (defaultContent) {
+                    defaultContent.classList.add('active');
+                }
+                const defaultTabButton = document.querySelector(`.settings-tab[data-tab="${defaultTab}"]`);
+                if (defaultTabButton) {
+                    defaultTabButton.classList.add('active');
+                }
+            }
+        }
         // Mobile sidebar toggle
         const sidebarToggle = document.getElementById('sidebar-toggle');
         const sidebarContainer = document.getElementById('sidebar-container');
@@ -4179,37 +5044,237 @@ $conn->close();
             document.getElementById('addUserModal').classList.remove('active');
         }
 
-        function editUser(userId, userData) {
-            // Fill the form with existing user data
-            document.getElementById('editUserId').value = userId;
-            document.getElementById('editUserFirstName').value = userData.first_name || '';
-            document.getElementById('editUserMiddleName').value = userData.middle_name || '';
-            document.getElementById('editUserLastName').value = userData.last_name || '';
-            document.getElementById('editUserEmail').value = userData.email || '';
-            document.getElementById('editUserRole').value = userData.role || 'user';
-            document.getElementById('editUserActive').checked = userData.is_active == 1;
+        // Edit user function with AJAX
+        function editUser(userId) {
+            // Show loading state
+            const editButton = event.currentTarget;
+            const originalHtml = editButton.innerHTML;
+            editButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            editButton.disabled = true;
 
-            // Add employment type if it exists
-            if (userData.employment_type) {
-                // Check if employment type field exists, if not create it
-                let empTypeField = document.getElementById('editUserEmploymentType');
-                if (!empTypeField) {
-                    const roleField = document.getElementById('editUserRole').parentElement;
-                    const empTypeHtml = `
-                <div class="form-group">
-                    <label class="form-label">Employment Type</label>
-                    <select class="form-control form-select" name="employment_type" id="editUserEmploymentType">
-                        <option value="permanent">Permanent</option>
-                        <option value="job_order">Job Order</option>
-                        <option value="contract_of_service">Contract of Service</option>
-                    </select>
-                </div>
-            `;
-                    roleField.insertAdjacentHTML('afterend', empTypeHtml);
+            // Fetch complete user data
+            fetch(`get_user_complete.php?id=${userId}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        const userData = result.data;
+                        populateEditForm(userId, userData);
+                    } else {
+                        alert('Error loading user data: ' + (result.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error loading user data. Please try again.');
+                })
+                .finally(() => {
+                    // Reset button state
+                    editButton.innerHTML = originalHtml;
+                    editButton.disabled = false;
+                });
+        }
+
+        function populateEditForm(userId, userData) {
+            // Clear all fields first
+            document.querySelectorAll('#editUserForm input, #editUserForm select, #editUserForm textarea').forEach(field => {
+                if (field.type !== 'checkbox' && field.type !== 'hidden') {
+                    field.value = '';
+                } else if (field.type === 'checkbox') {
+                    field.checked = false;
                 }
-                document.getElementById('editUserEmploymentType').value = userData.employment_type;
+            });
+
+            // Set user ID
+            document.getElementById('editUserId').value = userId;
+
+            // Detect employee type
+            const empType = userData.employment_type || 'permanent';
+            document.getElementById('editUserEmploymentType').value = empType;
+
+            // Display employee type with badge
+            const typeDisplay = document.getElementById('editUserTypeText');
+            const typeBadge = document.getElementById('editUserTypeBadge');
+
+            let typeText = '';
+            let badgeClass = '';
+
+            switch (empType) {
+                case 'contract_of_service':
+                    typeText = 'Contract of Service';
+                    badgeClass = 'bg-purple-100 text-purple-800';
+                    break;
+                case 'job_order':
+                    typeText = 'Job Order';
+                    badgeClass = 'bg-yellow-100 text-yellow-800';
+                    break;
+                case 'permanent':
+                    typeText = 'Permanent';
+                    badgeClass = 'bg-green-100 text-green-800';
+                    break;
+                default:
+                    typeText = empType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    badgeClass = 'bg-gray-100 text-gray-800';
             }
 
+            typeDisplay.textContent = typeText;
+            typeBadge.className = `ml-2 px-2 py-1 text-xs rounded-full ${badgeClass}`;
+            typeBadge.textContent = typeText;
+
+            // Display basic info
+            const basicInfo = document.getElementById('editUserBasicInfo');
+            const fullName = userData.full_name || `${userData.first_name || ''} ${userData.middle_name || ''} ${userData.last_name || ''}`.trim();
+            basicInfo.innerHTML = `
+        <div><strong>Name:</strong> ${fullName}</div>
+        <div><strong>Employee ID:</strong> ${userData.employee_id || 'N/A'}</div>
+        <div><strong>Email:</strong> ${userData.email || userData.email_address || 'N/A'}</div>
+    `;
+
+            // Hide all employee type fields first
+            document.querySelectorAll('.employee-type-fields').forEach(field => {
+                field.style.display = 'none';
+            });
+
+            // Set role
+            if (document.getElementById('editUserRole')) {
+                document.getElementById('editUserRole').value = userData.role || 'user';
+            }
+
+            // Set account status
+            if (document.getElementById('editUserActive')) {
+                document.getElementById('editUserActive').checked = userData.is_active == 1 || userData.status === 'Active' || userData.status === 'active';
+            }
+
+            // Set access level
+            if (document.getElementById('editUserAccessLevel')) {
+                document.getElementById('editUserAccessLevel').value = userData.access_level || 'restricted';
+            }
+
+            // Show and populate fields based on employee type
+            if (empType === 'contract_of_service') {
+                // Show COS fields
+                document.getElementById('cosFields').style.display = 'block';
+
+                // Populate COS fields
+                if (document.getElementById('editCosDesignation')) {
+                    document.getElementById('editCosDesignation').value = userData.designation || '';
+                }
+                if (document.getElementById('editCosOffice')) {
+                    document.getElementById('editCosOffice').value = userData.office || '';
+                }
+                if (document.getElementById('editCosPeriodFrom')) {
+                    document.getElementById('editCosPeriodFrom').value = userData.period_from || '';
+                }
+                if (document.getElementById('editCosPeriodTo')) {
+                    document.getElementById('editCosPeriodTo').value = userData.period_to || '';
+                }
+                if (document.getElementById('editCosWages')) {
+                    document.getElementById('editCosWages').value = userData.wages || '';
+                }
+                if (document.getElementById('editCosContribution')) {
+                    document.getElementById('editCosContribution').value = userData.contribution || '';
+                }
+                if (document.getElementById('editCosStatus')) {
+                    document.getElementById('editCosStatus').value = userData.status || 'active';
+                }
+
+            } else if (empType === 'job_order') {
+                // Show job order fields
+                document.getElementById('jobOrderFields').style.display = 'block';
+
+                // Populate job order fields
+                if (document.getElementById('editJoEmployeeId')) {
+                    document.getElementById('editJoEmployeeId').value = userData.employee_id || '';
+                }
+                if (document.getElementById('editJoOccupation')) {
+                    document.getElementById('editJoOccupation').value = userData.occupation || '';
+                }
+                if (document.getElementById('editJoOffice')) {
+                    document.getElementById('editJoOffice').value = userData.office || '';
+                }
+                if (document.getElementById('editJoRatePerDay')) {
+                    document.getElementById('editJoRatePerDay').value = userData.rate_per_day || '';
+                }
+                if (document.getElementById('editJoSssContribution')) {
+                    document.getElementById('editJoSssContribution').value = userData.sss_contribution || '';
+                }
+                if (document.getElementById('editJoPlaceOfIssue')) {
+                    document.getElementById('editJoPlaceOfIssue').value = userData.place_of_issue || '';
+                }
+
+            } else if (empType === 'permanent') {
+                // Show permanent fields
+                document.getElementById('permanentFields').style.display = 'block';
+
+                // Populate permanent fields
+                if (document.getElementById('editPermEmployeeId')) {
+                    document.getElementById('editPermEmployeeId').value = userData.employee_id || '';
+                }
+                if (document.getElementById('editPermPosition')) {
+                    document.getElementById('editPermPosition').value = userData.position || '';
+                }
+                if (document.getElementById('editPermOffice')) {
+                    document.getElementById('editPermOffice').value = userData.office || userData.department || '';
+                }
+                if (document.getElementById('editPermMonthlySalary')) {
+                    document.getElementById('editPermMonthlySalary').value = userData.monthly_salary || '';
+                }
+                if (document.getElementById('editPermAmountAccrued')) {
+                    document.getElementById('editPermAmountAccrued').value = userData.amount_accrued || '0.00';
+                }
+                if (document.getElementById('editPermMobileNumber')) {
+                    document.getElementById('editPermMobileNumber').value = userData.mobile_number || '';
+                }
+                if (document.getElementById('editPermEmail')) {
+                    document.getElementById('editPermEmail').value = userData.email_address || userData.email || '';
+                }
+                if (document.getElementById('editPermDob')) {
+                    // Format date for input field (YYYY-MM-DD)
+                    if (userData.date_of_birth) {
+                        const date = new Date(userData.date_of_birth);
+                        if (!isNaN(date.getTime())) {
+                            document.getElementById('editPermDob').value = date.toISOString().split('T')[0];
+                        }
+                    }
+                }
+                if (document.getElementById('editPermMaritalStatus')) {
+                    document.getElementById('editPermMaritalStatus').value = userData.marital_status || 'Single';
+                }
+                if (document.getElementById('editPermGender')) {
+                    document.getElementById('editPermGender').value = userData.gender || 'Male';
+                }
+                if (document.getElementById('editPermNationality')) {
+                    document.getElementById('editPermNationality').value = userData.nationality || 'Filipino';
+                }
+                if (document.getElementById('editPermStreetAddress')) {
+                    document.getElementById('editPermStreetAddress').value = userData.street_address || '';
+                }
+                if (document.getElementById('editPermCity')) {
+                    document.getElementById('editPermCity').value = userData.city || '';
+                }
+                if (document.getElementById('editPermStateRegion')) {
+                    document.getElementById('editPermStateRegion').value = userData.state_region || '';
+                }
+                if (document.getElementById('editPermZipCode')) {
+                    document.getElementById('editPermZipCode').value = userData.zip_code || userData.zipcode || '';
+                }
+                if (document.getElementById('editPermJoiningDate')) {
+                    // Format date for input field (YYYY-MM-DD)
+                    if (userData.joining_date) {
+                        const date = new Date(userData.joining_date);
+                        if (!isNaN(date.getTime())) {
+                            document.getElementById('editPermJoiningDate').value = date.toISOString().split('T')[0];
+                        }
+                    }
+                }
+                if (document.getElementById('editPermEligibility')) {
+                    document.getElementById('editPermEligibility').value = userData.eligibility || 'Eligible';
+                }
+                if (document.getElementById('editPermStatus')) {
+                    document.getElementById('editPermStatus').value = userData.status || 'Active';
+                }
+            }
+
+            // Show the modal
             document.getElementById('editUserModal').classList.add('active');
         }
 
@@ -4244,29 +5309,29 @@ $conn->close();
             document.getElementById('resetModal').classList.remove('active');
         }
 
-        function openDeleteModal(type, id, name) {
-            if (type === 'user') {
-                document.getElementById('deleteMessage').textContent = `Are you sure you want to delete user "${name}"? This action cannot be undone.`;
-                document.getElementById('deleteUserId').value = id;
-                document.getElementById('deleteDeptId').value = '';
-                document.getElementById('deleteForm').action = '';
-                document.getElementById('deleteForm').method = 'POST';
-                document.getElementById('deleteForm').innerHTML = `
-                    <input type="hidden" name="user_id" value="${id}">
-                    <input type="hidden" name="delete_user" value="1">
-                `;
-            } else if (type === 'department') {
-                document.getElementById('deleteMessage').textContent = `Are you sure you want to delete department "${name}"? This action cannot be undone.`;
-                document.getElementById('deleteUserId').value = '';
-                document.getElementById('deleteDeptId').value = id;
-                document.getElementById('deleteForm').action = '';
-                document.getElementById('deleteForm').method = 'POST';
-                document.getElementById('deleteForm').innerHTML = `
-                    <input type="hidden" name="dept_id" value="${id}">
-                    <input type="hidden" name="delete_department" value="1">
-                `;
+        function openDeleteModal(userId, userName) {
+            if (confirm('Are you sure you want to delete user "' + userName + '"? This action cannot be undone.')) {
+                // Create a form and submit it
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '';
+                form.style.display = 'none';
+
+                const userIdInput = document.createElement('input');
+                userIdInput.type = 'hidden';
+                userIdInput.name = 'user_id';
+                userIdInput.value = userId;
+
+                const actionInput = document.createElement('input');
+                actionInput.type = 'hidden';
+                actionInput.name = 'delete_user';
+                actionInput.value = '1';
+
+                form.appendChild(userIdInput);
+                form.appendChild(actionInput);
+                document.body.appendChild(form);
+                form.submit();
             }
-            document.getElementById('deleteModal').classList.add('active');
         }
 
         function closeDeleteModal() {
