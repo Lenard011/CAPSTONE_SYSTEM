@@ -21,71 +21,6 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// Load personnel configuration from JSON
-function loadPayrollPersonnel()
-{
-    $config_file = __DIR__ . '/config/payroll_personnel.json';
-    $default_config = [
-        'certifying_officers' => [
-            'A' => ['name' => 'JOREL B. VICENTE', 'title' => 'Administrative Officer IV (HRMO II)', 'active' => true],
-            'B' => ['name' => 'JULIE ANNE T. VALLESTERO, CPA', 'title' => 'Municipal Accountant', 'active' => true],
-            'C' => ['name' => 'ARLENE A. DE VEAS', 'title' => 'Municipal Treasurer', 'active' => true],
-            'D' => ['name' => 'HON. MICHAEL D. DIAZ', 'title' => 'Municipal Mayor', 'active' => true],
-            'F' => ['name' => 'EVA V. DUEÑAS', 'title' => 'Disbursing Officer', 'active' => true]
-        ],
-        'entity_info' => [
-            'entity_name' => 'LGU PALUAN',
-            'fund_cluster' => 'General Fund',
-            'address' => 'Paluan, Occidental Mindoro'
-        ]
-    ];
-
-    // Create config directory if it doesn't exist
-    $config_dir = dirname($config_file);
-    if (!is_dir($config_dir)) {
-        mkdir($config_dir, 0755, true);
-    }
-
-    if (file_exists($config_file)) {
-        $json_content = file_get_contents($config_file);
-        $config = json_decode($json_content, true);
-        if (json_last_error() === JSON_ERROR_NONE && $config) {
-            return $config;
-        }
-    }
-
-    // Create default config file if it doesn't exist
-    file_put_contents($config_file, json_encode($default_config, JSON_PRETTY_PRINT));
-
-    return $default_config;
-}
-
-// Load the configuration
-$personnel_config = loadPayrollPersonnel();
-$certifying_officers = $personnel_config['certifying_officers'];
-$entity_info = $personnel_config['entity_info'];
-
-// Helper function to get officer info
-function getOfficer($letter, $officers)
-{
-    $letter = strtoupper($letter);
-    if (isset($officers[$letter]) && $officers[$letter]['active']) {
-        return $officers[$letter];
-    }
-    return ['name' => '__________', 'title' => ''];
-}
-
-// Get officer information
-$officer_A = getOfficer('A', $certifying_officers);
-$officer_B = getOfficer('B', $certifying_officers);
-$officer_C = getOfficer('C', $certifying_officers);
-$officer_D = getOfficer('D', $certifying_officers);
-$officer_F = getOfficer('F', $certifying_officers);
-
-// Set entity information
-$entity_name = $entity_info['entity_name'];
-$fund_cluster = $entity_info['fund_cluster'];
-
 // Get filter parameters from URL
 $selected_period = isset($_GET['period']) ? $_GET['period'] : date('Y-m');
 $selected_cutoff = isset($_GET['cutoff']) ? $_GET['cutoff'] : 'full';
@@ -428,6 +363,8 @@ try {
 }
 
 // Get entity information
+$entity_name = "LGU PALUAN";
+$fund_cluster = "General Fund";
 $payroll_number = "CON-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
 
 // Format period display
@@ -2028,8 +1965,8 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                             <p class="font-bold">A. CERTIFIED: Services duly rendered as stated.</p>
                             <div class="flex flex-row mt-10 items-end justify-center w-full">
                                 <div class="">
-                                    <p class="font-bold text-center"><?php echo htmlspecialchars($officer_A['name']); ?></p>
-                                    <p class="text-center border-gray-600 italic text-[11px] "><?php echo htmlspecialchars($officer_A['title']); ?></p>
+                                    <p class="font-bold text-center">JOREL B. VICENTE</p>
+                                    <p class="text-center border-gray-600 italic text-[11px] ">Administrative Officer IV (HRMO II)</p>
                                 </div>
                                 <div class="flex flex-row ml-4">
                                     <p class="relative">Date</p>
@@ -2047,8 +1984,8 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                             <div class="flex flex-row mt-10 items-end justify-between w-full">
                                 <div class="flex-1"></div>
                                 <div class="mr-5">
-                                    <p class="font-bold text-center"><?php echo htmlspecialchars($officer_C['name']); ?></p>
-                                    <p class="text-center border-gray-600 italic text-[11px]"><?php echo htmlspecialchars($officer_C['title']); ?></p>
+                                    <p class="font-bold text-center">ARLENE A. DE VEAS</p>
+                                    <p class="text-center border-gray-600 italic text-[11px]">Municipal Treasurer</p>
                                 </div>
                                 <div class="flex flex-row items-end">
                                     <p class="relative">Date</p>
@@ -2063,8 +2000,8 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                                 <p class="font-bold">F. CERTIFIED: Each employee whose name appears on the payroll has been paid the amount as indicated opposite his/her name.</p>
                             </div>
                             <div class="mt-5">
-                                <p class="font-bold text-center"><?php echo htmlspecialchars($officer_F['name']); ?></p>
-                                <p class="text-center border-gray-600 italic text-[11px]"><?php echo htmlspecialchars($officer_F['title']); ?></p>
+                                <p class="font-bold text-center">EVA V. DUEÑAS</p>
+                                <p class="text-center border-gray-600 italic text-[11px]">Disbursing Officer</p>
                             </div>
                         </div>
                     </div>
@@ -2075,8 +2012,8 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                             <p class="font-bold">B. CERTIFIED: Supporting documents complete and proper.</p>
                             <div class="flex flex-row mt-5 items-end justify-center w-full">
                                 <div class="">
-                                    <p class="font-bold text-center"><?php echo htmlspecialchars($officer_B['name']); ?></p>
-                                    <p class="text-center border-gray-600 italic text-[11px] "><?php echo htmlspecialchars($officer_B['title']); ?></p>
+                                    <p class="font-bold text-center">JULIE ANNE T. VALLESTERO, CPA</p>
+                                    <p class="text-center border-gray-600 italic text-[11px] ">Municipal Accountant</p>
                                 </div>
                                 <div class="flex flex-row ml-4">
                                     <p class="relative">Date</p>
@@ -2090,8 +2027,8 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                             <p class="font-bold">D. APPROVED: For payment</p>
                             <div class="flex flex-row mt-10 items-end justify-center w-full">
                                 <div class="">
-                                    <p class="font-bold text-center"><?php echo htmlspecialchars($officer_D['name']); ?></p>
-                                    <p class="text-center border-gray-600 italic text-[11px] "><?php echo htmlspecialchars($officer_D['title']); ?></p>
+                                    <p class="font-bold text-center">HON. MICHAEL D. DIAZ</p>
+                                    <p class="text-center border-gray-600 italic text-[11px] ">Municipal Mayor</p>
                                 </div>
                                 <div class="flex flex-row ml-4">
                                     <p class="relative">Date</p>
@@ -2134,13 +2071,13 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                         Print Payroll
                     </button>
 
-                    <!-- <button id="save-btn" type="button" class="flex items-center justify-center text-white bg-green-600 hover:bg-green-700 focus:ring-2 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-3 w-full md:w-auto transition-all duration-200 shadow-sm hover:shadow">
+                    <button id="save-btn" type="button" class="flex items-center justify-center text-white bg-green-600 hover:bg-green-700 focus:ring-2 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-3 w-full md:w-auto transition-all duration-200 shadow-sm hover:shadow">
                         <svg class="w-4 h-4 mr-2" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M14.707 7.793a1 1 0 0 0-1.414 0L11 10.086V1.5a1 1 0 0 0-2 0v8.586L6.707 7.793a1 1 0 1 0-1.414 1.414l4 4a1 1 0 0 0 1.416 0l4-4a1 1 0 0 0-.002-1.414Z" />
                             <path d="M18 12h-2.55l-2.975 2.975a3.5 3.5 0 0 1-4.95 0L4.55 12H2a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2Zm-3 5a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />
                         </svg>
                         Save Changes
-                    </button> -->
+                    </button>
 
                     <a href="contractualobligationrequest.php?period=<?php echo urlencode($selected_period); ?>&cutoff=<?php echo urlencode($selected_cutoff); ?>" class="w-full md:w-auto">
                         <button id="next-btn" type="button" class="flex items-center justify-center text-white bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-3 w-full md:w-auto transition-all duration-200 shadow-sm hover:shadow">
@@ -2151,116 +2088,6 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                         </button>
                     </a>
                 </div>
-            </div>
-        </div>
-
-        <!-- Edit Personnel Button - Always visible for all logged-in users -->
-        <div class="fixed bottom-4 right-4 z-50 print-hide">
-            <button onclick="toggleEditModal()" class="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center" style="width: 50px; height: 50px;">
-                <i class="fas fa-edit text-xl"></i>
-            </button>
-        </div>
-
-        <!-- Edit Personnel Modal -->
-        <div id="editPersonnelModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center" style="z-index: 99999;">
-            <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold">Edit Certifying Officers</h3>
-                    <button onclick="toggleEditModal()" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-
-                <form id="personnelEditForm" onsubmit="savePersonnelChanges(event)">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Officer A -->
-                        <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer A (HRMO)</h4>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Name</label>
-                                <input type="text" name="officer_A_name" value="<?php echo htmlspecialchars($officer_A['name']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Title</label>
-                                <input type="text" name="officer_A_title" value="<?php echo htmlspecialchars($officer_A['title']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                        </div>
-
-                        <!-- Officer B -->
-                        <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer B (Accountant)</h4>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Name</label>
-                                <input type="text" name="officer_B_name" value="<?php echo htmlspecialchars($officer_B['name']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Title</label>
-                                <input type="text" name="officer_B_title" value="<?php echo htmlspecialchars($officer_B['title']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                        </div>
-
-                        <!-- Officer C -->
-                        <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer C (Treasurer)</h4>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Name</label>
-                                <input type="text" name="officer_C_name" value="<?php echo htmlspecialchars($officer_C['name']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Title</label>
-                                <input type="text" name="officer_C_title" value="<?php echo htmlspecialchars($officer_C['title']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                        </div>
-
-                        <!-- Officer D -->
-                        <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer D (Mayor)</h4>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Name</label>
-                                <input type="text" name="officer_D_name" value="<?php echo htmlspecialchars($officer_D['name']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                            <div class="mb-2">
-                                <label class="block text-sm font-medium text-gray-700">Title</label>
-                                <input type="text" name="officer_D_title" value="<?php echo htmlspecialchars($officer_D['title']); ?>" class="w-full border rounded p-2 text-sm" required>
-                            </div>
-                        </div>
-
-                        <!-- Officer F -->
-                        <div class="border p-3 rounded col-span-2">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer F (Disbursing)</h4>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Name</label>
-                                    <input type="text" name="officer_F_name" value="<?php echo htmlspecialchars($officer_F['name']); ?>" class="w-full border rounded p-2 text-sm" required>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Title</label>
-                                    <input type="text" name="officer_F_title" value="<?php echo htmlspecialchars($officer_F['title']); ?>" class="w-full border rounded p-2 text-sm" required>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Entity Info -->
-                        <div class="border p-3 rounded col-span-2">
-                            <h4 class="font-bold mb-2 text-green-800">Entity Information</h4>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Entity Name</label>
-                                    <input type="text" name="entity_name" value="<?php echo htmlspecialchars($entity_name); ?>" class="w-full border rounded p-2 text-sm" required>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Fund Cluster</label>
-                                    <input type="text" name="fund_cluster" value="<?php echo htmlspecialchars($fund_cluster); ?>" class="w-full border rounded p-2 text-sm" required>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-end gap-2 mt-4">
-                        <button type="button" onclick="toggleEditModal()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
-                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Changes</button>
-                    </div>
-                </form>
             </div>
         </div>
     </main>
@@ -2623,98 +2450,6 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
             const url = new URL(window.location.href);
             url.searchParams.set('page', page);
             window.location.href = url.toString();
-        }
-
-        // Modal functions
-        function toggleEditModal() {
-            const modal = document.getElementById('editPersonnelModal');
-            if (modal.classList.contains('hidden')) {
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-            } else {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-            }
-        }
-
-        function savePersonnelChanges(event) {
-            event.preventDefault();
-
-            const formData = new FormData(event.target);
-            const data = {
-                certifying_officers: {
-                    A: {
-                        name: formData.get('officer_A_name'),
-                        title: formData.get('officer_A_title'),
-                        active: true
-                    },
-                    B: {
-                        name: formData.get('officer_B_name'),
-                        title: formData.get('officer_B_title'),
-                        active: true
-                    },
-                    C: {
-                        name: formData.get('officer_C_name'),
-                        title: formData.get('officer_C_title'),
-                        active: true
-                    },
-                    D: {
-                        name: formData.get('officer_D_name'),
-                        title: formData.get('officer_D_title'),
-                        active: true
-                    },
-                    F: {
-                        name: formData.get('officer_F_name'),
-                        title: formData.get('officer_F_title'),
-                        active: true
-                    }
-                },
-                entity_info: {
-                    entity_name: formData.get('entity_name'),
-                    fund_cluster: formData.get('fund_cluster'),
-                    address: 'Paluan, Occidental Mindoro'
-                }
-            };
-
-            // Show loading state
-            const submitBtn = event.target.querySelector('button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
-            submitBtn.innerHTML = 'Saving...';
-            submitBtn.disabled = true;
-
-            // Save to server
-            fetch('save_personnel_config.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                })
-                .then(response => response.json())
-                .then(result => {
-                    if (result.success) {
-                        alert('Personnel information saved successfully! The page will now reload.');
-                        location.reload();
-                    } else {
-                        alert('Error saving: ' + (result.error || 'Unknown error'));
-                        submitBtn.innerHTML = originalText;
-                        submitBtn.disabled = false;
-                    }
-                })
-                .catch(error => {
-                    alert('Error saving personnel information. Please try again.');
-                    console.error(error);
-                    submitBtn.innerHTML = originalText;
-                    submitBtn.disabled = false;
-                });
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('editPersonnelModal');
-            if (event.target == modal) {
-                toggleEditModal();
-            }
         }
     </script>
 </body>

@@ -1,0 +1,34 @@
+{
+    "certifying_officers": {
+        "A": {
+            "name": "JOREL B. VICENTE",
+            "title": "Administrative Officer IV (HRMO II)",
+            "active": true
+        },
+        "B": {
+            "name": "JULIE ANNE T. VALLESTERO, CPA",
+            "title": "Municipal Accountant",
+            "active": true
+        },
+        "C": {
+            "name": "ARLENE A. DE VEAS",
+            "title": "Municipal Treasurer",
+            "active": true
+        },
+        "D": {
+            "name": "HON. MICHAEL D. DIAZ",
+            "title": "Municipal Mayor",
+            "active": true
+        },
+        "F": {
+            "name": "EVA V. DUEÑAS",
+            "title": "Disbursing Officer",
+            "active": true
+        }
+    },
+    "entity_info": {
+        "entity_name": "LGU PALUAN",
+        "fund_cluster": "General Fund",
+        "address": "Paluan, Occidental Mindoro"
+    }
+}
