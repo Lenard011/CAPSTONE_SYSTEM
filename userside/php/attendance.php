@@ -1,5 +1,5 @@
 <?php
-// homepage.php - SIMPLE WORKING VERSION
+// attendance.php - Employee Attendance History View
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -20,17 +20,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Add debug output as HTML comment (view page source to see)
-echo "<!-- =========== HOMEPAGE SESSION DEBUG =========== -->\n";
-echo "<!-- Session ID: " . session_id() . " -->\n";
-echo "<!-- Cookie Path: " . $cookiePath . " -->\n";
-echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
-echo "<!-- ============================================= -->\n";
-
 // SIMPLE SESSION CHECK
 if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
-    // Redirect to login with error
-    header('Location: login.php?error=session_missing');
+    header('Location: login.php?error=session_missing&redirected=true');
     exit();
 }
 
@@ -39,7 +31,7 @@ $_SESSION['last_activity'] = time();
 
 // User is logged in - get variables
 $user_id = $_SESSION['user_id'];
-$username = $_SESSION['username'];
+$username = $_SESSION['username'] ?? '';
 $email = $_SESSION['email'] ?? '';
 $first_name = $_SESSION['first_name'] ?? '';
 $last_name = $_SESSION['last_name'] ?? '';
@@ -49,14 +41,166 @@ $access_level = $_SESSION['access_level'] ?? 1;
 $employee_id = $_SESSION['employee_id'] ?? '';
 $profile_image = $_SESSION['profile_image'] ?? '';
 
-// Check for forced password change
-if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
-    header('Location: change_password.php');
-    exit();
+// Database connection
+require_once '../../admin/conn.php';
+
+// If employee_id is not set in session, try to fetch it from database
+if (empty($employee_id)) {
+    $emp_query = "SELECT employee_id, first_name, last_name, full_name, department, position, employment_type 
+                  FROM users WHERE id = ?";
+    $emp_stmt = $conn->prepare($emp_query);
+
+    if ($emp_stmt) {
+        $emp_stmt->bind_param("i", $user_id);
+        $emp_stmt->execute();
+        $emp_result = $emp_stmt->get_result();
+
+        if ($emp_row = $emp_result->fetch_assoc()) {
+            $employee_id = $emp_row['employee_id'];
+            $first_name = $emp_row['first_name'] ?? $first_name;
+            $last_name = $emp_row['last_name'] ?? $last_name;
+            $full_name = $emp_row['full_name'] ?? ($first_name . ' ' . $last_name);
+            $department = $emp_row['department'] ?? 'N/A';
+            $position = $emp_row['position'] ?? 'N/A';
+            $employment_type = $emp_row['employment_type'] ?? 'Regular';
+
+            $_SESSION['employee_id'] = $employee_id;
+            $_SESSION['first_name'] = $first_name;
+            $_SESSION['last_name'] = $last_name;
+            $_SESSION['full_name'] = $full_name;
+            $_SESSION['department'] = $department;
+            $_SESSION['position'] = $position;
+            $_SESSION['employment_type'] = $employment_type;
+        }
+        $emp_stmt->close();
+    }
 }
 
-// Log successful access
-error_log("User " . $username . " accessed homepage successfully");
+// Set employee details array (matching admin format)
+$employee_details = [
+    'full_name' => $full_name,
+    'employee_id' => $employee_id,
+    'department' => $department ?? 'N/A',
+    'position' => $position ?? 'N/A',
+    'type' => $employment_type ?? 'Regular'
+];
+
+// Initialize variables
+$view_attendance_records = [];
+$attendance_total_records = 0;
+$attendance_all_records = 0;
+$attendance_total_pages = 0;
+$attendance_current_page = 1;
+
+// Only proceed with attendance queries if we have an employee_id
+if (!empty($employee_id)) {
+    // Pagination settings
+    $records_per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
+    $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+    $offset = ($page - 1) * $records_per_page;
+
+    $attendance_current_page = $page;
+
+    // Filter parameters
+    $month_filter = isset($_GET['month']) ? $_GET['month'] : '';
+    $year_filter = isset($_GET['year']) ? $_GET['year'] : '';
+
+    // Build the query conditions
+    $conditions = ["employee_id = ?"];
+    $params = [$employee_id];
+    $types = "s";
+
+    // Apply month filter
+    if (!empty($month_filter)) {
+        $conditions[] = "MONTH(date) = ?";
+        $params[] = $month_filter;
+        $types .= "i";
+    }
+
+    // Apply year filter
+    if (!empty($year_filter)) {
+        $conditions[] = "YEAR(date) = ?";
+        $params[] = $year_filter;
+        $types .= "i";
+    }
+
+    $where_clause = implode(" AND ", $conditions);
+
+    // Get total records count with filters
+    $count_query = "SELECT COUNT(*) as total FROM attendance WHERE $where_clause";
+    $count_stmt = $conn->prepare($count_query);
+
+    if ($count_stmt) {
+        if (!empty($params)) {
+            $count_stmt->bind_param($types, ...$params);
+        }
+        $count_stmt->execute();
+        $count_result = $count_stmt->get_result();
+        if ($count_row = $count_result->fetch_assoc()) {
+            $attendance_total_records = $count_row['total'];
+        }
+        $count_stmt->close();
+    }
+
+    // Get total records without filters
+    $total_all_query = "SELECT COUNT(*) as total FROM attendance WHERE employee_id = ?";
+    $total_all_stmt = $conn->prepare($total_all_query);
+
+    if ($total_all_stmt) {
+        $total_all_stmt->bind_param("s", $employee_id);
+        $total_all_stmt->execute();
+        $total_all_result = $total_all_stmt->get_result();
+        if ($total_all_row = $total_all_result->fetch_assoc()) {
+            $attendance_all_records = $total_all_row['total'];
+        }
+        $total_all_stmt->close();
+    }
+
+    // Calculate total pages
+    $attendance_total_pages = $attendance_total_records > 0 ? ceil($attendance_total_records / $records_per_page) : 0;
+
+    // Get attendance records with pagination
+    if ($attendance_total_records > 0) {
+        $query = "SELECT * FROM attendance 
+                  WHERE $where_clause 
+                  ORDER BY date DESC 
+                  LIMIT ? OFFSET ?";
+
+        $stmt = $conn->prepare($query);
+
+        if ($stmt) {
+            $params[] = $records_per_page;
+            $params[] = $offset;
+            $types .= "ii";
+            $stmt->bind_param($types, ...$params);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $view_attendance_records = $result->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+        }
+    }
+}
+
+// Months array for filter
+$months = [
+    1 => 'January',
+    2 => 'February',
+    3 => 'March',
+    4 => 'April',
+    5 => 'May',
+    6 => 'June',
+    7 => 'July',
+    8 => 'August',
+    9 => 'September',
+    10 => 'October',
+    11 => 'November',
+    12 => 'December'
+];
+
+// Success/Error messages
+$success_message = $_SESSION['success_message'] ?? '';
+$error_message = $_SESSION['error_message'] ?? '';
+unset($_SESSION['success_message'], $_SESSION['error_message']);
 ?>
 
 <!DOCTYPE html>
@@ -65,11 +209,113 @@ error_log("User " . $username . " accessed homepage successfully");
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HRMS - Attendance History</title>
+    <title>HRMS - My Attendance History</title>
     <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to match admin exactly */
+        .stats-card {
+            @apply bg-white rounded-lg shadow-sm p-4 border border-gray-100 hover:shadow-md transition-shadow duration-200;
+        }
+
+        .filter-badge {
+            @apply inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full;
+        }
+
+        .filter-badge .remove-filter {
+            @apply ml-1 cursor-pointer hover:text-blue-600 font-bold;
+        }
+
+        .attendance-status {
+            @apply px-2 py-1 text-xs font-medium rounded-full inline-flex items-center gap-1;
+        }
+
+        .status-present {
+            @apply bg-green-100 text-green-800;
+        }
+
+        .status-absent {
+            @apply bg-red-100 text-red-800;
+        }
+
+        .status-late {
+            @apply bg-yellow-100 text-yellow-800;
+        }
+
+        .status-leave {
+            @apply bg-purple-100 text-purple-800;
+        }
+
+        .action-btn {
+            @apply p-1.5 rounded-lg transition-colors duration-150 border border-gray-200 hover:border-gray-300;
+        }
+
+        .edit-btn {
+            @apply text-blue-600 hover:bg-blue-50;
+        }
+
+        .delete-btn {
+            @apply text-red-600 hover:bg-red-50;
+        }
+
+        .pagination-container {
+            @apply flex flex-col sm:flex-row justify-between items-center gap-4 px-4 py-3 bg-white rounded-lg;
+        }
+
+        .pagination-info {
+            @apply text-sm text-gray-600;
+        }
+
+        .pagination-nav {
+            @apply flex gap-1;
+        }
+
+        .pagination-btn {
+            @apply min-w-[36px] h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 text-sm hover:bg-gray-50 hover:border-gray-300 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+        }
+
+        .pagination-btn.active {
+            @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700;
+        }
+
+        .pagination-ellipsis {
+            @apply flex items-center px-2 text-gray-400;
+        }
+
+        .employee-summary {
+            @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-lg mb-6 shadow-md;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 640px) {
+            .mobile-hidden {
+                display: none;
+            }
+
+            .mobile-text-sm {
+                font-size: 0.75rem;
+            }
+
+            .mobile-table-container {
+                overflow-x: auto;
+            }
+
+            .mobile-table {
+                min-width: 600px;
+            }
+        }
+
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 15px;
+        }
+    </style>
     <style>
         /* Modern Variables */
         :root {
@@ -92,7 +338,7 @@ error_log("User " . $username . " accessed homepage successfully");
             --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
             --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-            --radius: 12px;
+            --radius: 16px;
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
@@ -107,32 +353,15 @@ error_log("User " . $username . " accessed homepage successfully");
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--light);
             color: var(--dark);
-            line-height: 1.6;
-            min-height: 100vh;
+            line-height: 1.7;
+            overflow-x: hidden;
         }
 
         /* Layout Container */
         .app-container {
             display: flex;
             min-height: 100vh;
-            position: relative;
-        }
-
-        /* Overlay for mobile sidebar */
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 99;
-            display: none;
-            backdrop-filter: blur(3px);
-        }
-
-        .sidebar-overlay.active {
-            display: block;
+            flex-direction: column;
         }
 
         /* Sidebar Navigation */
@@ -144,8 +373,12 @@ error_log("User " . $username . " accessed homepage successfully");
             height: 100vh;
             overflow-y: auto;
             transition: var(--transition);
-            z-index: 100;
+            z-index: 1000;
             box-shadow: var(--shadow-xl);
+            transform: translateX(-100%);
+        }
+
+        .sidebar.active {
             transform: translateX(0);
         }
 
@@ -272,10 +505,9 @@ error_log("User " . $username . " accessed homepage successfully");
         /* Main Content */
         .main-content {
             flex: 1;
-            margin-left: 260px;
             padding: 1.5rem;
             transition: var(--transition);
-            width: calc(100% - 260px);
+            width: 100%;
         }
 
         /* Top Bar */
@@ -293,8 +525,8 @@ error_log("User " . $username . " accessed homepage successfully");
         }
 
         .page-header h1 {
-            font-size: clamp(1.5rem, 4vw, 1.75rem);
-            font-weight: 700;
+            font-size: 1.75rem;
+            font-weight: 800;
             color: var(--dark);
             background: linear-gradient(90deg, var(--primary), var(--secondary));
             -webkit-background-clip: text;
@@ -304,7 +536,7 @@ error_log("User " . $username . " accessed homepage successfully");
 
         .page-header p {
             color: var(--gray);
-            font-size: clamp(0.8rem, 2vw, 0.9rem);
+            font-size: 0.9rem;
             margin-top: 0.25rem;
         }
 
@@ -312,7 +544,7 @@ error_log("User " . $username . " accessed homepage successfully");
             display: flex;
             align-items: center;
             gap: 1rem;
-            flex-wrap: wrap;
+            flex-shrink: 0;
         }
 
         .notification-btn {
@@ -325,9 +557,6 @@ error_log("User " . $username . " accessed homepage successfully");
             transition: var(--transition);
             padding: 0.5rem;
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
 
         .notification-btn:hover {
@@ -351,7 +580,7 @@ error_log("User " . $username . " accessed homepage successfully");
         }
 
         .mobile-menu-btn {
-            display: none;
+            display: block;
             background: none;
             border: none;
             color: var(--dark);
@@ -359,162 +588,354 @@ error_log("User " . $username . " accessed homepage successfully");
             cursor: pointer;
             padding: 0.5rem;
             border-radius: var(--radius);
-            z-index: 101;
-        }
-
-        /* Attendance Overview Cards */
-        .overview-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .overview-card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 1.5rem;
-            box-shadow: var(--shadow-md);
             transition: var(--transition);
-            border: 1px solid var(--gray-light);
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
         }
 
-        .overview-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-lg);
+        .mobile-menu-btn:hover {
+            background: var(--gray-light);
         }
 
-        .card-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.5rem;
-            box-shadow: var(--shadow-md);
-            flex-shrink: 0;
+        /* Settings Layout */
+        .settings-container {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            gap: 2rem;
         }
 
-        .card-info h3 {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--gray);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.5rem;
-        }
-
-        .card-info .value {
-            font-size: clamp(1.5rem, 4vw, 1.75rem);
-            font-weight: 800;
-            color: var(--dark);
-            line-height: 1;
-        }
-
-        /* Color Variations */
-        .overview-card:nth-child(1) .card-icon {
-            background: linear-gradient(135deg, #10b981, #059669);
-        }
-
-        .overview-card:nth-child(2) .card-icon {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-        }
-
-        .overview-card:nth-child(3) .card-icon {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-        }
-
-        .overview-card:nth-child(4) .card-icon {
-            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-        }
-
-        /* Filter Section */
-        .filter-section {
+        /* Settings Sidebar */
+        .settings-sidebar {
             background: var(--card-bg);
             border-radius: var(--radius);
-            padding: 1.5rem;
             box-shadow: var(--shadow-md);
-            margin-bottom: 2rem;
             border: 1px solid var(--gray-light);
+            padding: 1.5rem 0;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
         }
 
-        .filter-header {
+        .settings-nav {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .settings-nav-item {
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            text-decoration: none;
+            color: var(--gray);
+            transition: var(--transition);
+            border-left: 3px solid transparent;
+        }
+
+        .settings-nav-item:hover {
+            background: var(--light);
+            color: var(--primary);
+        }
+
+        .settings-nav-item.active {
+            background: rgba(37, 99, 235, 0.1);
+            color: var(--primary);
+            border-left: 3px solid var(--primary);
+        }
+
+        .settings-nav-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .settings-nav-item span {
+            font-weight: 500;
+        }
+
+        /* Settings Content */
+        .settings-content {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--gray-light);
+            padding: 2rem;
+        }
+
+        .settings-section {
+            margin-bottom: 2.5rem;
+            display: none;
+        }
+
+        .settings-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--gray-light);
             flex-wrap: wrap;
             gap: 1rem;
         }
 
-        .filter-title {
-            font-size: 1.1rem;
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-title i {
+            color: var(--primary);
+        }
+
+        .section-description {
+            color: var(--gray);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
             font-weight: 600;
             color: var(--dark);
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
         }
 
-        .filter-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            align-items: center;
+        .form-label span {
+            color: var(--danger);
+            margin-left: 0.25rem;
         }
 
-        .date-range-container {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .date-input-wrapper {
-            position: relative;
-            flex: 1;
-            min-width: 180px;
-        }
-
-        .date-input {
+        .form-input {
             width: 100%;
-            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            padding: 0.75rem 1rem;
             border: 1px solid var(--gray-light);
             border-radius: 8px;
-            font-size: 0.9rem;
-            background: white;
+            font-size: 0.95rem;
             color: var(--dark);
             transition: var(--transition);
-            cursor: pointer;
+            background: white;
         }
 
-        .date-input:focus {
+        .form-input:focus {
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        .date-icon {
+        .form-input:disabled {
+            background: var(--light);
+            cursor: not-allowed;
+        }
+
+        .form-hint {
+            font-size: 0.85rem;
+            color: var(--gray);
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-hint i {
+            color: var(--warning);
+        }
+
+        /* Grid Layouts */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        /* Profile Picture */
+        .profile-picture-container {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .profile-picture {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--gray-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .profile-picture-placeholder {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: bold;
+            border: 4px solid var(--gray-light);
+            box-shadow: var(--shadow-md);
+            flex-shrink: 0;
+        }
+
+        .profile-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        /* Checkbox and Toggle Styles */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-input {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--gray-light);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .checkbox-input:checked {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .checkbox-label {
+            font-weight: 500;
+            color: var(--dark);
+            cursor: pointer;
+        }
+
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: var(--light);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            transition: var(--transition);
+        }
+
+        .toggle-group:hover {
+            background: var(--gray-light);
+        }
+
+        .toggle-label {
+            font-weight: 500;
+            color: var(--dark);
+        }
+
+        .toggle-description {
+            font-size: 0.85rem;
+            color: var(--gray);
+            margin-top: 0.25rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
             position: absolute;
-            left: 0.75rem;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: var(--transition);
+            border-radius: 34px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: var(--transition);
+            border-radius: 50%;
+        }
+
+        input:checked+.toggle-slider {
+            background-color: var(--success);
+        }
+
+        input:checked+.toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        /* Select Styles */
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select-wrapper i {
+            position: absolute;
+            right: 1rem;
             top: 50%;
             transform: translateY(-50%);
             color: var(--gray);
             pointer-events: none;
         }
 
+        /* Button Styles */
         .btn {
             padding: 0.75rem 1.5rem;
             border-radius: 8px;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             cursor: pointer;
             transition: var(--transition);
             border: none;
-            display: flex;
+            display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
             white-space: nowrap;
         }
@@ -542,331 +963,240 @@ error_log("User " . $username . " accessed homepage successfully");
             border-color: var(--gray);
         }
 
-        .btn-icon {
-            padding: 0.75rem;
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        /* Security Devices */
+        .device-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .device-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--light);
             border-radius: 8px;
-            background: white;
             border: 1px solid var(--gray-light);
-            color: var(--dark);
-            cursor: pointer;
-            transition: var(--transition);
+        }
+
+        .device-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
+            color: white;
+            font-size: 1.25rem;
+            flex-shrink: 0;
         }
 
-        .btn-icon:hover {
-            background: var(--light);
-            border-color: var(--primary);
-            color: var(--primary);
+        .device-info {
+            flex: 1;
+            min-width: 0;
         }
 
-        /* Table Section */
-        .table-container {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow-md);
+        .device-name {
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 0.25rem;
+            white-space: nowrap;
             overflow: hidden;
-            margin-bottom: 2rem;
-            border: 1px solid var(--gray-light);
+            text-overflow: ellipsis;
         }
 
-        .table-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--gray-light);
-            background: linear-gradient(90deg, #f8fafc, #f1f5f9);
+        .device-details {
+            font-size: 0.85rem;
+            color: var(--gray);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
-        .table-title {
+        .device-status {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            background: #d1fae5;
+            color: #065f46;
+            flex-shrink: 0;
+        }
+
+        .device-status.inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* Audit Log */
+        .audit-log {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .audit-item {
+            padding: 1rem;
+            background: var(--light);
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .audit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .audit-action {
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .audit-time {
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        .audit-details {
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
+        .audit-ip {
+            font-family: 'Courier New', monospace;
+            background: #f3f4f6;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: inline-block;
+            margin-top: 0.25rem;
+        }
+
+        /* Danger Zone */
+        .danger-zone {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            border: 2px solid #f87171;
+            border-radius: var(--radius);
+            padding: 2rem;
+            margin-top: 3rem;
+        }
+
+        .danger-zone-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .danger-zone-header i {
+            color: #991b1b;
+            font-size: 1.5rem;
+        }
+
+        .danger-zone-header h3 {
+            color: #991b1b;
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .danger-zone p {
+            color: #7f1d1d;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition);
+            padding: 1rem;
+        }
+
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: var(--radius);
+            padding: 2rem;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: translateY(20px);
+            transition: var(--transition);
+        }
+
+        .modal.active .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
             font-size: 1.25rem;
             font-weight: 700;
             color: var(--dark);
         }
 
-        .table-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .table-responsive {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .attendance-table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 800px;
-        }
-
-        .attendance-table thead {
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
-            color: white;
-        }
-
-        .attendance-table th {
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-            white-space: nowrap;
-        }
-
-        .attendance-table tbody tr {
-            border-bottom: 1px solid var(--gray-light);
-            transition: var(--transition);
-        }
-
-        .attendance-table tbody tr:hover {
-            background-color: #f9fafb;
-        }
-
-        .attendance-table td {
-            padding: 1rem;
-            color: var(--dark);
-            font-size: 0.95rem;
-            vertical-align: middle;
-        }
-
-        .status-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .status-present {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .status-late {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .status-absent {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status-pending {
-            background: #e0f2fe;
-            color: #0369a1;
-        }
-
-        .time-cell {
-            font-family: 'Courier New', monospace;
-            font-weight: 600;
-            background: #f8fafc;
-            padding: 0.5rem;
-            border-radius: 6px;
-            text-align: center;
-            min-width: 70px;
-            display: block;
-            margin-bottom: 0.25rem;
-        }
-
-        .time-cell:last-child {
-            margin-bottom: 0;
-        }
-
-        .time-early {
-            color: var(--success);
-        }
-
-        .time-late {
-            color: var(--warning);
-        }
-
-        .time-missing {
-            color: var(--danger);
-            font-style: italic;
-        }
-
-        .hours-cell {
-            font-weight: 700;
-            text-align: center;
-        }
-
-        .hours-positive {
-            color: var(--success);
-        }
-
-        .hours-negative {
-            color: var(--danger);
-        }
-
-        .table-footer {
-            padding: 1.5rem;
-            border-top: 1px solid var(--gray-light);
-            background: #f8fafc;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-
-        .summary-info {
+        .modal-close {
+            background: none;
+            border: none;
             color: var(--gray);
-            font-size: 0.9rem;
-        }
-
-        .summary-stats {
-            display: flex;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .stat-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .stat-label {
-            font-size: 0.8rem;
-            color: var(--gray);
-        }
-
-        .stat-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
-
-        .stat-ot {
-            color: var(--success);
-        }
-
-        .stat-ut {
-            color: var(--danger);
-        }
-
-        .stat-total {
-            color: var(--primary);
-        }
-
-        /* Pagination */
-        .pagination {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem;
-            border-top: 1px solid var(--gray-light);
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-
-        .pagination-info {
-            color: var(--gray);
-            font-size: 0.9rem;
-        }
-
-        .pagination-controls {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .pagination-btn {
-            min-width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid var(--gray-light);
-            border-radius: 6px;
-            background: white;
-            color: var(--gray);
+            font-size: 1.25rem;
             cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
             transition: var(--transition);
-            font-size: 0.9rem;
         }
 
-        .pagination-btn:hover {
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-
-        .pagination-btn.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        /* Mobile Card View (Alternative to table) */
-        .mobile-card-view {
-            display: none;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .attendance-card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 1.5rem;
-            box-shadow: var(--shadow-md);
-            border: 1px solid var(--gray-light);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid var(--gray-light);
-        }
-
-        .card-date {
-            font-weight: 600;
-            font-size: 1rem;
-        }
-
-        .card-status {
-            font-size: 0.85rem;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-        }
-
-        .card-body {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .card-item {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .card-label {
-            font-size: 0.75rem;
-            color: var(--gray);
-            margin-bottom: 0.25rem;
-        }
-
-        .card-value {
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-
-        .card-footer {
-            padding-top: 1rem;
-            border-top: 1px solid var(--gray-light);
-            font-size: 0.85rem;
-            color: var(--gray);
+        .modal-close:hover {
+            color: var(--danger);
+            background: #fee2e2;
         }
 
         /* --- Footer --- */
@@ -1069,242 +1399,281 @@ error_log("User " . $username . " accessed homepage successfully");
             color: white;
         }
 
-        /* Responsive Design */
-
-        /* Large Desktop (1200px and up) */
-        @media (min-width: 1200px) {
-            .overview-cards {
-                grid-template-columns: repeat(4, 1fr);
-            }
+        /* Back to Top Button */
+        .back-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(100px);
+            transition: var(--transition);
+            box-shadow: var(--shadow-lg);
         }
 
-        /* Desktop (1024px to 1199px) */
-        @media (min-width: 1024px) and (max-width: 1199px) {
-            .overview-cards {
-                grid-template-columns: repeat(2, 1fr);
-            }
+        .back-to-top.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
 
-        /* Tablet (768px to 1023px) */
-        @media (max-width: 1023px) {
+        .back-to-top:hover {
+            background: var(--primary-dark);
+            transform: translateY(-5px);
+        }
+
+        /* Overlay for mobile sidebar */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            backdrop-filter: blur(3px);
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Desktop Styles */
+        @media (min-width: 1025px) {
+            .app-container {
+                flex-direction: row;
+            }
+
             .sidebar {
-                transform: translateX(-100%);
-                width: 280px;
-            }
-
-            .sidebar.active {
                 transform: translateX(0);
+                position: fixed;
             }
 
             .main-content {
-                margin-left: 0;
-                width: 100%;
-                padding: 1rem;
+                margin-left: 260px;
+                width: calc(100% - 260px);
             }
 
             .mobile-menu-btn {
-                display: block;
+                display: none;
             }
 
-            .overview-cards {
-                grid-template-columns: repeat(2, 1fr);
+            .sidebar-overlay {
+                display: none !important;
+            }
+        }
+
+        /* Tablet Styles */
+        @media (max-width: 1024px) and (min-width: 769px) {
+            .settings-container {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-sidebar {
+                position: static;
+                margin-bottom: 2rem;
+            }
+
+            .profile-picture-container {
+                flex-direction: row;
+                align-items: center;
+            }
+
+            .device-item {
+                flex-direction: row;
+                align-items: center;
+            }
+
+            .section-header {
+                flex-direction: row;
+                align-items: center;
+            }
+        }
+
+        /* Mobile Styles */
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 1rem;
             }
 
             .top-bar {
-                flex-direction: row;
-                align-items: center;
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 1rem;
+                gap: 1rem;
             }
 
             .page-header h1 {
                 font-size: 1.5rem;
             }
 
-            .filter-header {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .filter-controls {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .date-range-container {
-                flex-direction: column;
-                align-items: stretch;
-                gap: 0.5rem;
-            }
-
-            .date-input-wrapper {
-                min-width: 100%;
-            }
-        }
-
-        /* Small Tablet (600px to 767px) */
-        @media (max-width: 767px) {
-            .overview-cards {
+            .settings-container {
                 grid-template-columns: 1fr;
+                gap: 1.5rem;
             }
 
-            .top-bar {
+            .settings-sidebar {
+                position: static;
+                margin-bottom: 1.5rem;
+                padding: 1rem 0;
+            }
+
+            .settings-nav-item {
+                padding: 0.875rem 1.25rem;
+                font-size: 0.95rem;
+            }
+
+            .settings-content {
+                padding: 1.5rem;
+            }
+
+            .profile-picture-container {
                 flex-direction: column;
                 align-items: flex-start;
-                gap: 1rem;
+                gap: 1.5rem;
             }
 
-            .top-bar-actions {
-                width: 100%;
-                justify-content: space-between;
+            .profile-picture-placeholder {
+                width: 100px;
+                height: 100px;
+                font-size: 2rem;
             }
 
-            .table-header {
-                padding: 1rem;
-            }
-
-            .table-title {
-                font-size: 1.1rem;
-            }
-
-            .attendance-table {
-                min-width: 1000px;
-            }
-
-            .attendance-table th,
-            .attendance-table td {
-                padding: 0.75rem 0.5rem;
-                font-size: 0.85rem;
-            }
-
-            .btn {
-                padding: 0.5rem 1rem;
-                font-size: 0.85rem;
-                flex: 1;
-                justify-content: center;
-            }
-
-            .table-footer {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-
-            .summary-stats {
-                width: 100%;
-                justify-content: space-between;
-            }
-
-            /* Show mobile cards, hide table */
-            .table-responsive {
-                display: none;
-            }
-
-            .mobile-card-view {
-                display: grid;
+            .form-grid {
                 grid-template-columns: 1fr;
-            }
-        }
-
-        /* Mobile (480px to 599px) */
-        @media (max-width: 599px) {
-            .main-content {
-                padding: 0.75rem;
-            }
-
-            .card-info .value {
-                font-size: 1.5rem;
-            }
-
-            .overview-card {
-                padding: 1rem;
                 gap: 1rem;
             }
 
-            .card-icon {
-                width: 50px;
-                height: 50px;
-                font-size: 1.25rem;
-            }
-
-            .filter-section {
-                padding: 1rem;
-            }
-
-            .btn-icon {
-                padding: 0.5rem;
-            }
-
-            .table-footer {
-                padding: 1rem;
-            }
-
-            .footer {
-                padding: 2rem 0 1rem;
-            }
-        }
-
-        /* Small Mobile (below 480px) */
-        @media (max-width: 479px) {
-            .overview-card {
-                flex-direction: column;
-                text-align: center;
-                gap: 1rem;
-            }
-
-            .card-icon {
-                width: 60px;
-                height: 60px;
-            }
-
-            .filter-controls {
-                gap: 0.75rem;
-            }
-
-            .btn {
-                width: 100%;
-            }
-
-            .summary-stats {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-
-            .stat-item {
-                flex-direction: row;
-                align-items: center;
-                gap: 1rem;
-                width: 100%;
-                justify-content: space-between;
-            }
-
-            .pagination {
+            .device-item {
                 flex-direction: column;
                 align-items: flex-start;
+                gap: 1rem;
             }
 
-            .pagination-controls {
-                width: 100%;
-                justify-content: center;
-            }
-
-            .logo-title {
+            .device-icon {
+                width: 40px;
+                height: 40px;
                 font-size: 1rem;
             }
 
-            .logo-subtitle {
-                font-size: 0.75rem;
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
             }
 
-            .user-details h4 {
-                font-size: 0.85rem;
+            .section-title {
+                font-size: 1.25rem;
             }
 
-            .user-details p {
-                font-size: 0.75rem;
+            .toggle-group {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
             }
 
-            .footer-grid {
-                grid-template-columns: 1fr;
+            .toggle-switch {
+                align-self: flex-end;
+            }
+
+            .audit-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.25rem;
+            }
+
+            .danger-zone {
+                padding: 1.5rem;
+            }
+
+            .back-to-top {
+                bottom: 1rem;
+                right: 1rem;
+                width: 45px;
+                height: 45px;
+                font-size: 1.25rem;
+            }
+        }
+
+        /* Small Mobile Styles */
+        @media (max-width: 480px) {
+            .settings-nav-item {
+                padding: 0.75rem 1rem;
+                font-size: 0.9rem;
+            }
+
+            .settings-nav-item i {
+                font-size: 1rem;
+            }
+
+            .btn {
+                padding: 0.625rem 1.25rem;
+                font-size: 0.9rem;
+                width: 100%;
+            }
+
+            .btn-secondary,
+            .btn-primary,
+            .btn-danger {
+                width: 100%;
+            }
+
+            .profile-actions {
+                width: 100%;
+            }
+
+            .device-status {
+                align-self: flex-start;
+            }
+
+            .modal-content {
+                padding: 1.5rem;
+            }
+
+            .modal-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .modal-close {
+                position: absolute;
+                top: 1rem;
+                right: 1rem;
+            }
+
+            .footer-logo {
+                flex-direction: column;
+                text-align: center;
+                gap: 0.5rem;
+            }
+
+            .social-links {
+                justify-content: center;
+            }
+        }
+
+        /* Large Desktop Styles */
+        @media (min-width: 1400px) {
+            .main-content {
+                padding: 2rem;
+            }
+
+            .settings-container {
+                max-width: 1200px;
+                margin: 0 auto;
+                width: 100%;
             }
         }
 
@@ -1313,16 +1682,14 @@ error_log("User " . $username . " accessed homepage successfully");
 
             .sidebar,
             .top-bar-actions,
-            .filter-section,
-            .pagination,
-            .footer {
+            .mobile-menu-btn,
+            .settings-sidebar,
+            .btn,
+            .toggle-switch,
+            .back-to-top,
+            .footer,
+            .modal {
                 display: none !important;
-            }
-
-            .stat-footer {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.75rem;
             }
 
             .main-content {
@@ -1331,46 +1698,217 @@ error_log("User " . $username . " accessed homepage successfully");
                 padding: 0;
             }
 
-            .table-container {
-                box-shadow: none;
-                border: 1px solid #000;
+            .settings-content {
+                box-shadow: none !important;
+                border: 1px solid #ddd !important;
             }
 
-            body {
-                background: white;
-                color: black;
+            .toggle-group {
+                background: none !important;
+                border-bottom: 1px solid #ddd;
             }
         }
 
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+        /* Profile Picture Styles */
+        .profile-image-wrapper {
+            position: relative;
+            display: inline-block;
         }
 
-        ::-webkit-scrollbar-track {
+        .profile-picture {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--gray-light);
+            box-shadow: var(--shadow-md);
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .profile-picture:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+        }
+
+        .upload-loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 2rem;
+            color: var(--primary);
+            z-index: 10;
+        }
+
+        /* Profile picture placeholder with initials */
+        .profile-picture-placeholder {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: bold;
+            border: 4px solid var(--gray-light);
+            box-shadow: var(--shadow-md);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .profile-picture-placeholder:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+        }
+
+        /* Image preview modal */
+        .image-preview-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .image-preview-modal.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .preview-image {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .close-preview {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 50%;
+            transition: var(--transition);
+        }
+
+        .close-preview:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* File upload progress */
+        .upload-progress {
+            width: 100%;
+            height: 6px;
             background: var(--gray-light);
-            border-radius: 4px;
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
         }
 
-        ::-webkit-scrollbar-thumb {
-            background: var(--primary-light);
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
+        .upload-progress-bar {
+            height: 100%;
             background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Password strength indicators */
+        #passwordStrength,
+        #passwordMatch {
+            margin-top: 5px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+        }
+
+        #passwordStrength.weak,
+        #passwordMatch.mismatch {
+            background-color: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+        }
+
+        #passwordStrength.medium {
+            background-color: rgba(245, 158, 11, 0.1);
+            border-left: 3px solid #f59e0b;
+        }
+
+        #passwordStrength.strong {
+            background-color: rgba(16, 185, 129, 0.1);
+            border-left: 3px solid #10b981;
+        }
+
+        #passwordMatch.match {
+            background-color: rgba(16, 185, 129, 0.1);
+            border-left: 3px solid #10b981;
+        }
+
+        /* Device status indicators */
+        .device-status.active {
+            background: #d1fae5;
+            color: #065f46;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .device-status.inactive {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        /* Security section specific styles */
+        .security-preferences {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: var(--light);
+            border-radius: 12px;
+            border: 1px solid var(--gray-light);
+        }
+
+        .security-preferences .toggle-group {
+            background: white;
+            margin-bottom: 1rem;
+        }
+        .employee-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 
-<body>
-    <div class="app-container">
-        <!-- Overlay for mobile sidebar -->
-        <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-        <!-- Sidebar Navigation -->
-        <aside class="sidebar" id="sidebar">
+<body class="bg-gray-50 font-['Inter']">
+    <div class="app-container flex min-h-screen">
+        <!-- Sidebar Navigation (same as before) -->
+        <aside class="sidebar">
             <div class="sidebar-header">
                 <a href="homepage.php" class="logo-container">
                     <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
@@ -1405,11 +1943,11 @@ error_log("User " . $username . " accessed homepage successfully");
                 <div class="nav-item">
                     <a href="about.php" class="nav-link">
                         <i class="fas fa-info-circle"></i>
-                        <span>About</span>
+                        <span>About Municipality</span>
                     </a>
                 </div>
                 <div class="nav-item">
-                    <a href="settings.php" class="nav-link">
+                    <a href="settings.php" class="nav-link ">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </a>
@@ -1424,792 +1962,713 @@ error_log("User " . $username . " accessed homepage successfully");
 
             <div class="user-profile">
                 <div class="user-info">
-                    <div class="user-avatar">JA</div>
+                    <div class="user-avatar">
+                        <?php echo strtoupper(substr($first_name, 0, 1) . substr($last_name, 0, 1)); ?>
+                    </div>
                     <div class="user-details">
-                        <h4>Joy Ambrosio</h4>
-                        <p>Employee ID: BSC02</p>
+                        <h4><?php echo htmlspecialchars($full_name); ?></h4>
+                        <p>Employee ID: <?php echo htmlspecialchars($employee_id); ?></p>
                     </div>
                 </div>
             </div>
         </aside>
 
         <!-- Main Content -->
-        <main class="main-content">
+        <main class="main-content flex-1 ml-64 p-4 md:p-6">
             <!-- Top Bar -->
-            <div class="top-bar">
+            <div class="flex justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm">
                 <div class="page-header">
-                    <h1>Attendance History</h1>
-                    <p>Track and manage your attendance records</p>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-900">My Attendance History</h1>
+                    <p class="text-gray-600 text-sm">Track and manage your attendance records</p>
                 </div>
-                <div class="top-bar-actions">
-                    <button class="notification-btn">
-                        <i class="fas fa-bell"></i>
-                        <span class="notification-badge">3</span>
+                <div class="top-bar-actions flex items-center gap-3">
+                    <button class="notification-btn relative p-2 text-gray-600 hover:text-blue-600 transition-colors">
+                        <i class="fas fa-bell text-xl"></i>
+                        <span
+                            class="notification-badge absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs flex items-center justify-center rounded-full">3</span>
                     </button>
-                    <button class="mobile-menu-btn" id="mobileMenuBtn">
-                        <i class="fas fa-bars"></i>
+                    <button class="mobile-menu-btn hidden p-2 text-gray-600 hover:text-blue-600" id="mobileMenuBtn">
+                        <i class="fas fa-bars text-xl"></i>
                     </button>
                 </div>
             </div>
 
-            <!-- Overview Cards -->
-            <div class="overview-cards">
-                <div class="overview-card">
-                    <div class="card-icon">
-                        <i class="fas fa-calendar-check"></i>
-                    </div>
-                    <div class="card-info">
-                        <h3>Days Present</h3>
-                        <div class="value">18</div>
+            <!-- Main Content Card - Exactly matching admin layout -->
+            <div class="bg-white rounded-lg shadow-md p-4 md:p-6">
+                <!-- Header with Back Button (simplified for user side) -->
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <div>
+                        <h1 class="text-xl md:text-2xl font-bold text-gray-900">Attendance Records</h1>
+                        <p class="text-gray-600">for <?php echo htmlspecialchars($employee_details['full_name']); ?></p>
                     </div>
                 </div>
 
-                <div class="overview-card">
-                    <div class="card-icon">
-                        <i class="fas fa-clock"></i>
+                <!-- Status Messages -->
+                <?php if (!empty($success_message)): ?>
+                    <div class="p-3 md:p-4 mb-4 text-sm text-green-800 rounded-lg bg-green-50 import-success" role="alert">
+                        <i class="fas fa-check-circle mr-2"></i><?php echo htmlspecialchars($success_message); ?>
                     </div>
-                    <div class="card-info">
-                        <h3>Late Arrivals</h3>
-                        <div class="value">4</div>
-                    </div>
-                </div>
+                <?php endif; ?>
 
-                <div class="overview-card">
-                    <div class="card-icon">
-                        <i class="fas fa-ban"></i>
+                <?php if (!empty($error_message)): ?>
+                    <div class="p-3 md:p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 import-error" role="alert">
+                        <i class="fas fa-exclamation-circle mr-2"></i><?php echo htmlspecialchars($error_message); ?>
                     </div>
-                    <div class="card-info">
-                        <h3>Absences</h3>
-                        <div class="value">2</div>
-                    </div>
-                </div>
+                <?php endif; ?>
 
-                <div class="overview-card">
-                    <div class="card-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <div class="card-info">
-                        <h3>Avg. Hours/Day</h3>
-                        <div class="value">7.6</div>
-                    </div>
-                </div>
-            </div>
+                <!-- Month/Year Filter Section -->
+                <div class="bg-gray-50 p-4 rounded-lg mb-4 card-shadow">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Filter Attendance Records</h3>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-filter text-gray-500"></i>
+                            <span class="font-medium text-gray-700">Filter by:</span>
+                        </div>
 
-            <!-- Filter Section -->
-            <div class="filter-section">
-                <div class="filter-header">
-                    <h2 class="filter-title">Filter Records</h2>
-                    <div class="filter-controls">
-                        <div class="date-range-container">
-                            <div class="date-input-wrapper">
-                                <i class="fas fa-calendar date-icon"></i>
-                                <input type="text" class="date-input" placeholder="Start Date" id="startDate" readonly>
+                        <div class="flex flex-wrap gap-3 items-center">
+                            <!-- Month Filter -->
+                            <div class="relative">
+                                <select id="monthFilter"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-40 p-2.5">
+                                    <option value="">All Months</option>
+                                    <?php
+                                    $months = [
+                                        1 => 'January',
+                                        2 => 'February',
+                                        3 => 'March',
+                                        4 => 'April',
+                                        5 => 'May',
+                                        6 => 'June',
+                                        7 => 'July',
+                                        8 => 'August',
+                                        9 => 'September',
+                                        10 => 'October',
+                                        11 => 'November',
+                                        12 => 'December'
+                                    ];
+                                    $selectedMonth = isset($_GET['month']) ? (int) $_GET['month'] : '';
+                                    foreach ($months as $num => $name): ?>
+                                        <option value="<?php echo $num; ?>" <?php echo $selectedMonth == $num ? 'selected' : ''; ?>>
+                                            <?php echo $name; ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
-                            <span class="text-gray-500">to</span>
-                            <div class="date-input-wrapper">
-                                <i class="fas fa-calendar date-icon"></i>
-                                <input type="text" class="date-input" placeholder="End Date" id="endDate" readonly>
+
+                            <!-- Year Filter -->
+                            <div class="relative">
+                                <select id="yearFilter"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-28 p-2.5">
+                                    <option value="">All Years</option>
+                                    <?php
+                                    $currentYear = (int) date('Y');
+                                    $selectedYear = isset($_GET['year']) ? (int) $_GET['year'] : '';
+                                    for ($year = $currentYear; $year >= $currentYear - 5; $year--): ?>
+                                        <option value="<?php echo $year; ?>" <?php echo $selectedYear == $year ? 'selected' : ''; ?>>
+                                            <?php echo $year; ?>
+                                        </option>
+                                    <?php endfor; ?>
+                                </select>
+                            </div>
+
+                            <!-- Filter Action Buttons -->
+                            <button type="button" onclick="applyAttendanceFilter()"
+                                class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out flex items-center">
+                                <i class="fas fa-search mr-2"></i>
+                                Apply Filter
+                            </button>
+
+                            <button type="button" onclick="clearAttendanceFilter()"
+                                class="text-gray-700 bg-gray-200 hover:bg-gray-300 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out flex items-center">
+                                <i class="fas fa-times mr-2"></i>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Active Filter Display -->
+                    <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <span class="text-sm text-gray-600 mr-2">Active filters:</span>
+                            <?php if (isset($_GET['month']) && !empty($_GET['month'])): ?>
+                                <span class="filter-badge">
+                                    <i class="fas fa-calendar"></i>
+                                    <?php echo $months[(int) $_GET['month']] ?? ''; ?>
+                                    <span class="remove-filter" onclick="clearAttendanceFilter()">×</span>
+                                </span>
+                            <?php endif; ?>
+                            <?php if (isset($_GET['year']) && !empty($_GET['year'])): ?>
+                                <span class="filter-badge">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    Year <?php echo htmlspecialchars($_GET['year']); ?>
+                                    <span class="remove-filter" onclick="clearAttendanceFilter()">×</span>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Employee Summary -->
+                <div class="employee-summary">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+                        <div>
+                            <h2 class="text-xl font-bold mb-1">
+                                <?php echo htmlspecialchars($employee_details['full_name']); ?>
+                            </h2>
+                            <p class="text-white/80">ID:
+                                <?php echo htmlspecialchars($employee_details['employee_id']); ?> |
+                                <?php echo htmlspecialchars($employee_details['type']); ?> Employee
+                            </p>
+                        </div>
+                        <div class="mt-4 md:mt-0 text-right">
+                            <p class="text-white/80">Department:
+                                <?php echo htmlspecialchars($employee_details['department']); ?>
+                            </p>
+                            <p class="text-white/80">Total Records: <?php echo $attendance_all_records; ?></p>
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                <p class="text-white/80 text-sm">Showing: <?php echo $attendance_total_records; ?> filtered
+                                    records</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Attendance Statistics - Using FILTERED records -->
+                <?php if (!empty($view_attendance_records)): ?>
+                    <?php
+                    // Calculate statistics based on FILTERED records only
+                    $present_count = 0;
+                    $absent_count = 0;
+                    $late_count = 0;
+                    $total_hours = 0;
+                    $total_ot = 0;
+
+                    foreach ($view_attendance_records as $record) {
+                        if ($record['total_hours'] > 0)
+                            $present_count++;
+                        if ($record['total_hours'] == 0)
+                            $absent_count++;
+                        if ($record['under_time'] > 0)
+                            $late_count++;
+                        $total_hours += $record['total_hours'];
+                        $total_ot += $record['ot_hours'];
+                    }
+
+                    $present_rate = count($view_attendance_records) > 0 ? round(($present_count / count($view_attendance_records)) * 100, 1) : 0;
+                    ?>
+
+                    <!-- Filter Info Banner -->
+                    <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                        <div class="bg-blue-50 border-l-4 border-blue-500 text-blue-700 p-4 mb-4" role="alert">
+                            <div class="flex items-center">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                <p>
+                                    <span class="font-bold">Filtered View:</span>
+                                    Showing statistics for
+                                    <?php
+                                    $filter_parts = [];
+                                    if (isset($_GET['month'])) {
+                                        $filter_parts[] = $months[(int) $_GET['month']];
+                                    }
+                                    if (isset($_GET['year'])) {
+                                        $filter_parts[] = $_GET['year'];
+                                    }
+                                    echo implode(' ', $filter_parts);
+                                    ?> only.
+                                    <a href="?view_attendance=true&employee_id=<?php echo urlencode($view_employee_id); ?>"
+                                        class="underline ml-2 font-semibold">
+                                        Clear filter to see all records
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="stats-card">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-lg bg-green-100 mr-4">
+                                    <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Present Days</p>
+                                    <p class="text-2xl font-bold"><?php echo $present_count; ?></p>
+                                    <p class="text-xs text-green-600"><?php echo $present_rate; ?>% Present Rate</p>
+                                </div>
                             </div>
                         </div>
 
-                        <button class="btn btn-primary" id="applyFiltersBtn">
-                            <i class="fas fa-filter"></i> Apply Filters
-                        </button>
-
-                        <button class="btn btn-secondary" id="resetFiltersBtn">
-                            <i class="fas fa-redo"></i> Reset
-                        </button>
-
-                        <button class="btn-icon" id="exportBtn" title="Export Data">
-                            <i class="fas fa-download"></i>
-                        </button>
-
-                        <button class="btn-icon" id="printBtn" title="Print Report">
-                            <i class="fas fa-print"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Attendance Table Container -->
-            <div class="table-container">
-                <div class="table-header">
-                    <h2 class="table-title">Detailed Attendance Records</h2>
-                    <div class="table-actions">
-                        <select class="date-input" id="departmentFilter"
-                            style="width: auto; padding: 0.5rem 1rem; min-width: 150px;">
-                            <option value="all">All Departments</option>
-                            <option value="hr">HR Office</option>
-                            <option value="budget">Budget Office</option>
-                            <option value="accounting">Accounting</option>
-                        </select>
-                        <select class="date-input" id="statusFilter"
-                            style="width: auto; padding: 0.5rem 1rem; min-width: 120px;">
-                            <option value="all">All Status</option>
-                            <option value="present">Present</option>
-                            <option value="late">Late</option>
-                            <option value="absent">Absent</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Desktop Table View -->
-                <div class="table-responsive">
-                    <table class="attendance-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Status</th>
-                                <th>AM Session</th>
-                                <th>PM Session</th>
-                                <th>OT Hours</th>
-                                <th>UnderTime</th>
-                                <th>Total Hours</th>
-                                <th>Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody id="attendanceTableBody">
-                            <!-- Table rows will be populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Mobile Card View -->
-                <div class="mobile-card-view" id="mobileCardView">
-                    <!-- Mobile cards will be populated by JavaScript -->
-                </div>
-
-                <!-- Summary Footer -->
-                <div class="table-footer">
-                    <div class="summary-info" id="summaryInfo">
-                        Loading attendance records...
-                    </div>
-                    <div class="summary-stats">
-                        <div class="stat-item">
-                            <span class="stat-label">Total OT</span>
-                            <span class="stat-value stat-ot" id="totalOT">4.21 hrs</span>
+                        <div class="stats-card">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-lg bg-red-100 mr-4">
+                                    <i class="fas fa-times-circle text-red-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Absent Days</p>
+                                    <p class="text-2xl font-bold"><?php echo $absent_count; ?></p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Total UT</span>
-                            <span class="stat-value stat-ut" id="totalUT">19.52 hrs</span>
+
+                        <div class="stats-card">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-lg bg-yellow-100 mr-4">
+                                    <i class="fas fa-clock text-yellow-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Late Days</p>
+                                    <p class="text-2xl font-bold"><?php echo $late_count; ?></p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Grand Total</span>
-                            <span class="stat-value stat-total" id="totalHours">60.31 hrs</span>
+
+                        <div class="stats-card">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-lg bg-blue-100 mr-4">
+                                    <i class="fas fa-chart-line text-blue-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Total Hours</p>
+                                    <p class="text-2xl font-bold"><?php echo round($total_hours, 1); ?></p>
+                                    <p class="text-xs text-blue-600"><?php echo round($total_ot, 1); ?>h OT</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Pagination -->
-                <div class="pagination">
-                    <div class="pagination-info" id="paginationInfo">
-                        Page 1 of 6
+                    <!-- Search Results Info (showing filtered vs total) -->
+                    <div class="mb-4 flex justify-between items-center">
+                        <div class="text-sm text-gray-600">
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                <span class="font-semibold text-blue-600">Filtered:</span>
+                            <?php endif; ?>
+
+                            Showing
+                            <?php if (isset($attendance_total_records) && $attendance_total_records > 0): ?>
+                                <span class="font-semibold"><?php echo $offset + 1; ?></span> to
+                                <span
+                                    class="font-semibold"><?php echo min($offset + $records_per_page, $attendance_total_records); ?></span>
+                                of
+                                <span class="font-semibold"><?php echo $attendance_total_records; ?></span> records
+                            <?php else: ?>
+                                <span class="font-semibold">0</span> records
+                            <?php endif; ?>
+
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                <span class="ml-2 text-blue-600">(filtered from <?php echo $attendance_all_records; ?> total
+                                    records)</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Records per page selector -->
+                        <?php if (isset($attendance_total_pages) && $attendance_total_pages > 1): ?>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-600">Show:</label>
+                                <select id="attPerPage" onchange="changeAttendancePerPage(this.value)"
+                                    class="border border-gray-300 rounded-lg text-sm p-1.5">
+                                    <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
+                                    <option value="20" <?php echo $records_per_page == 20 ? 'selected' : ''; ?>>20</option>
+                                    <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
+                                    <option value="100" <?php echo $records_per_page == 100 ? 'selected' : ''; ?>>100</option>
+                                </select>
+                            </div>
+                        <?php endif; ?>
                     </div>
-                    <div class="pagination-controls" id="paginationControls">
-                        <!-- Pagination buttons will be populated by JavaScript -->
+
+                    <!-- Attendance Table -->
+                    <div class="table-container overflow-x-auto rounded-lg border border-gray-200 mobile-table-container">
+                        <table class="w-full text-sm text-left text-gray-900 mobile-table">
+                            <thead class="text-xs text-white uppercase bg-blue-600">
+                                <tr>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm">Date</th>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm">Day</th>
+                                    <th scope="col" class="px-4 py-3 text-center mobile-text-sm" colspan="2">AM</th>
+                                    <th scope="col" class="px-4 py-3 text-center mobile-text-sm" colspan="2">PM</th>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm mobile-hidden">OT</th>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm mobile-hidden">UnderTime</th>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm mobile-hidden">Total</th>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm">Status</th>
+                                    <th scope="col" class="px-4 py-3 mobile-text-sm text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <?php foreach ($view_attendance_records as $row):
+                                    $day_name = date('D', strtotime($row['date']));
+                                    $is_weekend = ($day_name == 'Sat' || $day_name == 'Sun');
+
+                                    // Determine status
+                                    $status = 'Present';
+                                    $status_class = 'status-present';
+
+                                    if ($row['total_hours'] == 0) {
+                                        $status = 'Absent';
+                                        $status_class = 'status-absent';
+                                    } elseif ($row['under_time'] > 0) {
+                                        $status = 'Late';
+                                        $status_class = 'status-late';
+                                    } elseif ($is_weekend && $row['total_hours'] > 0) {
+                                        $status = 'Weekend Work';
+                                        $status_class = 'status-leave';
+                                    }
+                                    ?>
+                                    <tr class="bg-white hover:bg-gray-50 transition-colors duration-150">
+                                        <td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap mobile-text-sm">
+                                            <?php echo date('M d, Y', strtotime($row['date'])); ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm"><?php echo $day_name; ?></td>
+                                        <td class="px-4 py-3 text-center text-gray-700 mobile-text-sm">
+                                            <?php echo !empty($row['am_time_in']) ? date('h:i A', strtotime($row['am_time_in'])) : '<span class="text-gray-400">--</span>'; ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-700 mobile-text-sm">
+                                            <?php echo !empty($row['am_time_out']) ? date('h:i A', strtotime($row['am_time_out'])) : '<span class="text-gray-400">--</span>'; ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-700 mobile-text-sm">
+                                            <?php echo !empty($row['pm_time_in']) ? date('h:i A', strtotime($row['pm_time_in'])) : '<span class="text-gray-400">--</span>'; ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-700 mobile-text-sm">
+                                            <?php echo !empty($row['pm_time_out']) ? date('h:i A', strtotime($row['pm_time_out'])) : '<span class="text-gray-400">--</span>'; ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm mobile-hidden">
+                                            <?php echo $row['ot_hours']; ?>h
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm mobile-hidden">
+                                            <?php echo $row['under_time']; ?>h
+                                        </td>
+                                        <td class="px-4 py-3 font-semibold text-gray-900 mobile-text-sm mobile-hidden">
+                                            <?php echo $row['total_hours']; ?>h
+                                        </td>
+                                        <td class="px-4 py-3 mobile-text-sm">
+                                            <span class="attendance-status <?php echo $status_class; ?>">
+                                                <?php echo $status; ?>
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 mobile-text-sm text-center">
+                                            <div class="flex space-x-1 justify-center">
+                                                <button type="button"
+                                                    onclick="viewAttendanceDetails(<?php echo htmlspecialchars(json_encode($row)); ?>)"
+                                                    class="action-btn edit-btn" title="View Details">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
-                </div>
+
+                    <!-- Pagination -->
+                    <?php if ($attendance_total_pages > 0): ?>
+                        <div id="attendancePaginationContainer" class="pagination-container mt-4">
+                            <div class="pagination-info">
+                                Page <span id="attCurrentPage"><?php echo $attendance_current_page; ?></span> of
+                                <span id="attTotalPages"><?php echo $attendance_total_pages; ?></span>
+                                <?php if ($attendance_total_records > 0): ?>
+                                    (<?php echo $attendance_total_records; ?> records)
+                                <?php else: ?>
+                                    (No records found)
+                                <?php endif; ?>
+                            </div>
+
+                            <?php if ($attendance_total_pages > 1): ?>
+                                <div class="pagination-nav" id="attendancePaginationNav">
+                                    <?php
+                                    // First page button
+                                    if ($attendance_current_page > 1) {
+                                        echo '<button onclick="changeAttendancePage(1)" class="pagination-btn" title="First Page">
+                                            <i class="fas fa-angle-double-left"></i>
+                                        </button>';
+                                    } else {
+                                        echo '<button disabled class="pagination-btn" title="First Page">
+                                            <i class="fas fa-angle-double-left"></i>
+                                        </button>';
+                                    }
+
+                                    // Previous page button
+                                    if ($attendance_current_page > 1) {
+                                        echo '<button onclick="changeAttendancePage(' . ($attendance_current_page - 1) . ')" class="pagination-btn" title="Previous Page">
+                                            <i class="fas fa-angle-left"></i>
+                                        </button>';
+                                    } else {
+                                        echo '<button disabled class="pagination-btn" title="Previous Page">
+                                            <i class="fas fa-angle-left"></i>
+                                        </button>';
+                                    }
+
+                                    // Calculate range of page numbers to show
+                                    $start_page = max(1, $attendance_current_page - 2);
+                                    $end_page = min($attendance_total_pages, $attendance_current_page + 2);
+
+                                    // Show first page with ellipsis if needed
+                                    if ($start_page > 1) {
+                                        echo '<button onclick="changeAttendancePage(1)" class="pagination-btn">1</button>';
+                                        if ($start_page > 2) {
+                                            echo '<span class="pagination-ellipsis">...</span>';
+                                        }
+                                    }
+
+                                    // Show page numbers in range
+                                    for ($i = $start_page; $i <= $end_page; $i++) {
+                                        $active_class = ($i == $attendance_current_page) ? 'active' : '';
+                                        echo "<button onclick=\"changeAttendancePage($i)\" class=\"pagination-btn $active_class\">$i</button>";
+                                    }
+
+                                    // Show last page with ellipsis if needed
+                                    if ($end_page < $attendance_total_pages) {
+                                        if ($end_page < $attendance_total_pages - 1) {
+                                            echo '<span class="pagination-ellipsis">...</span>';
+                                        }
+                                        echo "<button onclick=\"changeAttendancePage($attendance_total_pages)\" class=\"pagination-btn\">$attendance_total_pages</button>";
+                                    }
+
+                                    // Next page button
+                                    if ($attendance_current_page < $attendance_total_pages) {
+                                        echo '<button onclick="changeAttendancePage(' . ($attendance_current_page + 1) . ')" class="pagination-btn" title="Next Page">
+                                            <i class="fas fa-angle-right"></i>
+                                        </button>';
+                                    } else {
+                                        echo '<button disabled class="pagination-btn" title="Next Page">
+                                            <i class="fas fa-angle-right"></i>
+                                        </button>';
+                                    }
+
+                                    // Last page button
+                                    if ($attendance_current_page < $attendance_total_pages) {
+                                        echo '<button onclick="changeAttendancePage(' . $attendance_total_pages . ')" class="pagination-btn" title="Last Page">
+                                            <i class="fas fa-angle-double-right"></i>
+                                        </button>';
+                                    } else {
+                                        echo '<button disabled class="pagination-btn" title="Last Page">
+                                            <i class="fas fa-angle-double-right"></i>
+                                        </button>';
+                                    }
+                                    ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
+                <?php else: ?>
+                    <div class="text-center py-12">
+                        <i class="fas fa-calendar-times text-5xl text-gray-300 mb-4"></i>
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">No Attendance Records Found</h3>
+                        <p class="text-gray-500">
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                No records found for the selected filter.
+                                <a href="attendance.php" class="text-blue-600 underline">
+                                    Clear filter to see all records
+                                </a>
+                            <?php else: ?>
+                                You don't have any attendance records yet.
+                            <?php endif; ?>
+                        </p>
+                        <div class="mt-4">
+                            <p class="text-sm text-gray-600">Your attendance records will appear here once processed by HR.
+                            </p>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         </main>
     </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-content">
-            <div class="footer-grid">
-                <div class="footer-col">
-                    <div class="footer-logo">
-                        <img src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
-                            alt="Logo" class="footer-logo-img">
-                        <div>
-                            <div class="footer-title">HR Management Office</div>
-                            <div>Occidental Mindoro</div>
-                        </div>
-                    </div>
-                    <p class="footer-text">
-                        Republic of the Philippines<br>
-                        All content is in the public domain unless otherwise stated.
-                    </p>
-                </div>
-
-                <div class="footer-col">
-                    <div class="footer-links">
-                        <h4>About GOVPH</h4>
-                        <ul>
-                            <li><a href="#">Government Structure</a></li>
-                            <li><a href="#">Open Data Portal</a></li>
-                            <li><a href="#">Official Gazette</a></li>
-                            <li><a href="#">Government Services</a></li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="footer-col">
-                    <div class="footer-links">
-                        <h4>Quick Links</h4>
-                        <ul>
-                            <li><a href="homepage.php">Dashboard</a></li>
-                            <li><a href="attendance.php">Attendance</a></li>
-                            <li><a href="leave.php">Leave Management</a></li>
-                            <li><a href="paysliphistory.php">Payslips</a></li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="footer-col">
-                    <div class="footer-links">
-                        <h4>Connect With Us</h4>
-                        <p class="footer-text">
-                            Occidental Mindoro Public Information Office
-                        </p>
-                        <div class="social-links">
-                            <a href="#" class="social-link">
-                                <i class="fab fa-facebook-f"></i>
-                            </a>
-                            <a href="#" class="social-link">
-                                <i class="fab fa-twitter"></i>
-                            </a>
-                            <a href="#" class="social-link">
-                                <i class="fab fa-instagram"></i>
-                            </a>
-                            <a href="#" class="social-link">
-                                <i class="fab fa-youtube"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
+    <!-- View Details Modal -->
+    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50" id="viewModal">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div class="flex justify-between items-center p-6 border-b">
+                <h3 class="text-xl font-semibold text-gray-900">Attendance Details</h3>
+                <button onclick="closeViewModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
             </div>
-
-            <div class="footer-bottom">
-                <p>© 2024 <strong>Human Resource Management Office</strong>. All Rights Reserved.</p>
+            <div class="p-6 space-y-4" id="modalBody">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="flex justify-end gap-3 p-6 border-t bg-gray-50">
+                <button onclick="closeViewModal()"
+                    class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
+                    Close
+                </button>
             </div>
         </div>
-    </footer>
+    </div>
 
-    <!-- Include flatpickr for better date picker -->
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     <script>
-        // Sample attendance data
-        const attendanceData = [
-            {
-                date: "Oct 22, 2024",
-                day: "Sunday",
-                status: "Present",
-                amIn: "7:17 AM",
-                amOut: "10:33 AM",
-                pmIn: "11:31 AM",
-                pmOut: "4:04 PM",
-                otHours: "0.00",
-                underTime: "0.22",
-                totalHours: "7.78",
-                remarks: "Regular day"
-            },
-            {
-                date: "Oct 12, 2024",
-                day: "Saturday",
-                status: "Late AM",
-                amIn: "7:12 AM",
-                amOut: "—",
-                pmIn: "12:22 PM",
-                pmOut: "5:46 PM",
-                otHours: "0.00",
-                underTime: "2.83",
-                totalHours: "5.17",
-                remarks: "Half day AM, Filed leave"
-            },
-            {
-                date: "Dec 18, 2024",
-                day: "Wednesday",
-                status: "Absent",
-                amIn: "—",
-                amOut: "—",
-                pmIn: "—",
-                pmOut: "—",
-                otHours: "0.00",
-                underTime: "8.00",
-                totalHours: "0.00",
-                remarks: "Sick leave approved"
-            },
-            {
-                date: "Dec 15, 2024",
-                day: "Sunday",
-                status: "Present",
-                amIn: "6:45 AM",
-                amOut: "11:30 AM",
-                pmIn: "12:15 PM",
-                pmOut: "6:30 PM",
-                otHours: "1.50",
-                underTime: "0.00",
-                totalHours: "9.50",
-                remarks: "Overtime approved"
-            },
-            {
-                date: "Dec 14, 2024",
-                day: "Saturday",
-                status: "Present",
-                amIn: "7:00 AM",
-                amOut: "11:45 AM",
-                pmIn: "12:30 PM",
-                pmOut: "5:15 PM",
-                otHours: "0.00",
-                underTime: "0.30",
-                totalHours: "7.50",
-                remarks: "Regular day"
-            },
-            {
-                date: "Dec 13, 2024",
-                day: "Friday",
-                status: "Late PM",
-                amIn: "7:05 AM",
-                amOut: "11:40 AM",
-                pmIn: "12:45 PM",
-                pmOut: "5:20 PM",
-                otHours: "0.75",
-                underTime: "0.50",
-                totalHours: "8.25",
-                remarks: "Traffic delay"
-            }
-        ];
+        // Mobile sidebar toggle
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const sidebar = document.getElementById('sidebar');
 
-        document.addEventListener('DOMContentLoaded', function () {
-            // DOM Elements
-            const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-            const sidebar = document.getElementById('sidebar');
-            const sidebarOverlay = document.getElementById('sidebarOverlay');
-            const attendanceTableBody = document.getElementById('attendanceTableBody');
-            const mobileCardView = document.getElementById('mobileCardView');
-            const summaryInfo = document.getElementById('summaryInfo');
-            const paginationInfo = document.getElementById('paginationInfo');
-            const paginationControls = document.getElementById('paginationControls');
-            const startDateInput = document.getElementById('startDate');
-            const endDateInput = document.getElementById('endDate');
-            const departmentFilter = document.getElementById('departmentFilter');
-            const statusFilter = document.getElementById('statusFilter');
-            const applyFiltersBtn = document.getElementById('applyFiltersBtn');
-            const resetFiltersBtn = document.getElementById('resetFiltersBtn');
-            const exportBtn = document.getElementById('exportBtn');
-            const printBtn = document.getElementById('printBtn');
-            const totalOT = document.getElementById('totalOT');
-            const totalUT = document.getElementById('totalUT');
-            const totalHours = document.getElementById('totalHours');
-
-            // Initialize datepickers
-            flatpickr(startDateInput, {
-                dateFormat: "Y-m-d",
-                maxDate: "today",
-                onChange: function (selectedDates, dateStr) {
-                    if (dateStr) {
-                        endDatePicker.set('minDate', dateStr);
-                    }
-                }
-            });
-
-            const endDatePicker = flatpickr(endDateInput, {
-                dateFormat: "Y-m-d",
-                maxDate: "today"
-            });
-
-            // Toggle sidebar on mobile
+        if (mobileMenuBtn) {
             mobileMenuBtn.addEventListener('click', function () {
-                sidebar.classList.toggle('active');
-                sidebarOverlay.classList.toggle('active');
-                document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : 'auto';
-                this.querySelector('i').classList.toggle('fa-bars');
-                this.querySelector('i').classList.toggle('fa-times');
+                sidebar.classList.toggle('-translate-x-full');
             });
+        }
 
-            // Close sidebar when clicking on overlay
-            sidebarOverlay.addEventListener('click', function () {
-                sidebar.classList.remove('active');
-                sidebarOverlay.classList.remove('active');
-                document.body.style.overflow = 'auto';
-                mobileMenuBtn.querySelector('i').classList.remove('fa-times');
-                mobileMenuBtn.querySelector('i').classList.add('fa-bars');
-            });
+        // Filter functions
+        function applyAttendanceFilter() {
+            const month = document.getElementById('monthFilter').value;
+            const year = document.getElementById('yearFilter').value;
 
-            // Close sidebar when window is resized to desktop size
-            window.addEventListener('resize', function () {
-                if (window.innerWidth > 1023 && sidebar.classList.contains('active')) {
-                    sidebar.classList.remove('active');
-                    sidebarOverlay.classList.remove('active');
-                    document.body.style.overflow = 'auto';
-                    mobileMenuBtn.querySelector('i').classList.remove('fa-times');
-                    mobileMenuBtn.querySelector('i').classList.add('fa-bars');
-                }
-            });
+            let url = 'attendance.php?';
+            const params = [];
 
-            // Initialize table with data
-            renderAttendanceData(attendanceData);
-            setupPagination(attendanceData.length, 4);
+            if (month) params.push('month=' + month);
+            if (year) params.push('year=' + year);
 
-            // Filter button functionality
-            applyFiltersBtn.addEventListener('click', function () {
-                const startDate = startDateInput.value;
-                const endDate = endDateInput.value;
-                const department = departmentFilter.value;
-                const status = statusFilter.value;
+            window.location.href = url + params.join('&');
+        }
 
-                // Show loading state
-                const originalText = this.innerHTML;
-                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
-                this.disabled = true;
+        function clearAttendanceFilter() {
+            window.location.href = 'attendance.php';
+        }
 
-                // Simulate filtering
-                setTimeout(() => {
-                    // In a real app, this would be an API call
-                    let filteredData = [...attendanceData];
+        function changeAttendancePage(page) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('page', page);
 
-                    // Apply date filters
-                    if (startDate || endDate) {
-                        showNotification('Date filter applied!', 'success');
-                    }
+            // Preserve existing filters
+            const month = document.getElementById('monthFilter').value;
+            const year = document.getElementById('yearFilter').value;
 
-                    // Apply status filter
-                    if (status !== 'all') {
-                        filteredData = filteredData.filter(item =>
-                            item.status.toLowerCase().includes(status)
-                        );
-                    }
+            if (month) url.searchParams.set('month', month);
+            if (year) url.searchParams.set('year', year);
 
-                    // Update display
-                    renderAttendanceData(filteredData);
-                    setupPagination(filteredData.length, 4);
+            window.location.href = url.toString();
+        }
 
-                    // Restore button
-                    this.innerHTML = originalText;
-                    this.disabled = false;
+        function changeAttendancePerPage(perPage) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('per_page', perPage);
+            url.searchParams.set('page', 1); // Reset to first page
 
-                    if (filteredData.length === 0) {
-                        showNotification('No records found for the selected filters.', 'warning');
-                    }
-                }, 800);
-            });
+            // Preserve existing filters
+            const month = document.getElementById('monthFilter').value;
+            const year = document.getElementById('yearFilter').value;
 
-            // Reset button functionality
-            resetFiltersBtn.addEventListener('click', function () {
-                startDateInput.value = '';
-                endDateInput.value = '';
-                departmentFilter.value = 'all';
-                statusFilter.value = 'all';
+            if (month) url.searchParams.set('month', month);
+            if (year) url.searchParams.set('year', year);
 
-                renderAttendanceData(attendanceData);
-                setupPagination(attendanceData.length, 4);
-                showNotification('Filters cleared!', 'info');
-            });
+            window.location.href = url.toString();
+        }
 
-            // Export button functionality
-            exportBtn.addEventListener('click', function () {
-                showNotification('Exporting data to CSV...', 'info');
-                // In a real app, this would trigger a CSV download
-            });
+        // View attendance details
+        function viewAttendanceDetails(record) {
+            const modal = document.getElementById('viewModal');
+            const modalBody = document.getElementById('modalBody');
 
-            // Print button functionality
-            printBtn.addEventListener('click', function () {
-                window.print();
-            });
+            const day_name = new Date(record.date).toLocaleDateString('en-US', { weekday: 'short' });
 
-            // Functions
-            function renderAttendanceData(data) {
-                // Clear existing content
-                attendanceTableBody.innerHTML = '';
-                mobileCardView.innerHTML = '';
+            // Determine status
+            let status = 'Present';
+            let statusClass = 'bg-green-100 text-green-800';
 
-                // Update summary
-                const totalRecords = data.length;
-                summaryInfo.textContent = `Showing 1-${Math.min(4, totalRecords)} of ${totalRecords} attendance records`;
+            if (record.total_hours == 0) {
+                status = 'Absent';
+                statusClass = 'bg-red-100 text-red-800';
+            } else if (record.under_time > 0) {
+                status = 'Late';
+                statusClass = 'bg-yellow-100 text-yellow-800';
+            } else if ((day_name == 'Sat' || day_name == 'Sun') && record.total_hours > 0) {
+                status = 'Weekend Work';
+                statusClass = 'bg-purple-100 text-purple-800';
+            }
 
-                // Calculate totals
-                let otTotal = 0;
-                let utTotal = 0;
-                let hoursTotal = 0;
-
-                data.forEach((record, index) => {
-                    // Add to totals
-                    otTotal += parseFloat(record.otHours);
-                    utTotal += parseFloat(record.underTime);
-                    hoursTotal += parseFloat(record.totalHours);
-
-                    // Create table row for desktop
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>
-                            <div class="font-medium">${record.date}</div>
-                            <div class="text-sm text-gray-500">${record.day}</div>
-                        </td>
-                        <td>
-                            <span class="status-indicator ${getStatusClass(record.status)}">
-                                <i class="${getStatusIcon(record.status)}"></i> ${record.status}
-                            </span>
-                        </td>
-                        <td>
-                            <div class="time-cell ${getTimeClass(record.amIn)}">${record.amIn}</div>
-                            <div class="time-cell">${record.amOut}</div>
-                        </td>
-                        <td>
-                            <div class="time-cell ${getTimeClass(record.pmIn)}">${record.pmIn}</div>
-                            <div class="time-cell">${record.pmOut}</div>
-                        </td>
-                        <td class="hours-cell ${parseFloat(record.otHours) > 0 ? 'hours-positive' : ''}">${record.otHours}</td>
-                        <td class="hours-cell ${parseFloat(record.underTime) > 0 ? 'hours-negative' : ''}">${record.underTime}</td>
-                        <td class="hours-cell">${record.totalHours}</td>
-                        <td class="text-sm text-gray-600">${record.remarks}</td>
-                    `;
-                    row.addEventListener('click', () => showAttendanceDetails(record));
-                    attendanceTableBody.appendChild(row);
-
-                    // Create card for mobile view
-                    const card = document.createElement('div');
-                    card.className = 'attendance-card';
-                    card.innerHTML = `
-                        <div class="card-header">
-                            <div class="card-date">${record.date} (${record.day})</div>
-                            <div class="card-status ${getStatusClass(record.status)}">${record.status}</div>
+            modalBody.innerHTML = `
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2 bg-gray-50 p-4 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Date:</span>
+                            <span class="font-semibold">${new Date(record.date).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric'
+            })} (${day_name})</span>
                         </div>
-                        <div class="card-body">
-                            <div class="card-item">
-                                <span class="card-label">AM In</span>
-                                <span class="card-value ${getTimeClass(record.amIn)}">${record.amIn}</span>
+                    </div>
+                    
+                    <div class="col-span-2">
+                        <h4 class="font-semibold text-gray-700 mb-2">AM Session</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-blue-50 p-3 rounded-lg">
+                                <span class="text-xs text-blue-600 block">Time In</span>
+                                <span class="font-mono font-medium">${record.am_time_in ? new Date(record.am_time_in).toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit'
+            }) : '—'}</span>
                             </div>
-                            <div class="card-item">
-                                <span class="card-label">AM Out</span>
-                                <span class="card-value">${record.amOut}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">PM In</span>
-                                <span class="card-value ${getTimeClass(record.pmIn)}">${record.pmIn}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">PM Out</span>
-                                <span class="card-value">${record.pmOut}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">OT Hours</span>
-                                <span class="card-value ${parseFloat(record.otHours) > 0 ? 'hours-positive' : ''}">${record.otHours}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">UnderTime</span>
-                                <span class="card-value ${parseFloat(record.underTime) > 0 ? 'hours-negative' : ''}">${record.underTime}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Total Hours</span>
-                                <span class="card-value">${record.totalHours}</span>
-                            </div>
-                        </div>
-                        <div class="card-footer">
-                            ${record.remarks}
-                        </div>
-                    `;
-                    card.addEventListener('click', () => showAttendanceDetails(record));
-                    mobileCardView.appendChild(card);
-                });
-
-                // Update totals
-                totalOT.textContent = `${otTotal.toFixed(2)} hrs`;
-                totalUT.textContent = `${utTotal.toFixed(2)} hrs`;
-                totalHours.textContent = `${hoursTotal.toFixed(2)} hrs`;
-            }
-
-            function setupPagination(totalItems, itemsPerPage) {
-                const totalPages = Math.ceil(totalItems / itemsPerPage);
-                paginationInfo.textContent = `Page 1 of ${totalPages}`;
-
-                // Clear existing controls
-                paginationControls.innerHTML = '';
-
-                // Previous button
-                const prevBtn = document.createElement('button');
-                prevBtn.className = 'pagination-btn';
-                prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
-                prevBtn.addEventListener('click', () => changePage(0));
-                paginationControls.appendChild(prevBtn);
-
-                // Page number buttons
-                for (let i = 1; i <= totalPages; i++) {
-                    const pageBtn = document.createElement('button');
-                    pageBtn.className = 'pagination-btn' + (i === 1 ? ' active' : '');
-                    pageBtn.textContent = i;
-                    pageBtn.addEventListener('click', () => changePage(i));
-                    paginationControls.appendChild(pageBtn);
-                }
-
-                // Next button
-                const nextBtn = document.createElement('button');
-                nextBtn.className = 'pagination-btn';
-                nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
-                nextBtn.addEventListener('click', () => changePage(totalPages + 1));
-                paginationControls.appendChild(nextBtn);
-            }
-
-            function changePage(pageNum) {
-                // In a real app, this would fetch new data from the server
-                showNotification(`Loading page ${pageNum}...`, 'info');
-
-                // Update active button
-                document.querySelectorAll('.pagination-btn').forEach((btn, index) => {
-                    btn.classList.remove('active');
-                    if (btn.textContent === pageNum.toString()) {
-                        btn.classList.add('active');
-                    }
-                });
-            }
-
-            function getStatusClass(status) {
-                if (status.includes('Present')) return 'status-present';
-                if (status.includes('Late')) return 'status-late';
-                if (status.includes('Absent')) return 'status-absent';
-                return 'status-pending';
-            }
-
-            function getStatusIcon(status) {
-                if (status.includes('Present')) return 'fas fa-check-circle';
-                if (status.includes('Late')) return 'fas fa-clock';
-                if (status.includes('Absent')) return 'fas fa-ban';
-                return 'fas fa-question-circle';
-            }
-
-            function getTimeClass(time) {
-                if (time === '—') return 'time-missing';
-                if (time.includes('6:') || time.includes('7:')) return 'time-early';
-                if (time.includes('8:') || time.includes('9:')) return 'time-late';
-                return '';
-            }
-
-            function showAttendanceDetails(data) {
-                const modalHtml = `
-                    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                            <div class="p-6">
-                                <div class="flex justify-between items-center mb-6">
-                                    <h3 class="text-xl font-bold text-gray-900">Attendance Details</h3>
-                                    <button class="text-gray-400 hover:text-gray-600" onclick="this.closest('.fixed').remove()">
-                                        <i class="fas fa-times text-xl"></i>
-                                    </button>
-                                </div>
-                                
-                                <div class="space-y-4">
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-gray-600">Date:</span>
-                                        <span class="font-semibold">${data.date} (${data.day})</span>
-                                    </div>
-                                    
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-gray-600">Status:</span>
-                                        <span class="${getStatusClass(data.status)} px-3 py-1 rounded-full text-sm font-semibold">
-                                            <i class="${getStatusIcon(data.status)} mr-1"></i> ${data.status}
-                                        </span>
-                                    </div>
-                                    
-                                    <div class="grid grid-cols-2 gap-4 pt-4 border-t">
-                                        <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                            <div class="text-sm text-gray-500 mb-1">AM In</div>
-                                            <div class="text-lg font-mono font-semibold ${getTimeClass(data.amIn)}">${data.amIn}</div>
-                                        </div>
-                                        <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                            <div class="text-sm text-gray-500 mb-1">AM Out</div>
-                                            <div class="text-lg font-mono font-semibold">${data.amOut}</div>
-                                        </div>
-                                        <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                            <div class="text-sm text-gray-500 mb-1">PM In</div>
-                                            <div class="text-lg font-mono font-semibold ${getTimeClass(data.pmIn)}">${data.pmIn}</div>
-                                        </div>
-                                        <div class="text-center p-3 bg-gray-50 rounded-lg">
-                                            <div class="text-sm text-gray-500 mb-1">PM Out</div>
-                                            <div class="text-lg font-mono font-semibold">${data.pmOut}</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="grid grid-cols-3 gap-4 pt-4 border-t">
-                                        <div class="text-center p-3 bg-blue-50 rounded-lg">
-                                            <div class="text-sm text-blue-600 mb-1">OT Hours</div>
-                                            <div class="text-lg font-bold ${parseFloat(data.otHours) > 0 ? 'text-green-600' : 'text-gray-600'}">${data.otHours}</div>
-                                        </div>
-                                        <div class="text-center p-3 bg-red-50 rounded-lg">
-                                            <div class="text-sm text-red-600 mb-1">UnderTime</div>
-                                            <div class="text-lg font-bold ${parseFloat(data.underTime) > 0 ? 'text-red-600' : 'text-gray-600'}">${data.underTime}</div>
-                                        </div>
-                                        <div class="text-center p-3 bg-green-50 rounded-lg">
-                                            <div class="text-sm text-green-600 mb-1">Total Hours</div>
-                                            <div class="text-lg font-bold">${data.totalHours}</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="pt-4 border-t">
-                                        <div class="text-sm text-gray-500 mb-2">Remarks:</div>
-                                        <div class="bg-gray-50 p-3 rounded-lg text-gray-700">${data.remarks}</div>
-                                    </div>
-                                </div>
-                                
-                                <div class="mt-6 flex justify-end space-x-3">
-                                    <button class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50" onclick="this.closest('.fixed').remove()">
-                                        Close
-                                    </button>
-                                    <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" onclick="showNotification('Correction request submitted!', 'success'); this.closest('.fixed').remove()">
-                                        <i class="fas fa-edit mr-2"></i> Request Correction
-                                    </button>
-                                </div>
+                            <div class="bg-blue-50 p-3 rounded-lg">
+                                <span class="text-xs text-blue-600 block">Time Out</span>
+                                <span class="font-mono font-medium">${record.am_time_out ? new Date(record.am_time_out).toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit'
+            }) : '—'}</span>
                             </div>
                         </div>
                     </div>
-                `;
-
-                document.body.insertAdjacentHTML('beforeend', modalHtml);
-            }
-
-            function showNotification(message, type = 'info') {
-                const notification = document.createElement('div');
-                const bgColor = type === 'success' ? 'bg-green-600' :
-                    type === 'warning' ? 'bg-yellow-600' :
-                        type === 'danger' ? 'bg-red-600' : 'bg-blue-600';
-                const icon = type === 'success' ? 'check-circle' :
-                    type === 'warning' ? 'exclamation-triangle' :
-                        type === 'danger' ? 'times-circle' : 'info-circle';
-
-                notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform translate-x-0`;
-                notification.innerHTML = `
-                    <div class="flex items-center">
-                        <i class="fas fa-${icon} mr-3"></i>
-                        <span>${message}</span>
+                    
+                    <div class="col-span-2">
+                        <h4 class="font-semibold text-gray-700 mb-2">PM Session</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-green-50 p-3 rounded-lg">
+                                <span class="text-xs text-green-600 block">Time In</span>
+                                <span class="font-mono font-medium">${record.pm_time_in ? new Date(record.pm_time_in).toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit'
+            }) : '—'}</span>
+                            </div>
+                            <div class="bg-green-50 p-3 rounded-lg">
+                                <span class="text-xs text-green-600 block">Time Out</span>
+                                <span class="font-mono font-medium">${record.pm_time_out ? new Date(record.pm_time_out).toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit'
+            }) : '—'}</span>
+                            </div>
+                        </div>
                     </div>
-                `;
+                    
+                    <div class="bg-purple-50 p-3 rounded-lg">
+                        <span class="text-xs text-purple-600 block">OT Hours</span>
+                        <span class="font-semibold ${record.ot_hours > 0 ? 'text-purple-700' : 'text-gray-500'}">${record.ot_hours} hours</span>
+                    </div>
+                    
+                    <div class="bg-orange-50 p-3 rounded-lg">
+                        <span class="text-xs text-orange-600 block">UnderTime</span>
+                        <span class="font-semibold ${record.under_time > 0 ? 'text-orange-700' : 'text-gray-500'}">${record.under_time} hours</span>
+                    </div>
+                    
+                    <div class="col-span-2 bg-gray-50 p-4 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Total Hours:</span>
+                            <span class="text-xl font-bold text-blue-600">${record.total_hours} hours</span>
+                        </div>
+                    </div>
+                    
+                    <div class="col-span-2">
+                        <div class="flex justify-between items-center p-3 rounded-lg ${statusClass}">
+                            <span class="font-medium">Status:</span>
+                            <span class="font-semibold">${status}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
 
-                document.body.appendChild(notification);
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
 
-                // Remove existing notifications
-                const existingNotifications = document.querySelectorAll('.fixed.top-4.right-4');
-                existingNotifications.forEach((notif, index) => {
-                    if (index > 0) notif.remove();
-                });
+        function closeViewModal() {
+            document.getElementById('viewModal').classList.add('hidden');
+            document.getElementById('viewModal').classList.remove('flex');
+            document.body.style.overflow = 'auto';
+        }
 
-                // Animate in
-                requestAnimationFrame(() => {
-                    notification.classList.remove('translate-x-0');
-                    notification.classList.add('translate-x-full');
-
-                    // Remove after animation
-                    setTimeout(() => {
-                        notification.remove();
-                    }, 300);
-                }, 3000);
+        // Close modal with Escape key
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeViewModal();
             }
+        });
 
-            // Add keyboard shortcuts
-            document.addEventListener('keydown', function (e) {
-                // Close modal with Escape key
-                if (e.key === 'Escape') {
-                    const modal = document.querySelector('.fixed.inset-0.bg-black');
-                    if (modal) modal.remove();
-                }
-
-                // Close sidebar with Escape key on mobile
-                if (e.key === 'Escape' && window.innerWidth <= 1023 && sidebar.classList.contains('active')) {
-                    sidebar.classList.remove('active');
-                    sidebarOverlay.classList.remove('active');
-                    document.body.style.overflow = 'auto';
-                    mobileMenuBtn.querySelector('i').classList.remove('fa-times');
-                    mobileMenuBtn.querySelector('i').classList.add('fa-bars');
-                }
-            });
+        // Close modal when clicking outside
+        document.getElementById('viewModal').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeViewModal();
+            }
         });
     </script>
 </body>

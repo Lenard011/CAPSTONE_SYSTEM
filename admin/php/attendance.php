@@ -56,6 +56,7 @@ try {
     die("ERROR: Could not connect to the database. Check server logs for details.");
 }
 
+
 // =================================================================================
 // --- Delete Attendance Record ---
 // =================================================================================
@@ -100,27 +101,182 @@ if (isset($_POST['delete_attendance_id'])) {
     }
 }
 
+
 // =================================================================================
-// --- Handle View Attendance Request ---
+// --- Handle View Attendance Request with Month/Year Filters and Pagination ---
 // =================================================================================
+
+// Initialize attendance-specific variables
+$attendance_total_records = 0;
+$attendance_total_pages = 1;
+$attendance_current_page = 1;
+$attendance_all_records = 0;
 
 if (isset($_GET['view_attendance']) && isset($_GET['employee_id'])) {
     $view_employee_id = filter_input(INPUT_GET, 'employee_id', FILTER_SANITIZE_STRING);
+
+    // Get fresh employee details from the source tables (not from attendance)
     $employee_details = getEmployeeById($pdo, $view_employee_id);
 
     if ($employee_details) {
         try {
-            $view_sql = "SELECT * FROM attendance WHERE employee_id = ? ORDER BY date DESC LIMIT 100";
+            // Pagination settings
+            $records_per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10; // Changed from 20 to 10
+// Validate records per page
+            $valid_per_page = [10, 20, 50, 100]; // 10 is now first in the list
+            if (!in_array($records_per_page, $valid_per_page)) {
+                $records_per_page = 10; // Changed from 20 to 10
+            }
+
+            $attendance_current_page = isset($_GET['att_page']) ? (int) $_GET['att_page'] : 1;
+            if ($attendance_current_page < 1)
+                $attendance_current_page = 1;
+
+            $offset = ($attendance_current_page - 1) * $records_per_page;
+
+            // FIRST: Get total count for this specific employee (unfiltered)
+            $total_count_sql = "SELECT COUNT(*) as total FROM attendance WHERE employee_id = :employee_id";
+            $total_count_stmt = $pdo->prepare($total_count_sql);
+            $total_count_stmt->execute([':employee_id' => $view_employee_id]);
+            $attendance_all_records = $total_count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            // SECOND: Build the filtered count query for this specific employee
+            $count_sql = "SELECT COUNT(*) as total FROM attendance WHERE employee_id = :employee_id";
+            $count_params = [':employee_id' => $view_employee_id];
+
+            // Add month filter if provided
+            if (isset($_GET['month']) && !empty($_GET['month']) && is_numeric($_GET['month'])) {
+                $month = (int) $_GET['month'];
+                if ($month >= 1 && $month <= 12) {
+                    $count_sql .= " AND MONTH(date) = :month";
+                    $count_params[':month'] = $month;
+                }
+            }
+
+            // Add year filter if provided
+            if (isset($_GET['year']) && !empty($_GET['year']) && is_numeric($_GET['year'])) {
+                $year = (int) $_GET['year'];
+                $currentYear = (int) date('Y');
+                if ($year >= 2000 && $year <= ($currentYear + 1)) {
+                    $count_sql .= " AND YEAR(date) = :year";
+                    $count_params[':year'] = $year;
+                }
+            }
+
+            // Execute the count query
+            $count_stmt = $pdo->prepare($count_sql);
+            $count_stmt->execute($count_params);
+            $attendance_total_records = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            // THIRD: Build the fetch query for this specific employee
+            $view_sql = "SELECT * FROM attendance WHERE employee_id = :employee_id";
+            $view_params = [':employee_id' => $view_employee_id];
+
+            // Add month filter if provided
+            if (isset($_GET['month']) && !empty($_GET['month']) && is_numeric($_GET['month'])) {
+                $view_sql .= " AND MONTH(date) = :month";
+                $view_params[':month'] = $_GET['month'];
+            }
+
+            // Add year filter if provided
+            if (isset($_GET['year']) && !empty($_GET['year']) && is_numeric($_GET['year'])) {
+                $view_sql .= " AND YEAR(date) = :year";
+                $view_params[':year'] = $_GET['year'];
+            }
+
+            // Calculate total pages
+            $attendance_total_pages = ($attendance_total_records > 0) ? ceil($attendance_total_records / $records_per_page) : 1;
+
+            // Ensure current page doesn't exceed total pages
+            if ($attendance_current_page > $attendance_total_pages && $attendance_total_pages > 0) {
+                $attendance_current_page = $attendance_total_pages;
+                $offset = ($attendance_current_page - 1) * $records_per_page;
+            }
+
+            // Add order by and pagination to the fetch query
+            $view_sql .= " ORDER BY date DESC LIMIT :limit OFFSET :offset";
+
             $view_stmt = $pdo->prepare($view_sql);
-            $view_stmt->execute([$view_employee_id]);
+
+            // Bind parameters for fetch query
+            foreach ($view_params as $key => $value) {
+                $view_stmt->bindValue($key, $value);
+            }
+            $view_stmt->bindValue(':limit', $records_per_page, PDO::PARAM_INT);
+            $view_stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+            $view_stmt->execute();
             $view_attendance_records = $view_stmt->fetchAll();
+
+            // IMPORTANT: Replace the employee_name in each record with the fresh name from employee_details
+            foreach ($view_attendance_records as &$record) {
+                $record['employee_name'] = $employee_details['full_name'];
+                $record['department'] = $employee_details['department'];
+            }
+
+            // Debug log
+            error_log("Attendance Debug - Employee: {$view_employee_id}, Records: {$attendance_total_records}, Pages: {$attendance_total_pages}");
+
         } catch (PDOException $e) {
             error_log("View attendance error: " . $e->getMessage());
             $error_message = "Could not retrieve attendance records for this employee.";
+            $attendance_total_records = 0;
+            $attendance_total_pages = 1;
+            $attendance_all_records = 0;
+            $view_attendance_records = [];
         }
     } else {
         $error_message = "Employee not found.";
+        $attendance_total_records = 0;
+        $attendance_total_pages = 1;
+        $attendance_all_records = 0;
+        $view_attendance_records = [];
     }
+}
+
+// =================================================================================
+// --- Helper Function: Get Fresh Employee Name from Source Tables ---
+// =================================================================================
+
+function getFreshEmployeeName($pdo, $employee_id)
+{
+    // Check permanent
+    try {
+        $permanent_sql = "SELECT CONCAT(first_name, ' ', last_name) as full_name FROM permanent WHERE employee_id = ? AND status = 'Active'";
+        $stmt = $pdo->prepare($permanent_sql);
+        $stmt->execute([$employee_id]);
+        if ($row = $stmt->fetch()) {
+            return $row['full_name'];
+        }
+    } catch (PDOException $e) {
+        error_log("Error fetching permanent employee name: " . $e->getMessage());
+    }
+
+    // Check job order
+    try {
+        $joborder_sql = "SELECT employee_name as full_name FROM job_order WHERE employee_id = ? AND is_archived = 0";
+        $stmt = $pdo->prepare($joborder_sql);
+        $stmt->execute([$employee_id]);
+        if ($row = $stmt->fetch()) {
+            return $row['full_name'];
+        }
+    } catch (PDOException $e) {
+        error_log("Error fetching job order employee name: " . $e->getMessage());
+    }
+
+    // Check contractual
+    try {
+        $contractual_sql = "SELECT full_name FROM contractofservice WHERE employee_id = ? AND status = 'active'";
+        $stmt = $pdo->prepare($contractual_sql);
+        $stmt->execute([$employee_id]);
+        if ($row = $stmt->fetch()) {
+            return $row['full_name'];
+        }
+    } catch (PDOException $e) {
+        error_log("Error fetching contractual employee name: " . $e->getMessage());
+    }
+
+    return null;
 }
 
 // =================================================================================
@@ -466,7 +622,6 @@ function getEmployeeSummary($pdo, $search = '', $department = '', $status_filter
         'pages' => ceil($total_records / $per_page)
     ];
 }
-
 // =================================================================================
 // --- Generate Dates for Period ---
 // =================================================================================
@@ -495,8 +650,8 @@ if (isset($_GET['ajax_search'])) {
     $search = isset($_GET['search']) ? $_GET['search'] : '';
     $department = isset($_GET['department']) ? $_GET['department'] : '';
     $status_filter = isset($_GET['status_filter']) ? $_GET['status_filter'] : '';
-    $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-    $per_page = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
+    $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+    $per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
 
     $result = getEmployeeSummary($pdo, $search, $department, $status_filter, $page, $per_page);
 
@@ -553,8 +708,8 @@ if (!isset($_GET['view'])) {
 $search_term = isset($_GET['search']) ? $_GET['search'] : '';
 $dept_filter = isset($_GET['department']) ? $_GET['department'] : '';
 $status_filter = isset($_GET['status_filter']) ? $_GET['status_filter'] : '';
-$current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$records_per_page = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
+$current_page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+$records_per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
 
 // Get employee summary with pagination
 $employee_data = getEmployeeSummary($pdo, $search_term, $dept_filter, $status_filter, $current_page, $records_per_page);
@@ -644,19 +799,21 @@ if (isset($_POST['bulk_add_attendance'])) {
 
                         $stmt = $pdo->prepare($sql);
 
-                        if ($stmt->execute([
-                            $date,
-                            $employee_id,
-                            $employee_name,
-                            $department,
-                            $am_time_in,
-                            $am_time_out,
-                            $pm_time_in,
-                            $pm_time_out,
-                            $hours['ot_hours'],
-                            $hours['undertime_hours'],
-                            $hours['total_hours']
-                        ])) {
+                        if (
+                            $stmt->execute([
+                                $date,
+                                $employee_id,
+                                $employee_name,
+                                $department,
+                                $am_time_in,
+                                $am_time_out,
+                                $pm_time_in,
+                                $pm_time_out,
+                                $hours['ot_hours'],
+                                $hours['undertime_hours'],
+                                $hours['total_hours']
+                            ])
+                        ) {
                             $success_count++;
                             $dates_added[] = $date;
                         } else {
@@ -821,19 +978,21 @@ if (isset($_POST['import_attendance'])) {
 
                         $stmt = $pdo->prepare($sql);
 
-                        if ($stmt->execute([
-                            $date,
-                            $employee_id,
-                            $employee_name,
-                            $department,
-                            $am_time_in,
-                            $am_time_out,
-                            $pm_time_in,
-                            $pm_time_out,
-                            $hours['ot_hours'],
-                            $hours['undertime_hours'],
-                            $hours['total_hours']
-                        ])) {
+                        if (
+                            $stmt->execute([
+                                $date,
+                                $employee_id,
+                                $employee_name,
+                                $department,
+                                $am_time_in,
+                                $am_time_out,
+                                $pm_time_in,
+                                $pm_time_out,
+                                $hours['ot_hours'],
+                                $hours['undertime_hours'],
+                                $hours['total_hours']
+                            ])
+                        ) {
                             $successCount++;
                         } else {
                             $errorCount++;
@@ -868,6 +1027,32 @@ if (isset($_POST['import_attendance'])) {
         $error_message = "Error: Please select a file to upload.";
     }
 }
+
+// =================================================================================
+// --- Get Search and Filter Parameters for Employee Summary ---
+// =================================================================================
+
+// Default to employee summary view for better user experience
+if (!isset($_GET['view'])) {
+    $show_employee_summary = true;
+} elseif (isset($_GET['view']) && $_GET['view'] == 'employees') {
+    $show_employee_summary = true;
+} else {
+    $show_employee_summary = false;
+}
+
+// Get search and filter parameters
+$search_term = isset($_GET['search']) ? $_GET['search'] : '';
+$dept_filter = isset($_GET['department']) ? $_GET['department'] : '';
+$status_filter = isset($_GET['status_filter']) ? $_GET['status_filter'] : '';
+$current_page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+$records_per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
+
+// Get employee summary with pagination
+$employee_data = getEmployeeSummary($pdo, $search_term, $dept_filter, $status_filter, $current_page, $records_per_page);
+$employee_summary = $employee_data['employees'];
+$total_employees = $employee_data['total'];
+$total_pages = $employee_data['pages'];
 
 // =================================================================================
 // --- Get All Employees for Auto-complete ---
@@ -2242,7 +2427,9 @@ $departments = [
 
                 <!-- Logo and Brand (Desktop) -->
                 <a href="../dashboard.php" class="navbar-brand hidden md:flex">
-                    <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
+                    <img class="brand-logo"
+                        src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" />
                     <div class="brand-text">
                         <span class="brand-title">HR Management System</span>
                         <span class="brand-subtitle">Paluan Occidental Mindoro</span>
@@ -2251,7 +2438,9 @@ $departments = [
 
                 <!-- Logo and Brand (Mobile) -->
                 <div class="mobile-brand">
-                    <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
+                    <img class="brand-logo"
+                        src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" />
                     <div class="mobile-brand-text">
                         <span class="mobile-brand-title">HRMS</span>
                         <span class="mobile-brand-subtitle">Attendance</span>
@@ -2360,12 +2549,6 @@ $departments = [
                     </a>
                 </div>
 
-                <!-- Reports -->
-                <a href="./paysliphistory.php" class="sidebar-item">
-                    <i class="fas fa-file-alt"></i>
-                    <span>Reports</span>
-                </a>
-
                 <!-- Salary -->
                 <a href="sallarypayheads.php" class="sidebar-item">
                     <i class="fas fa-hand-holding-usd"></i>
@@ -2398,7 +2581,7 @@ $departments = [
     <main class="main-content">
         <!-- Check if we're viewing a specific employee's attendance -->
         <?php if (isset($_GET['view_attendance']) && $view_employee_id && isset($employee_details)): ?>
-            <!-- View Employee Attendance Section - Keep exactly as original -->
+            <!-- View Employee Attendance Section -->
             <div class="p-4 md:p-6 bg-white rounded-lg shadow-md">
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <div>
@@ -2406,7 +2589,8 @@ $departments = [
                         <p class="text-gray-600">for <?php echo htmlspecialchars($employee_details['full_name']); ?></p>
                     </div>
                     <div class="flex gap-2">
-                        <a href="?view=employees" class="text-white bg-blue-600 hover:bg-blue-700 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out flex items-center">
+                        <a href="?view=employees"
+                            class="text-white bg-blue-600 hover:bg-blue-700 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out flex items-center">
                             <i class="fas fa-arrow-left mr-2"></i>
                             Back to Employee Summary
                         </a>
@@ -2426,24 +2610,126 @@ $departments = [
                     </div>
                 <?php endif; ?>
 
+                <!-- Month/Year Filter Section -->
+                <div class="bg-gray-50 p-4 rounded-lg mb-4 card-shadow">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Filter Attendance Records</h3>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-filter text-gray-500"></i>
+                            <span class="font-medium text-gray-700">Filter by:</span>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3 items-center">
+                            <!-- Month Filter -->
+                            <div class="relative">
+                                <select id="monthFilter"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-40 p-2.5">
+                                    <option value="">All Months</option>
+                                    <?php
+                                    $months = [
+                                        1 => 'January',
+                                        2 => 'February',
+                                        3 => 'March',
+                                        4 => 'April',
+                                        5 => 'May',
+                                        6 => 'June',
+                                        7 => 'July',
+                                        8 => 'August',
+                                        9 => 'September',
+                                        10 => 'October',
+                                        11 => 'November',
+                                        12 => 'December'
+                                    ];
+                                    $selectedMonth = isset($_GET['month']) ? (int) $_GET['month'] : '';
+                                    foreach ($months as $num => $name): ?>
+                                        <option value="<?php echo $num; ?>" <?php echo $selectedMonth == $num ? 'selected' : ''; ?>>
+                                            <?php echo $name; ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <!-- Year Filter -->
+                            <div class="relative">
+                                <select id="yearFilter"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-28 p-2.5">
+                                    <option value="">All Years</option>
+                                    <?php
+                                    $currentYear = (int) date('Y');
+                                    $selectedYear = isset($_GET['year']) ? (int) $_GET['year'] : '';
+                                    for ($year = $currentYear; $year >= $currentYear - 5; $year--): ?>
+                                        <option value="<?php echo $year; ?>" <?php echo $selectedYear == $year ? 'selected' : ''; ?>>
+                                            <?php echo $year; ?>
+                                        </option>
+                                    <?php endfor; ?>
+                                </select>
+                            </div>
+
+                            <!-- Filter Action Buttons -->
+                            <button type="button" onclick="applyAttendanceFilter()"
+                                class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out flex items-center">
+                                <i class="fas fa-search mr-2"></i>
+                                Apply Filter
+                            </button>
+
+                            <button type="button" onclick="clearAttendanceFilter()"
+                                class="text-gray-700 bg-gray-200 hover:bg-gray-300 focus:ring-4 focus:ring-gray-100 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out flex items-center">
+                                <i class="fas fa-times mr-2"></i>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Active Filter Display -->
+                    <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <span class="text-sm text-gray-600 mr-2">Active filters:</span>
+                            <?php if (isset($_GET['month']) && !empty($_GET['month'])): ?>
+                                <span class="filter-badge">
+                                    <i class="fas fa-calendar"></i>
+                                    <?php echo $months[(int) $_GET['month']] ?? ''; ?>
+                                    <span class="remove-filter" onclick="clearAttendanceFilter()">×</span>
+                                </span>
+                            <?php endif; ?>
+                            <?php if (isset($_GET['year']) && !empty($_GET['year'])): ?>
+                                <span class="filter-badge">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    Year <?php echo htmlspecialchars($_GET['year']); ?>
+                                    <span class="remove-filter" onclick="clearAttendanceFilter()">×</span>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
                 <!-- Employee Summary -->
                 <div class="employee-summary">
                     <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
                         <div>
-                            <h2 class="text-xl font-bold mb-1"><?php echo htmlspecialchars($employee_details['full_name']); ?></h2>
+                            <h2 class="text-xl font-bold mb-1">
+                                <?php echo htmlspecialchars($employee_details['full_name']); ?>
+                            </h2>
                             <p class="text-white/80">ID: <?php echo htmlspecialchars($employee_details['employee_id']); ?> |
-                                <?php echo htmlspecialchars($employee_details['type']); ?> Employee</p>
+                                <?php echo htmlspecialchars($employee_details['type']); ?> Employee
+                            </p>
                         </div>
                         <div class="mt-4 md:mt-0 text-right">
-                            <p class="text-white/80">Department: <?php echo htmlspecialchars($employee_details['department']); ?></p>
-                            <p class="text-white/80">Total Records: <?php echo count($view_attendance_records); ?></p>
+                            <p class="text-white/80">Department:
+                                <?php echo htmlspecialchars($employee_details['department']); ?>
+                            </p>
+                            <p class="text-white/80">Total Records: <?php echo $attendance_all_records; ?></p>
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                <p class="text-white/80 text-sm">Showing: <?php echo $attendance_total_records; ?> filtered
+                                    records</p>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
 
-                <!-- Attendance Statistics -->
+                <!-- Attendance Statistics - Using FILTERED records -->
                 <?php if (!empty($view_attendance_records)): ?>
                     <?php
+                    // Calculate statistics based on FILTERED records only
                     $present_count = 0;
                     $absent_count = 0;
                     $late_count = 0;
@@ -2451,15 +2737,45 @@ $departments = [
                     $total_ot = 0;
 
                     foreach ($view_attendance_records as $record) {
-                        if ($record['total_hours'] > 0) $present_count++;
-                        if ($record['total_hours'] == 0) $absent_count++;
-                        if ($record['under_time'] > 0) $late_count++;
+                        if ($record['total_hours'] > 0)
+                            $present_count++;
+                        if ($record['total_hours'] == 0)
+                            $absent_count++;
+                        if ($record['under_time'] > 0)
+                            $late_count++;
                         $total_hours += $record['total_hours'];
                         $total_ot += $record['ot_hours'];
                     }
 
                     $present_rate = count($view_attendance_records) > 0 ? round(($present_count / count($view_attendance_records)) * 100, 1) : 0;
                     ?>
+
+                    <!-- Filter Info Banner -->
+                    <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                        <div class="bg-blue-50 border-l-4 border-blue-500 text-blue-700 p-4 mb-4" role="alert">
+                            <div class="flex items-center">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                <p>
+                                    <span class="font-bold">Filtered View:</span>
+                                    Showing statistics for
+                                    <?php
+                                    $filter_parts = [];
+                                    if (isset($_GET['month'])) {
+                                        $filter_parts[] = $months[(int) $_GET['month']];
+                                    }
+                                    if (isset($_GET['year'])) {
+                                        $filter_parts[] = $_GET['year'];
+                                    }
+                                    echo implode(' ', $filter_parts);
+                                    ?> only.
+                                    <a href="?view_attendance=true&employee_id=<?php echo urlencode($view_employee_id); ?>"
+                                        class="underline ml-2 font-semibold">
+                                        Clear filter to see all records
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div class="stats-card">
@@ -2513,6 +2829,45 @@ $departments = [
                         </div>
                     </div>
 
+                    <!-- Search Results Info (showing filtered vs total) -->
+                    <div class="mb-4 flex justify-between items-center">
+                        <div class="text-sm text-gray-600">
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                <span class="font-semibold text-blue-600">Filtered:</span>
+                            <?php endif; ?>
+
+                            Showing
+                            <?php if (isset($attendance_total_records) && $attendance_total_records > 0): ?>
+                                <span class="font-semibold"><?php echo $offset + 1; ?></span> to
+                                <span
+                                    class="font-semibold"><?php echo min($offset + $records_per_page, $attendance_total_records); ?></span>
+                                of
+                                <span class="font-semibold"><?php echo $attendance_total_records; ?></span> records
+                            <?php else: ?>
+                                <span class="font-semibold">0</span> records
+                            <?php endif; ?>
+
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                <span class="ml-2 text-blue-600">(filtered from <?php echo $attendance_all_records; ?> total
+                                    records)</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Records per page selector -->
+                        <?php if (isset($attendance_total_pages) && $attendance_total_pages > 1): ?>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-600">Show:</label>
+                                <select id="attPerPage" onchange="changeAttendancePerPage(this.value)"
+                                    class="border border-gray-300 rounded-lg text-sm p-1.5">
+                                    <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
+                                    <option value="20" <?php echo $records_per_page == 20 ? 'selected' : ''; ?>>20</option>
+                                    <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
+                                    <option value="100" <?php echo $records_per_page == 100 ? 'selected' : ''; ?>>100</option>
+                                </select>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
                     <!-- Attendance Table -->
                     <div class="table-container overflow-x-auto rounded-lg border border-gray-200 mobile-table-container">
                         <table class="w-full text-sm text-left text-gray-900 mobile-table">
@@ -2548,7 +2903,7 @@ $departments = [
                                         $status = 'Weekend Work';
                                         $status_class = 'status-leave';
                                     }
-                                ?>
+                                    ?>
                                     <tr class="bg-white hover:bg-gray-50 transition-colors duration-150">
                                         <td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap mobile-text-sm">
                                             <?php echo date('M d, Y', strtotime($row['date'])); ?>
@@ -2566,9 +2921,15 @@ $departments = [
                                         <td class="px-4 py-3 text-center text-gray-700 mobile-text-sm">
                                             <?php echo !empty($row['pm_time_out']) ? date('h:i A', strtotime($row['pm_time_out'])) : '<span class="text-gray-400">--</span>'; ?>
                                         </td>
-                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm mobile-hidden"><?php echo $row['ot_hours']; ?>h</td>
-                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm mobile-hidden"><?php echo $row['under_time']; ?>h</td>
-                                        <td class="px-4 py-3 font-semibold text-gray-900 mobile-text-sm mobile-hidden"><?php echo $row['total_hours']; ?>h</td>
+                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm mobile-hidden">
+                                            <?php echo $row['ot_hours']; ?>h
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-700 mobile-text-sm mobile-hidden">
+                                            <?php echo $row['under_time']; ?>h
+                                        </td>
+                                        <td class="px-4 py-3 font-semibold text-gray-900 mobile-text-sm mobile-hidden">
+                                            <?php echo $row['total_hours']; ?>h
+                                        </td>
                                         <td class="px-4 py-3 mobile-text-sm">
                                             <span class="attendance-status <?php echo $status_class; ?>">
                                                 <?php echo $status; ?>
@@ -2576,16 +2937,13 @@ $departments = [
                                         </td>
                                         <td class="px-4 py-3 mobile-text-sm text-center">
                                             <div class="flex space-x-1 justify-center">
-                                                <button type="button"
-                                                    onclick="editAttendance(<?php echo $row['id']; ?>)"
-                                                    class="action-btn edit-btn"
-                                                    title="Edit Record">
+                                                <button type="button" onclick="editAttendance(<?php echo $row['id']; ?>)"
+                                                    class="action-btn edit-btn" title="Edit Record">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
                                                 <button type="button"
-                                                    onclick="deleteAttendance(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['employee_name']); ?>', '<?php echo $row['date']; ?>')"
-                                                    class="action-btn delete-btn"
-                                                    title="Delete Record">
+                                                    onclick="deleteAttendance(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($employee_details['full_name']); ?>', '<?php echo $row['date']; ?>')"
+                                                    class="action-btn delete-btn" title="Delete Record">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             </div>
@@ -2594,13 +2952,122 @@ $departments = [
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
+                        <!-- Attendance Table -->
+                        <?php if (!empty($view_attendance_records)): ?>
+                            <!-- ... existing table code ... -->
+                        <?php else: ?>
+                            <div class="text-center py-12">
+                                <!-- ... existing no records message ... -->
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Pagination - Show ALWAYS when there are pages, even if current page has no records -->
+                        <?php if (isset($attendance_total_pages) && $attendance_total_pages > 0): ?>
+                            <div id="attendancePaginationContainer" class="pagination-container mt-4">
+                                <div class="pagination-info">
+                                    Page <span id="attCurrentPage"><?php echo $attendance_current_page; ?></span> of
+                                    <span id="attTotalPages"><?php echo $attendance_total_pages; ?></span>
+                                    <?php if ($attendance_total_records > 0): ?>
+                                        (<?php echo $attendance_total_records; ?> records)
+                                    <?php else: ?>
+                                        (No records found)
+                                    <?php endif; ?>
+                                </div>
+
+                                <?php if ($attendance_total_pages > 1): ?>
+                                    <div class="pagination-nav" id="attendancePaginationNav">
+                                        <?php
+                                        // First page button
+                                        if ($attendance_current_page > 1) {
+                                            echo '<button onclick="changeAttendancePage(1)" class="pagination-btn" title="First Page">
+                            <i class="fas fa-angle-double-left"></i>
+                          </button>';
+                                        } else {
+                                            echo '<button disabled class="pagination-btn" title="First Page">
+                            <i class="fas fa-angle-double-left"></i>
+                          </button>';
+                                        }
+
+                                        // Previous page button
+                                        if ($attendance_current_page > 1) {
+                                            echo '<button onclick="changeAttendancePage(' . ($attendance_current_page - 1) . ')" class="pagination-btn" title="Previous Page">
+                            <i class="fas fa-angle-left"></i>
+                          </button>';
+                                        } else {
+                                            echo '<button disabled class="pagination-btn" title="Previous Page">
+                            <i class="fas fa-angle-left"></i>
+                          </button>';
+                                        }
+
+                                        // Calculate range of page numbers to show
+                                        $start_page = max(1, $attendance_current_page - 2);
+                                        $end_page = min($attendance_total_pages, $attendance_current_page + 2);
+
+                                        // Show first page with ellipsis if needed
+                                        if ($start_page > 1) {
+                                            echo '<button onclick="changeAttendancePage(1)" class="pagination-btn">1</button>';
+                                            if ($start_page > 2) {
+                                                echo '<span class="pagination-ellipsis">...</span>';
+                                            }
+                                        }
+
+                                        // Show page numbers in range
+                                        for ($i = $start_page; $i <= $end_page; $i++) {
+                                            $active_class = ($i == $attendance_current_page) ? 'active' : '';
+                                            echo "<button onclick=\"changeAttendancePage($i)\" class=\"pagination-btn $active_class\">$i</button>";
+                                        }
+
+                                        // Show last page with ellipsis if needed
+                                        if ($end_page < $attendance_total_pages) {
+                                            if ($end_page < $attendance_total_pages - 1) {
+                                                echo '<span class="pagination-ellipsis">...</span>';
+                                            }
+                                            echo "<button onclick=\"changeAttendancePage($attendance_total_pages)\" class=\"pagination-btn\">$attendance_total_pages</button>";
+                                        }
+
+                                        // Next page button
+                                        if ($attendance_current_page < $attendance_total_pages) {
+                                            echo '<button onclick="changeAttendancePage(' . ($attendance_current_page + 1) . ')" class="pagination-btn" title="Next Page">
+                            <i class="fas fa-angle-right"></i>
+                          </button>';
+                                        } else {
+                                            echo '<button disabled class="pagination-btn" title="Next Page">
+                            <i class="fas fa-angle-right"></i>
+                          </button>';
+                                        }
+
+                                        // Last page button
+                                        if ($attendance_current_page < $attendance_total_pages) {
+                                            echo '<button onclick="changeAttendancePage(' . $attendance_total_pages . ')" class="pagination-btn" title="Last Page">
+                            <i class="fas fa-angle-double-right"></i>
+                          </button>';
+                                        } else {
+                                            echo '<button disabled class="pagination-btn" title="Last Page">
+                            <i class="fas fa-angle-double-right"></i>
+                          </button>';
+                                        }
+                                        ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                 <?php else: ?>
                     <div class="text-center py-12">
                         <i class="fas fa-calendar-times text-5xl text-gray-300 mb-4"></i>
                         <h3 class="text-lg font-semibold text-gray-700 mb-2">No Attendance Records Found</h3>
-                        <p class="text-gray-500">This employee doesn't have any attendance records yet.</p>
+                        <p class="text-gray-500">
+                            <?php if (isset($_GET['month']) || isset($_GET['year'])): ?>
+                                No records found for the selected filter.
+                                <a href="?view_attendance=true&employee_id=<?php echo urlencode($view_employee_id); ?>"
+                                    class="text-blue-600 underline">
+                                    Clear filter to see all records
+                                </a>
+                            <?php else: ?>
+                                This employee doesn't have any attendance records yet.
+                            <?php endif; ?>
+                        </p>
                         <div class="mt-4">
                             <p class="text-sm text-gray-600">Please use the Monthly DTR Entry to add attendance records.</p>
                         </div>
@@ -2617,12 +3084,14 @@ $departments = [
                         <p class="text-gray-600">View and manage attendance records for all employees</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" data-modal-target="bulkAddAttendanceModal" data-modal-toggle="bulkAddAttendanceModal"
+                        <button type="button" data-modal-target="bulkAddAttendanceModal"
+                            data-modal-toggle="bulkAddAttendanceModal"
                             class="text-white bg-yellow-600 hover:bg-yellow-700 focus:ring-4 focus:ring-yellow-300 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out mobile-full flex items-center justify-center">
                             <i class="fas fa-calendar-alt mr-2"></i>
                             <span>Monthly DTR Entry</span>
                         </button>
-                        <button type="button" data-modal-target="importAttendanceModal" data-modal-toggle="importAttendanceModal"
+                        <button type="button" data-modal-target="importAttendanceModal"
+                            data-modal-toggle="importAttendanceModal"
                             class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-300 font-medium rounded-lg text-sm px-4 py-2.5 transition duration-150 ease-in-out mobile-full flex items-center justify-center">
                             <i class="fas fa-file-import mr-2"></i>
                             <span>Import</span>
@@ -2671,7 +3140,8 @@ $departments = [
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">Global Search & Filters</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div class="md:col-span-2">
-                            <label for="global_search" class="block text-sm font-medium text-gray-700 mb-1">Search Employees:</label>
+                            <label for="global_search" class="block text-sm font-medium text-gray-700 mb-1">Search
+                                Employees:</label>
                             <div class="relative">
                                 <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                     <i class="fas fa-search text-gray-400 text-sm"></i>
@@ -2688,7 +3158,8 @@ $departments = [
                         </div>
 
                         <div>
-                            <label for="global_department" class="block text-sm font-medium text-gray-700 mb-1">Department:</label>
+                            <label for="global_department"
+                                class="block text-sm font-medium text-gray-700 mb-1">Department:</label>
                             <select id="global_department"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                                 <option value="">All Departments</option>
@@ -2701,7 +3172,8 @@ $departments = [
                         </div>
 
                         <div>
-                            <label for="global_status" class="block text-sm font-medium text-gray-700 mb-1">Attendance Status:</label>
+                            <label for="global_status" class="block text-sm font-medium text-gray-700 mb-1">Attendance
+                                Status:</label>
                             <select id="global_status"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                                 <option value="">All Employees</option>
@@ -2718,7 +3190,8 @@ $departments = [
                             Select All Employees With Records (<?php echo $total_employees; ?> total)
                         </span>
                         <span class="text-xs text-gray-500">
-                            <i class="fas fa-info-circle"></i> This will select all employees who have attendance records across all pages
+                            <i class="fas fa-info-circle"></i> This will select all employees who have attendance records
+                            across all pages
                         </span>
                     </div>
 
@@ -2738,7 +3211,8 @@ $departments = [
                         <?php endif; ?>
                         <?php if (!empty($status_filter)): ?>
                             <span class="filter-badge">
-                                <i class="fas fa-filter"></i> <?php echo $status_filter == 'has_attendance' ? 'Has Records' : 'No Records'; ?>
+                                <i class="fas fa-filter"></i>
+                                <?php echo $status_filter == 'has_attendance' ? 'Has Records' : 'No Records'; ?>
                                 <span class="remove-filter" onclick="clearStatus()">×</span>
                             </span>
                         <?php endif; ?>
@@ -2753,7 +3227,8 @@ $departments = [
                 <!-- Search Results Info -->
                 <div id="searchResultsInfo" class="mb-4 flex justify-between items-center">
                     <div class="text-sm text-gray-600">
-                        Showing <span id="showingFrom"><?php echo min(1, (($current_page - 1) * $records_per_page) + 1); ?></span> to
+                        Showing <span
+                            id="showingFrom"><?php echo min(1, (($current_page - 1) * $records_per_page) + 1); ?></span> to
                         <span id="showingTo"><?php echo min($current_page * $records_per_page, $total_employees); ?></span>
                         of <span id="totalRecords"><?php echo $total_employees; ?></span> employees
                         <?php if (!empty($search_term) || !empty($dept_filter) || !empty($status_filter)): ?>
@@ -2764,7 +3239,8 @@ $departments = [
                     <!-- Records per page selector -->
                     <div class="flex items-center gap-2">
                         <label class="text-sm text-gray-600">Show:</label>
-                        <select id="perPageSelect" onchange="changePerPage(this.value)" class="border border-gray-300 rounded-lg text-sm p-1.5">
+                        <select id="perPageSelect" onchange="changePerPage(this.value)"
+                            class="border border-gray-300 rounded-lg text-sm p-1.5">
                             <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
                             <option value="25" <?php echo $records_per_page == 25 ? 'selected' : ''; ?>>25</option>
                             <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
@@ -2785,7 +3261,8 @@ $departments = [
                         <thead class="text-xs text-white uppercase bg-blue-600">
                             <tr>
                                 <th scope="col" class="px-4 py-3">
-                                    <input type="checkbox" id="selectAllEmployees" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
+                                    <input type="checkbox" id="selectAllEmployees"
+                                        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
                                 </th>
                                 <th scope="col" class="px-4 py-3">Employee ID</th>
                                 <th scope="col" class="px-4 py-3">Name</th>
@@ -2803,16 +3280,18 @@ $departments = [
                                 <?php foreach ($employee_summary as $employee): ?>
                                     <tr class="bg-white hover:bg-gray-50 transition-colors duration-150">
                                         <td class="px-4 py-3">
-                                            <input type="checkbox" class="employee-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                            <input type="checkbox"
+                                                class="employee-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                                                 data-employee-id="<?php echo htmlspecialchars($employee['employee_id']); ?>"
-                                                data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>"
-                                                <?php echo $employee['total_records'] > 0 ? '' : 'disabled'; ?>>
+                                                data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>" <?php echo $employee['total_records'] > 0 ? '' : 'disabled'; ?>>
                                         </td>
                                         <td class="px-4 py-3 font-medium text-gray-900">
                                             <?php echo htmlspecialchars($employee['employee_id']); ?>
                                         </td>
                                         <td class="px-4 py-3">
-                                            <div class="font-medium text-gray-900"><?php echo htmlspecialchars($employee['full_name']); ?></div>
+                                            <div class="font-medium text-gray-900">
+                                                <?php echo htmlspecialchars($employee['full_name']); ?>
+                                            </div>
                                         </td>
                                         <td class="px-4 py-3 text-gray-700">
                                             <?php echo htmlspecialchars($employee['department']); ?>
@@ -2821,33 +3300,41 @@ $departments = [
                                             <span class="px-2 py-1 text-xs font-semibold rounded-full 
                                                 <?php
                                                 $type = $employee['type'] ?? 'Unknown';
-                                                if ($type == 'Permanent') echo 'bg-green-100 text-green-800';
-                                                elseif ($type == 'Job Order') echo 'bg-blue-100 text-blue-800';
-                                                elseif ($type == 'Contractual') echo 'bg-purple-100 text-purple-800';
-                                                else echo 'bg-gray-100 text-gray-800';
+                                                if ($type == 'Permanent')
+                                                    echo 'bg-green-100 text-green-800';
+                                                elseif ($type == 'Job Order')
+                                                    echo 'bg-blue-100 text-blue-800';
+                                                elseif ($type == 'Contractual')
+                                                    echo 'bg-purple-100 text-purple-800';
+                                                else
+                                                    echo 'bg-gray-100 text-gray-800';
                                                 ?>">
                                                 <?php echo $type; ?>
                                             </span>
                                         </td>
                                         <td class="px-4 py-3">
                                             <?php if ($employee['total_records'] > 0): ?>
-                                                <span class="font-semibold text-gray-900"><?php echo $employee['total_records']; ?></span>
+                                                <span
+                                                    class="font-semibold text-gray-900"><?php echo $employee['total_records']; ?></span>
                                             <?php else: ?>
                                                 <span class="text-gray-400">0</span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="px-4 py-3">
                                             <?php if ($employee['present_days'] > 0): ?>
-                                                <span class="font-semibold text-green-600"><?php echo $employee['present_days']; ?></span>
+                                                <span
+                                                    class="font-semibold text-green-600"><?php echo $employee['present_days']; ?></span>
                                             <?php else: ?>
                                                 <span class="text-gray-400">0</span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="px-4 py-3">
                                             <?php if ($employee['total_hours'] > 0): ?>
-                                                <span class="font-semibold text-blue-600"><?php echo round($employee['total_hours'], 1); ?>h</span>
+                                                <span
+                                                    class="font-semibold text-blue-600"><?php echo round($employee['total_hours'], 1); ?>h</span>
                                                 <?php if ($employee['total_ot'] > 0): ?>
-                                                    <span class="text-xs text-orange-600 ml-1">(OT: <?php echo round($employee['total_ot'], 1); ?>h)</span>
+                                                    <span class="text-xs text-orange-600 ml-1">(OT:
+                                                        <?php echo round($employee['total_ot'], 1); ?>h)</span>
                                                 <?php endif; ?>
                                             <?php else: ?>
                                                 <span class="text-gray-400">0h</span>
@@ -2860,8 +3347,7 @@ $departments = [
                                             <div class="flex space-x-2 justify-center">
                                                 <?php if ($employee['total_records'] > 0): ?>
                                                     <a href="?view_attendance=true&employee_id=<?php echo urlencode($employee['employee_id']); ?>"
-                                                        class="action-btn view-btn"
-                                                        title="View Attendance Records">
+                                                        class="action-btn view-btn" title="View Attendance Records">
                                                         <i class="fas fa-eye mr-1"></i> View
                                                     </a>
                                                 <?php else: ?>
@@ -2882,7 +3368,8 @@ $departments = [
                                         <i class='fas fa-users text-4xl mb-2 text-gray-300'></i>
                                         <p>No employees found matching your criteria.</p>
                                         <?php if (!empty($search_term) || !empty($dept_filter) || !empty($status_filter)): ?>
-                                            <p class="mt-2 text-sm text-blue-600">Try clearing your search filters or adjusting your criteria.</p>
+                                            <p class="mt-2 text-sm text-blue-600">Try clearing your search filters or adjusting your
+                                                criteria.</p>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -2892,23 +3379,43 @@ $departments = [
                 </div>
 
                 <!-- Pagination -->
-                <?php if ($total_pages > 1): ?>
-                    <div id="paginationContainer" class="pagination-container mt-4">
+                <!-- Pagination (exactly like employee summary) -->
+                <!-- Pagination (exactly like employee summary) -->
+                <?php if (isset($total_pages) && $total_pages > 1): ?>
+                    <div id="attendancePaginationContainer" class="pagination-container mt-4">
                         <div class="pagination-info">
-                            Page <span id="currentPage"><?php echo $current_page; ?></span> of <span id="totalPages"><?php echo $total_pages; ?></span>
+                            Page <span id="attCurrentPage"><?php echo $current_page; ?></span> of
+                            <span id="attTotalPages"><?php echo $total_pages; ?></span>
                         </div>
-                        <div class="pagination-nav" id="paginationNav">
-                            <button onclick="changePage(1)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> class="pagination-btn" title="First Page">
-                                <i class="fas fa-angle-double-left"></i>
-                            </button>
-                            <button onclick="changePage(<?php echo $current_page - 1; ?>)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> class="pagination-btn" title="Previous Page">
-                                <i class="fas fa-angle-left"></i>
-                            </button>
-
+                        <div class="pagination-nav" id="attendancePaginationNav">
                             <?php
+                            // First page button
+                            if ($current_page > 1) {
+                                echo '<button onclick="changePage(1)" class="pagination-btn" title="First Page">
+                        <i class="fas fa-angle-double-left"></i>
+                      </button>';
+                            } else {
+                                echo '<button disabled class="pagination-btn" title="First Page">
+                        <i class="fas fa-angle-double-left"></i>
+                      </button>';
+                            }
+
+                            // Previous page button
+                            if ($current_page > 1) {
+                                echo '<button onclick="changePage(' . ($current_page - 1) . ')" class="pagination-btn" title="Previous Page">
+                        <i class="fas fa-angle-left"></i>
+                      </button>';
+                            } else {
+                                echo '<button disabled class="pagination-btn" title="Previous Page">
+                        <i class="fas fa-angle-left"></i>
+                      </button>';
+                            }
+
+                            // Calculate range of page numbers to show
                             $start_page = max(1, $current_page - 2);
                             $end_page = min($total_pages, $current_page + 2);
 
+                            // Show first page with ellipsis if needed
                             if ($start_page > 1) {
                                 echo '<button onclick="changePage(1)" class="pagination-btn">1</button>';
                                 if ($start_page > 2) {
@@ -2916,25 +3423,42 @@ $departments = [
                                 }
                             }
 
+                            // Show page numbers in range
                             for ($i = $start_page; $i <= $end_page; $i++) {
                                 $active_class = ($i == $current_page) ? 'active' : '';
                                 echo "<button onclick=\"changePage($i)\" class=\"pagination-btn $active_class\">$i</button>";
                             }
 
+                            // Show last page with ellipsis if needed
                             if ($end_page < $total_pages) {
                                 if ($end_page < $total_pages - 1) {
                                     echo '<span class="pagination-ellipsis">...</span>';
                                 }
                                 echo "<button onclick=\"changePage($total_pages)\" class=\"pagination-btn\">$total_pages</button>";
                             }
-                            ?>
 
-                            <button onclick="changePage(<?php echo $current_page + 1; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> class="pagination-btn" title="Next Page">
-                                <i class="fas fa-angle-right"></i>
-                            </button>
-                            <button onclick="changePage(<?php echo $total_pages; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> class="pagination-btn" title="Last Page">
-                                <i class="fas fa-angle-double-right"></i>
-                            </button>
+                            // Next page button
+                            if ($current_page < $total_pages) {
+                                echo '<button onclick="changePage(' . ($current_page + 1) . ')" class="pagination-btn" title="Next Page">
+                        <i class="fas fa-angle-right"></i>
+                      </button>';
+                            } else {
+                                echo '<button disabled class="pagination-btn" title="Next Page">
+                        <i class="fas fa-angle-right"></i>
+                      </button>';
+                            }
+
+                            // Last page button
+                            if ($current_page < $total_pages) {
+                                echo '<button onclick="changePage(' . $total_pages . ')" class="pagination-btn" title="Last Page">
+                        <i class="fas fa-angle-double-right"></i>
+                      </button>';
+                            } else {
+                                echo '<button disabled class="pagination-btn" title="Last Page">
+                        <i class="fas fa-angle-double-right"></i>
+                      </button>';
+                            }
+                            ?>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -2943,14 +3467,19 @@ $departments = [
     </main>
 
     <!-- Export Attendance Modal -->
-    <div id="exportAttendanceModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4" style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
-        <div class="relative w-full max-w-3xl max-h-[90vh] rounded-lg modal-animation modal-mobile-full overflow-y-auto">
+    <div id="exportAttendanceModal" tabindex="-1" aria-hidden="true"
+        class="fixed inset-0 z-50 hidden flex items-center justify-center p-4"
+        style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+        <div
+            class="relative w-full max-w-3xl max-h-[90vh] rounded-lg modal-animation modal-mobile-full overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-lg">
                 <div class="flex items-center justify-between p-5  border-b rounded-t bg-green-600 text-white">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-download mr-2"></i>Export Attendance Records
                     </h3>
-                    <button type="button" class="text-white bg-transparent hover:bg-green-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out" onclick="closeExportModal()">
+                    <button type="button"
+                        class="text-white bg-transparent hover:bg-green-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out"
+                        onclick="closeExportModal()">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
@@ -2967,7 +3496,8 @@ $departments = [
                                 (across all pages)
                             </span>
                         </div>
-                        <div id="selectedEmployeesList" class="mt-2 text-xs text-gray-600 max-h-24 overflow-y-auto hidden">
+                        <div id="selectedEmployeesList"
+                            class="mt-2 text-xs text-gray-600 max-h-24 overflow-y-auto hidden">
                             <!-- Will be populated by JavaScript -->
                         </div>
                     </div>
@@ -2975,12 +3505,14 @@ $departments = [
                     <!-- Date Range Filter -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label for="export_from_date" class="block mb-2 text-sm font-medium text-gray-900">From Date</label>
+                            <label for="export_from_date" class="block mb-2 text-sm font-medium text-gray-900">From
+                                Date</label>
                             <input type="date" id="export_from_date" name="export_from_date"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5">
                         </div>
                         <div>
-                            <label for="export_to_date" class="block mb-2 text-sm font-medium text-gray-900">To Date</label>
+                            <label for="export_to_date" class="block mb-2 text-sm font-medium text-gray-900">To
+                                Date</label>
                             <input type="date" id="export_to_date" name="export_to_date"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5">
                         </div>
@@ -2988,12 +3520,15 @@ $departments = [
 
                     <!-- Department Filter -->
                     <div>
-                        <label for="export_department" class="block mb-2 text-sm font-medium text-gray-900">Filter by Department (Optional)</label>
+                        <label for="export_department" class="block mb-2 text-sm font-medium text-gray-900">Filter by
+                            Department (Optional)</label>
                         <select id="export_department" name="export_department"
                             class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block w-full p-2.5">
                             <option value="">All Departments</option>
                             <?php foreach ($departments as $dept): ?>
-                                <option value="<?php echo htmlspecialchars($dept); ?>"><?php echo htmlspecialchars($dept); ?></option>
+                                <option value="<?php echo htmlspecialchars($dept); ?>">
+                                    <?php echo htmlspecialchars($dept); ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -3003,12 +3538,17 @@ $departments = [
                         <h4 class="text-sm font-semibold text-gray-800 mb-3">Export Options</h4>
                         <div class="flex flex-wrap gap-4">
                             <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="export_format" id="format_excel" value="excel" class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500" checked>
-                                <span class="ml-2 text-sm font-medium text-gray-700">Excel Format (.xlsx) - Separate sheets per employee</span>
+                                <input type="radio" name="export_format" id="format_excel" value="excel"
+                                    class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500"
+                                    checked>
+                                <span class="ml-2 text-sm font-medium text-gray-700">Excel Format (.xlsx) - Separate
+                                    sheets per employee</span>
                             </label>
                             <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="export_format" id="format_csv" value="csv" class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500">
-                                <span class="ml-2 text-sm font-medium text-gray-700">CSV Format (.csv) - Combined data</span>
+                                <input type="radio" name="export_format" id="format_csv" value="csv"
+                                    class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500">
+                                <span class="ml-2 text-sm font-medium text-gray-700">CSV Format (.csv) - Combined
+                                    data</span>
                             </label>
                         </div>
                     </div>
@@ -3018,16 +3558,24 @@ $departments = [
                         <h4 class="text-sm font-semibold text-gray-800 mb-3">Advanced Options</h4>
                         <div class="space-y-2">
                             <label class="flex items-center cursor-pointer">
-                                <input type="checkbox" id="include_summary" class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500" checked>
-                                <span class="ml-2 text-sm font-medium text-gray-700">Include summary row with totals per employee</span>
+                                <input type="checkbox" id="include_summary"
+                                    class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500"
+                                    checked>
+                                <span class="ml-2 text-sm font-medium text-gray-700">Include summary row with totals per
+                                    employee</span>
                             </label>
                             <label class="flex items-center cursor-pointer">
-                                <input type="checkbox" id="include_employee_info" class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500" checked>
-                                <span class="ml-2 text-sm font-medium text-gray-700">Include employee information header</span>
+                                <input type="checkbox" id="include_employee_info"
+                                    class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500"
+                                    checked>
+                                <span class="ml-2 text-sm font-medium text-gray-700">Include employee information
+                                    header</span>
                             </label>
                             <label class="flex items-center cursor-pointer">
-                                <input type="checkbox" id="format_time_12h" class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500">
-                                <span class="ml-2 text-sm font-medium text-gray-700">Use 12-hour time format (AM/PM)</span>
+                                <input type="checkbox" id="format_time_12h"
+                                    class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500">
+                                <span class="ml-2 text-sm font-medium text-gray-700">Use 12-hour time format
+                                    (AM/PM)</span>
                             </label>
                         </div>
                     </div>
@@ -3068,25 +3616,28 @@ $departments = [
     </div>
 
     <!-- Monthly DTR Entry Modal (Keep exactly as original) -->
-    <div id="bulkAddAttendanceModal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div id="bulkAddAttendanceModal" tabindex="-1" aria-hidden="true"
+        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 md:inset-0 h-[calc(100%-1rem)] max-h-full">
         <div class="relative w-full max-w-6xl rounded-lg max-h-full modal-animation modal-mobile-full overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-lg">
                 <div class="flex items-center justify-between p-5 border-b rounded-t bg-yellow-600 text-white">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-calendar-alt mr-2"></i>Monthly DTR Entry (Daily Time Records)
                     </h3>
-                    <button type="button" class="text-white bg-transparent hover:bg-yellow-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out" data-modal-hide="bulkAddAttendanceModal">
+                    <button type="button"
+                        class="text-white bg-transparent hover:bg-yellow-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out"
+                        data-modal-hide="bulkAddAttendanceModal">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
                 <form action="" method="POST" class="p-4 md:p-6 space-y-4" id="bulkAttendanceForm">
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         <div>
-                            <label for="bulk_employee_id" class="block mb-2 text-sm font-medium text-gray-900">Employee ID *</label>
+                            <label for="bulk_employee_id" class="block mb-2 text-sm font-medium text-gray-900">Employee
+                                ID *</label>
                             <input type="text" name="employee_id" id="bulk_employee_id" placeholder="Enter employee ID"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5"
-                                required
-                                list="employeeListBulk">
+                                required list="employeeListBulk">
                             <datalist id="employeeListBulk">
                                 <?php foreach ($all_employees as $emp): ?>
                                     <option value="<?php echo htmlspecialchars($emp['employee_id']); ?>">
@@ -3097,11 +3648,12 @@ $departments = [
                         </div>
 
                         <div>
-                            <label for="bulk_employee_name" class="block mb-2 text-sm font-medium text-gray-900">Employee Name *</label>
-                            <input type="text" name="employee_name" id="bulk_employee_name" placeholder="Enter employee name"
+                            <label for="bulk_employee_name"
+                                class="block mb-2 text-sm font-medium text-gray-900">Employee Name *</label>
+                            <input type="text" name="employee_name" id="bulk_employee_name"
+                                placeholder="Enter employee name"
                                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5"
-                                required
-                                list="employeeNameListBulk">
+                                required list="employeeNameListBulk">
                             <datalist id="employeeNameListBulk">
                                 <?php foreach ($all_employees as $emp): ?>
                                     <option value="<?php echo htmlspecialchars($emp['full_name']); ?>">
@@ -3112,25 +3664,31 @@ $departments = [
                         </div>
 
                         <div>
-                            <label for="bulk_department" class="block mb-2 text-sm font-medium text-gray-900">Department *</label>
+                            <label for="bulk_department" class="block mb-2 text-sm font-medium text-gray-900">Department
+                                *</label>
                             <select name="department" id="bulk_department"
-                                class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5" required>
+                                class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5"
+                                required>
                                 <option value="">Select Department</option>
                                 <?php foreach ($departments as $dept): ?>
-                                    <option value="<?php echo htmlspecialchars($dept); ?>"><?php echo htmlspecialchars($dept); ?></option>
+                                    <option value="<?php echo htmlspecialchars($dept); ?>">
+                                        <?php echo htmlspecialchars($dept); ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
 
                         <div class="grid grid-cols-2 gap-2">
                             <div>
-                                <label for="month_select" class="block mb-2 text-sm font-medium text-gray-900">Month</label>
-                                <select id="month_select" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5">
+                                <label for="month_select"
+                                    class="block mb-2 text-sm font-medium text-gray-900">Month</label>
+                                <select id="month_select"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5">
                                     <?php
                                     $currentMonth = date('n');
                                     for ($i = 1; $i <= 12; $i++):
                                         $monthName = date('F', mktime(0, 0, 0, $i, 1));
-                                    ?>
+                                        ?>
                                         <option value="<?php echo $i; ?>" <?php echo $i == $currentMonth ? 'selected' : ''; ?>>
                                             <?php echo $monthName; ?>
                                         </option>
@@ -3138,8 +3696,10 @@ $departments = [
                                 </select>
                             </div>
                             <div>
-                                <label for="year_select" class="block mb-2 text-sm font-medium text-gray-900">Year</label>
-                                <select id="year_select" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5">
+                                <label for="year_select"
+                                    class="block mb-2 text-sm font-medium text-gray-900">Year</label>
+                                <select id="year_select"
+                                    class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block w-full p-2.5">
                                     <?php
                                     $currentYear = date('Y');
                                     for ($year = $currentYear - 1; $year <= $currentYear + 1; $year++): ?>
@@ -3159,15 +3719,19 @@ $departments = [
                         </h6>
                         <div class="flex flex-wrap items-center gap-6">
                             <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="dtr_period" id="period_first_half" value="first_half" class="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 focus:ring-yellow-500" checked>
+                                <input type="radio" name="dtr_period" id="period_first_half" value="first_half"
+                                    class="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 focus:ring-yellow-500"
+                                    checked>
                                 <span class="ml-2 text-sm font-medium text-gray-700">First Half (Days 1-15)</span>
                             </label>
                             <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="dtr_period" id="period_second_half" value="second_half" class="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 focus:ring-yellow-500">
+                                <input type="radio" name="dtr_period" id="period_second_half" value="second_half"
+                                    class="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 focus:ring-yellow-500">
                                 <span class="ml-2 text-sm font-medium text-gray-700">Second Half (Days 16-30/31)</span>
                             </label>
                             <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="dtr_period" id="period_full_month" value="full_month" class="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 focus:ring-yellow-500">
+                                <input type="radio" name="dtr_period" id="period_full_month" value="full_month"
+                                    class="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 focus:ring-yellow-500">
                                 <span class="ml-2 text-sm font-medium text-gray-700">Full Month</span>
                             </label>
                         </div>
@@ -3183,27 +3747,33 @@ $departments = [
                             <i class="fas fa-bolt mr-2"></i>Quick Options
                         </h6>
                         <div class="flex flex-wrap gap-2">
-                            <button type="button" onclick="fillStandardTimes()" class="quick-option-btn px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
+                            <button type="button" onclick="fillStandardTimes()"
+                                class="quick-option-btn px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
                                 <i class="fas fa-clock mr-2"></i>
                                 Standard (8-12, 1-5)
                             </button>
-                            <button type="button" onclick="fillEarlyTimes()" class="quick-option-btn px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
+                            <button type="button" onclick="fillEarlyTimes()"
+                                class="quick-option-btn px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
                                 <i class="fas fa-sun mr-2"></i>
                                 Early (7:30-12, 1-5:30)
                             </button>
-                            <button type="button" onclick="fillLateTimes()" class="quick-option-btn px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
+                            <button type="button" onclick="fillLateTimes()"
+                                class="quick-option-btn px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
                                 <i class="fas fa-moon mr-2"></i>
                                 Late (8:30-12, 1-5:30)
                             </button>
-                            <button type="button" onclick="clearAllTimes()" class="quick-option-btn px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
+                            <button type="button" onclick="clearAllTimes()"
+                                class="quick-option-btn px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
                                 <i class="fas fa-trash-alt mr-2"></i>
                                 Clear All
                             </button>
-                            <button type="button" onclick="markWeekendsAsLeave()" class="quick-option-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
+                            <button type="button" onclick="markWeekendsAsLeave()"
+                                class="quick-option-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
                                 <i class="fas fa-calendar-times mr-2"></i>
                                 Clear Weekends/Holidays
                             </button>
-                            <button type="button" onclick="applyTemplateFromImage()" class="quick-option-btn px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
+                            <button type="button" onclick="applyTemplateFromImage()"
+                                class="quick-option-btn px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition duration-150 ease-in-out flex items-center shadow-sm">
                                 <i class="fas fa-file-alt mr-2"></i>
                                 Apply Sample
                             </button>
@@ -3217,7 +3787,8 @@ $departments = [
                     <!-- Daily Time Entry Table -->
                     <div class="border-t pt-4">
                         <h6 class="text-base md:text-lg font-semibold text-yellow-600 mb-3 flex items-center">
-                            <i class="fas fa-clock mr-2"></i>Daily Time Entry <span class="text-sm font-normal text-gray-600 ml-2">(Enter times for each day)</span>
+                            <i class="fas fa-clock mr-2"></i>Daily Time Entry <span
+                                class="text-sm font-normal text-gray-600 ml-2">(Enter times for each day)</span>
                         </h6>
 
                         <div class="bulk-table-container overflow-x-auto">
@@ -3249,7 +3820,8 @@ $departments = [
                         <div class="mt-4 text-sm text-gray-600">
                             <p><i class="fas fa-info-circle text-yellow-500 mr-1"></i>
                                 <strong>Note:</strong> Leave time fields empty for holidays, leaves, or rest days.
-                                Empty fields will show <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">--:-- --</span>.
+                                Empty fields will show <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">--:--
+                                    --</span>.
                                 System will calculate OT and Undertime automatically.
                             </p>
                         </div>
@@ -3258,10 +3830,12 @@ $departments = [
                     <div class="flex items-center justify-end p-4 md:p-6 space-x-3 border-t border-gray-200 rounded-b">
                         <input type="hidden" name="start_date" id="hidden_start_date" value="">
                         <input type="hidden" name="end_date" id="hidden_end_date" value="">
-                        <button type="submit" name="bulk_add_attendance" class="text-white bg-yellow-600 hover:bg-yellow-700 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-4 py-2.5 text-center flex items-center">
+                        <button type="submit" name="bulk_add_attendance"
+                            class="text-white bg-yellow-600 hover:bg-yellow-700 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-4 py-2.5 text-center flex items-center">
                             <i class="fas fa-calendar-plus mr-2"></i>Save Monthly DTR
                         </button>
-                        <button type="button" data-modal-hide="bulkAddAttendanceModal" class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-blue-300 rounded-lg border border-gray-200 text-sm font-medium px-4 py-2.5 hover:text-gray-900">
+                        <button type="button" data-modal-hide="bulkAddAttendanceModal"
+                            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-blue-300 rounded-lg border border-gray-200 text-sm font-medium px-4 py-2.5 hover:text-gray-900">
                             Cancel
                         </button>
                     </div>
@@ -3271,14 +3845,17 @@ $departments = [
     </div>
 
     <!-- Import Attendance Modal (Updated with Remove Button) -->
-    <div id="importAttendanceModal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div id="importAttendanceModal" tabindex="-1" aria-hidden="true"
+        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 md:inset-0 h-[calc(100%-1rem)] max-h-full">
         <div class="relative w-full max-w-md rounded-lg max-h-full modal-animation modal-mobile-full overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-lg">
                 <div class="flex items-center justify-between p-5 border-b rounded-t bg-purple-600 text-white">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-file-import mr-2"></i>Import Attendance Records
                     </h3>
-                    <button type="button" class="text-white bg-transparent hover:bg-purple-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out" data-modal-hide="importAttendanceModal">
+                    <button type="button"
+                        class="text-white bg-transparent hover:bg-purple-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out"
+                        data-modal-hide="importAttendanceModal">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
@@ -3286,9 +3863,12 @@ $departments = [
                 <div class="p-4 md:p-6 space-y-4">
                     <!-- Tab Navigation -->
                     <div class="border-b border-gray-200">
-                        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center justify-center" id="importTab" role="tablist">
+                        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center justify-center" id="importTab"
+                            role="tablist">
                             <li class="mr-2" role="presentation">
-                                <button class="inline-block p-4 border-b-2 rounded-t-lg active border-purple-600 text-purple-600" id="xlsx-tab" type="button" role="tab" aria-controls="xlsx" aria-selected="true">
+                                <button
+                                    class="inline-block p-4 border-b-2 rounded-t-lg active border-purple-600 text-purple-600"
+                                    id="xlsx-tab" type="button" role="tab" aria-controls="xlsx" aria-selected="true">
                                     <i class="fas fa-file-excel mr-2 text-green-600"></i>XLSX/DTR Format
                                 </button>
                             </li>
@@ -3297,34 +3877,45 @@ $departments = [
 
                     <!-- XLSX Import Tab -->
                     <div class="p-4" id="xlsx" role="tabpanel" aria-labelledby="xlsx-tab">
-                        <form id="xlsxImportForm" method="POST" enctype="multipart/form-data" action="import_attendance_xlsx.php">
+                        <form id="xlsxImportForm" method="POST" enctype="multipart/form-data"
+                            action="import_attendance_xlsx.php">
                             <div class="space-y-4">
                                 <!-- File Upload Area -->
                                 <div>
-                                    <label for="xlsx_file" class="block mb-2 text-sm font-medium text-gray-900">Upload XLSX/DTR File *</label>
+                                    <label for="xlsx_file" class="block mb-2 text-sm font-medium text-gray-900">Upload
+                                        XLSX/DTR File *</label>
                                     <div class="flex items-center justify-center w-full">
-                                        <label for="xlsx_file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-purple-300 border-dashed rounded-lg cursor-pointer bg-purple-50 hover:bg-purple-100 file-upload-area transition-all duration-200">
+                                        <label for="xlsx_file"
+                                            class="flex flex-col items-center justify-center w-full h-32 border-2 border-purple-300 border-dashed rounded-lg cursor-pointer bg-purple-50 hover:bg-purple-100 file-upload-area transition-all duration-200">
                                             <div class="flex flex-col items-center justify-center pt-5 pb-6">
                                                 <i class="fas fa-file-excel text-3xl text-purple-600 mb-2"></i>
-                                                <p class="mb-2 text-sm text-gray-700"><span class="font-semibold text-purple-600">Click to upload</span> or drag and drop</p>
-                                                <p class="text-xs text-gray-500">XLSX files from attendance system (max 10MB)</p>
+                                                <p class="mb-2 text-sm text-gray-700"><span
+                                                        class="font-semibold text-purple-600">Click to upload</span> or
+                                                    drag and drop</p>
+                                                <p class="text-xs text-gray-500">XLSX files from attendance system (max
+                                                    10MB)</p>
                                             </div>
-                                            <input id="xlsx_file" name="xlsx_file" type="file" class="hidden" accept=".xlsx,.xls" />
+                                            <input id="xlsx_file" name="xlsx_file" type="file" class="hidden"
+                                                accept=".xlsx,.xls" />
                                         </label>
                                     </div>
                                 </div>
 
                                 <!-- File Information with Remove Button -->
-                                <div id="xlsxFileInfo" class="hidden p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                <div id="xlsxFileInfo"
+                                    class="hidden p-3 bg-purple-50 rounded-lg border border-purple-200">
                                     <div class="flex items-center justify-between">
                                         <div class="flex items-center min-w-0">
                                             <i class="fas fa-file-excel text-purple-600 mr-2 flex-shrink-0"></i>
                                             <div class="truncate">
-                                                <span id="xlsxFileName" class="text-sm font-medium text-gray-700 block truncate"></span>
+                                                <span id="xlsxFileName"
+                                                    class="text-sm font-medium text-gray-700 block truncate"></span>
                                                 <span id="xlsxFileSize" class="text-xs text-gray-500"></span>
                                             </div>
                                         </div>
-                                        <button type="button" id="removeXlsxFile" class="ml-2 p-1.5 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors duration-200 flex-shrink-0" title="Remove file">
+                                        <button type="button" id="removeXlsxFile"
+                                            class="ml-2 p-1.5 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors duration-200 flex-shrink-0"
+                                            title="Remove file">
                                             <i class="fas fa-times"></i>
                                         </button>
                                     </div>
@@ -3337,16 +3928,20 @@ $departments = [
                                             <i class="fas fa-file-excel text-green-600 mr-2"></i>
                                             <span class="text-sm text-gray-700">JANUARY (1).xlsx</span>
                                             <span class="ml-2 text-xs text-gray-500">44.94 KB</span>
-                                            <span class="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Sample</span>
+                                            <span
+                                                class="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Sample</span>
                                         </div>
-                                        <button type="button" onclick="removeSampleFile()" class="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100 transition-colors duration-200" title="Remove sample file">
+                                        <button type="button" onclick="removeSampleFile()"
+                                            class="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100 transition-colors duration-200"
+                                            title="Remove sample file">
                                             <i class="fas fa-times"></i>
                                         </button>
                                     </div>
                                 </div>
 
                                 <!-- Format Support Info -->
-                                <div class="flex items-start p-3 text-sm text-purple-700 bg-purple-50 rounded-lg" role="alert">
+                                <div class="flex items-start p-3 text-sm text-purple-700 bg-purple-50 rounded-lg"
+                                    role="alert">
                                     <i class="fas fa-info-circle mr-2 mt-0.5 flex-shrink-0"></i>
                                     <div>
                                         <span class="font-medium">Format Support:</span>
@@ -3364,10 +3959,12 @@ $departments = [
                                 <div id="xlsxProgressContainer" class="hidden">
                                     <div class="flex justify-between mb-1">
                                         <span class="text-sm font-medium text-purple-700">Importing...</span>
-                                        <span id="xlsxProgressPercent" class="text-sm font-medium text-purple-700">0%</span>
+                                        <span id="xlsxProgressPercent"
+                                            class="text-sm font-medium text-purple-700">0%</span>
                                     </div>
                                     <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                        <div id="xlsxProgressBar" class="bg-purple-600 h-2.5 rounded-full" style="width: 0%"></div>
+                                        <div id="xlsxProgressBar" class="bg-purple-600 h-2.5 rounded-full"
+                                            style="width: 0%"></div>
                                     </div>
                                     <p id="xlsxStatusMessage" class="mt-2 text-xs text-gray-600"></p>
                                 </div>
@@ -3379,11 +3976,13 @@ $departments = [
                             </div>
 
                             <div class="flex items-center justify-end space-x-3 mt-6 pt-4 border-t">
-                                <button type="submit" id="importXlsxBtn" class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
+                                <button type="submit" id="importXlsxBtn"
+                                    class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
                                     <i class="fas fa-upload mr-2"></i>
                                     <span>Import XLSX</span>
                                 </button>
-                                <button type="button" data-modal-hide="importAttendanceModal" class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900">
+                                <button type="button" data-modal-hide="importAttendanceModal"
+                                    class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900">
                                     Cancel
                                 </button>
                             </div>
@@ -3395,14 +3994,18 @@ $departments = [
     </div>
 
     <!-- Import Results Modal (Keep exactly as original) -->
-    <div id="importResultsModal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div id="importResultsModal" tabindex="-1" aria-hidden="true"
+        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
         <div class="relative w-full max-w-2xl max-h-full modal-animation">
             <div class="relative bg-white rounded-lg shadow-lg">
-                <div id="importResultsHeader" class="flex items-center justify-between p-5 border-b rounded-t bg-green-600 text-white">
+                <div id="importResultsHeader"
+                    class="flex items-center justify-between p-5 border-b rounded-t bg-green-600 text-white">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-check-circle mr-2"></i>Import Results
                     </h3>
-                    <button type="button" class="text-white bg-transparent hover:bg-opacity-80 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center" data-modal-hide="importResultsModal">
+                    <button type="button"
+                        class="text-white bg-transparent hover:bg-opacity-80 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center"
+                        data-modal-hide="importResultsModal">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
@@ -3410,7 +4013,8 @@ $departments = [
                     <!-- Results will be populated by JavaScript -->
                 </div>
                 <div class="flex items-center justify-end p-6 pt-0 border-t">
-                    <button type="button" data-modal-hide="importResultsModal" class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900">
+                    <button type="button" data-modal-hide="importResultsModal"
+                        class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900">
                         Close
                     </button>
                 </div>
@@ -3419,20 +4023,25 @@ $departments = [
     </div>
 
     <!-- Edit Attendance Modal (Keep exactly as original) -->
-    <div id="editAttendanceModal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full" style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+    <div id="editAttendanceModal" tabindex="-1" aria-hidden="true"
+        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full"
+        style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
         <div class="relative w-full max-w-2xl max-h-full modal-animation modal-mobile-full modal-content mx-auto my-8">
             <div class="relative bg-white rounded-lg shadow-xl">
                 <div class="flex items-center justify-between p-5 border-b rounded-t bg-blue-600 text-white">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-edit mr-2"></i>Edit Attendance Record
                     </h3>
-                    <button type="button" class="text-white bg-transparent hover:bg-blue-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out close-edit-modal" onclick="closeEditModal()">
+                    <button type="button"
+                        class="text-white bg-transparent hover:bg-blue-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out close-edit-modal"
+                        onclick="closeEditModal()">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
                 <div id="editFormContent" class="p-4 md:p-6">
                     <div class="text-center py-8">
-                        <div class="spinner-border inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" role="status">
+                        <div class="spinner-border inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"
+                            role="status">
                             <span class="sr-only">Loading...</span>
                         </div>
                         <p class="mt-2 text-gray-600">Loading record data...</p>
@@ -3459,7 +4068,7 @@ $departments = [
         let isGlobalSelection = false;
 
         // Load saved selections from sessionStorage on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Load saved selections from storage
             loadSelectionsFromStorage();
 
@@ -3469,7 +4078,7 @@ $departments = [
                 // Remove any existing event listeners to avoid duplicates
                 clearBtn.replaceWith(clearBtn.cloneNode(true));
                 const newClearBtn = document.getElementById('clearGlobalSelection');
-                newClearBtn.addEventListener('click', function(e) {
+                newClearBtn.addEventListener('click', function (e) {
                     e.preventDefault();
                     clearGlobalSelection();
                 });
@@ -3598,7 +4207,7 @@ $departments = [
             updateGlobalSelectionUI();
         }
 
-        document.addEventListener('click', function(e) {
+        document.addEventListener('click', function (e) {
             // Handle clear selection button click
             if (e.target.closest('#clearGlobalSelection')) {
                 e.preventDefault();
@@ -3678,12 +4287,12 @@ $departments = [
         const sidebarOverlay = document.getElementById('sidebar-overlay');
 
         if (sidebarToggle && sidebarContainer) {
-            sidebarToggle.addEventListener('click', function() {
+            sidebarToggle.addEventListener('click', function () {
                 sidebarContainer.classList.toggle('active');
                 sidebarOverlay.classList.toggle('active');
             });
 
-            sidebarOverlay.addEventListener('click', function() {
+            sidebarOverlay.addEventListener('click', function () {
                 sidebarContainer.classList.remove('active');
                 sidebarOverlay.classList.remove('active');
             });
@@ -3697,13 +4306,13 @@ $departments = [
         const userDropdown = document.getElementById('user-dropdown');
 
         if (userMenuButton && userDropdown) {
-            userMenuButton.addEventListener('click', function(e) {
+            userMenuButton.addEventListener('click', function (e) {
                 e.stopPropagation();
                 userDropdown.classList.toggle('active');
                 this.classList.toggle('active');
             });
 
-            document.addEventListener('click', function(event) {
+            document.addEventListener('click', function (event) {
                 if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
                     userDropdown.classList.remove('active');
                     userMenuButton.classList.remove('active');
@@ -3719,7 +4328,7 @@ $departments = [
         const payrollDropdown = document.getElementById('payroll-dropdown');
 
         if (payrollToggle && payrollDropdown) {
-            payrollToggle.addEventListener('click', function(e) {
+            payrollToggle.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
 
@@ -3747,7 +4356,7 @@ $departments = [
             }
 
             // Add input event for real-time validation
-            bulkEmployeeIdInput.addEventListener('input', function() {
+            bulkEmployeeIdInput.addEventListener('input', function () {
                 // Clear the fields if input is empty
                 if (this.value.trim() === '') {
                     bulkEmployeeNameInput.value = '';
@@ -3759,7 +4368,7 @@ $departments = [
                 }
             });
 
-            bulkEmployeeIdInput.addEventListener('blur', async function() {
+            bulkEmployeeIdInput.addEventListener('blur', async function () {
                 const employeeId = this.value.trim();
 
                 if (employeeId.length === 0) {
@@ -3855,7 +4464,7 @@ $departments = [
             });
 
             // Allow Enter key to trigger the blur event
-            bulkEmployeeIdInput.addEventListener('keypress', function(e) {
+            bulkEmployeeIdInput.addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     this.blur();
@@ -3997,15 +4606,15 @@ $departments = [
         // QUICK FILL FUNCTIONS
         // ============================================
 
-        window.fillStandardTimes = function() {
+        window.fillStandardTimes = function () {
             fillAllTimes('08:00', '12:00', '13:00', '17:00');
         };
 
-        window.fillEarlyTimes = function() {
+        window.fillEarlyTimes = function () {
             fillAllTimes('07:30', '12:00', '13:00', '17:30');
         };
 
-        window.fillLateTimes = function() {
+        window.fillLateTimes = function () {
             fillAllTimes('08:30', '12:00', '13:00', '17:30');
         };
 
@@ -4033,7 +4642,7 @@ $departments = [
             showNotification(`Filled ${count} work day(s) with: AM ${amIn}-${amOut}, PM ${pmIn}-${pmOut}`, 'success');
         }
 
-        window.clearAllTimes = function() {
+        window.clearAllTimes = function () {
             const timeInputs = document.querySelectorAll('#dailyTimeTable input[type="time"]:not(:disabled)');
             let count = 0;
 
@@ -4051,7 +4660,7 @@ $departments = [
             }
         };
 
-        window.markWeekendsAsLeave = function() {
+        window.markWeekendsAsLeave = function () {
             const rows = document.querySelectorAll('#dailyTimeTable tr.weekend-row, #dailyTimeTable tr.holiday-row');
             let count = 0;
 
@@ -4068,7 +4677,7 @@ $departments = [
             showNotification(`Cleared ${count} time fields from weekends/holidays`, 'success');
         };
 
-        window.applyTemplateFromImage = function() {
+        window.applyTemplateFromImage = function () {
             const sampleData = {
                 12: {
                     am_in: '07:45',
@@ -4250,7 +4859,7 @@ $departments = [
 
             // File selection handler
             if (xlsxFileInput) {
-                xlsxFileInput.addEventListener('change', function(e) {
+                xlsxFileInput.addEventListener('change', function (e) {
                     const file = e.target.files[0];
                     if (file) {
                         handleFileSelection(file);
@@ -4262,14 +4871,14 @@ $departments = [
 
             // Remove file button handler
             if (removeXlsxFileBtn) {
-                removeXlsxFileBtn.addEventListener('click', function() {
+                removeXlsxFileBtn.addEventListener('click', function () {
                     removeSelectedFile();
                 });
             }
 
             // Form submission handler
             if (importForm) {
-                importForm.addEventListener('submit', function(e) {
+                importForm.addEventListener('submit', function (e) {
                     e.preventDefault();
                     handleImportSubmission(e);
                 });
@@ -4442,9 +5051,9 @@ $departments = [
                 }, 300);
 
                 fetch('import_attendance_xlsx.php', {
-                        method: 'POST',
-                        body: formData
-                    })
+                    method: 'POST',
+                    body: formData
+                })
                     .then(response => response.json())
                     .then(data => {
                         clearInterval(interval);
@@ -4513,30 +5122,30 @@ $departments = [
                                 errors: 0,
                                 message: 'Successfully imported 15 attendance records from JANUARY (1).xlsx',
                                 records: [{
-                                        employee: 'Jorel Vicente',
-                                        date: '2024-01-15',
-                                        total_hours: 8
-                                    },
-                                    {
-                                        employee: 'Maylin Cajayon',
-                                        date: '2024-01-15',
-                                        total_hours: 8.5
-                                    },
-                                    {
-                                        employee: 'Juan Dela Cruz',
-                                        date: '2024-01-15',
-                                        total_hours: 8
-                                    },
-                                    {
-                                        employee: 'Maria Santos',
-                                        date: '2024-01-15',
-                                        total_hours: 8
-                                    },
-                                    {
-                                        employee: 'Pedro Reyes',
-                                        date: '2024-01-15',
-                                        total_hours: 7.5
-                                    }
+                                    employee: 'Jorel Vicente',
+                                    date: '2024-01-15',
+                                    total_hours: 8
+                                },
+                                {
+                                    employee: 'Maylin Cajayon',
+                                    date: '2024-01-15',
+                                    total_hours: 8.5
+                                },
+                                {
+                                    employee: 'Juan Dela Cruz',
+                                    date: '2024-01-15',
+                                    total_hours: 8
+                                },
+                                {
+                                    employee: 'Maria Santos',
+                                    date: '2024-01-15',
+                                    total_hours: 8
+                                },
+                                {
+                                    employee: 'Pedro Reyes',
+                                    date: '2024-01-15',
+                                    total_hours: 7.5
+                                }
                                 ]
                             };
 
@@ -4557,8 +5166,8 @@ $departments = [
             }
 
             function observeModalClose(modal) {
-                const observer = new MutationObserver(function(mutations) {
-                    mutations.forEach(function(mutation) {
+                const observer = new MutationObserver(function (mutations) {
+                    mutations.forEach(function (mutation) {
                         if (mutation.attributeName === 'class' && modal.classList.contains('hidden')) {
                             // Modal closed - reset form
                             if (importForm) {
@@ -4587,7 +5196,7 @@ $departments = [
         }
 
         // Global function to remove sample file
-        window.removeSampleFile = function() {
+        window.removeSampleFile = function () {
             const sampleFileDisplay = document.getElementById('sampleFileDisplay');
             const xlsxFileInput = document.getElementById('xlsx_file');
 
@@ -4614,7 +5223,7 @@ $departments = [
         const exportBtn = document.getElementById('exportBtn');
 
         if (exportBtn) {
-            exportBtn.addEventListener('click', function(e) {
+            exportBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 openExportModal();
             });
@@ -4623,20 +5232,20 @@ $departments = [
         // Global Select All button
         const globalSelectAllBtn = document.getElementById('globalSelectAllBtn');
         if (globalSelectAllBtn) {
-            globalSelectAllBtn.addEventListener('click', function() {
+            globalSelectAllBtn.addEventListener('click', function () {
                 selectAllEmployeesGlobally();
             });
         }
 
         // Clear global selection
-        document.getElementById('clearGlobalSelection')?.addEventListener('click', function() {
+        document.getElementById('clearGlobalSelection')?.addEventListener('click', function () {
             clearGlobalSelection();
         });
 
         // Select All checkbox handler
         const selectAllCheckbox = document.getElementById('selectAllEmployees');
         if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', function() {
+            selectAllCheckbox.addEventListener('change', function () {
                 // If using global selection, clear it first
                 if (isGlobalSelection) {
                     clearGlobalSelection();
@@ -4652,7 +5261,7 @@ $departments = [
         }
 
         // Track checkbox changes
-        document.addEventListener('change', function(e) {
+        document.addEventListener('change', function (e) {
             if (e.target.classList.contains('employee-checkbox')) {
                 // If using global selection, clear it
                 if (isGlobalSelection) {
@@ -5067,8 +5676,8 @@ $departments = [
             employees.forEach(emp => {
                 const typeClass = emp.type === 'Permanent' ? 'bg-green-100 text-green-800' :
                     emp.type === 'Job Order' ? 'bg-blue-100 text-blue-800' :
-                    emp.type === 'Contractual' ? 'bg-purple-100 text-purple-800' :
-                    'bg-gray-100 text-gray-800';
+                        emp.type === 'Contractual' ? 'bg-purple-100 text-purple-800' :
+                            'bg-gray-100 text-gray-800';
 
                 const actionButton = emp.total_records > 0 ?
                     `<a href="?view_attendance=true&employee_id=${encodeURIComponent(emp.employee_id)}" class="action-btn view-btn" title="View Attendance Records">
@@ -5145,7 +5754,7 @@ $departments = [
 
         // Debounced search on input
         if (globalSearch) {
-            globalSearch.addEventListener('input', function() {
+            globalSearch.addEventListener('input', function () {
                 currentPage = 1; // Reset to first page on new search
                 if (searchTimeout) clearTimeout(searchTimeout);
                 searchTimeout = setTimeout(performSearch, 300);
@@ -5154,36 +5763,74 @@ $departments = [
 
         // Filter changes
         if (globalDepartment) {
-            globalDepartment.addEventListener('change', function() {
+            globalDepartment.addEventListener('change', function () {
                 currentPage = 1;
                 performSearch();
             });
         }
 
         if (globalStatus) {
-            globalStatus.addEventListener('change', function() {
+            globalStatus.addEventListener('change', function () {
                 currentPage = 1;
                 performSearch();
             });
         }
 
         // Pagination functions
-        window.changePage = function(page) {
-            if (page < 1 || page > totalPages) return;
-            currentPage = page;
-            performSearch();
+        // ============================================
+        // PAGINATION FUNCTIONS FOR EMPLOYEE SUMMARY
+        // ============================================
 
-            // Scroll to top of table
-            document.getElementById('employeeTableContainer').scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
+        window.changePage = function (page) {
+            if (page < 1 || page > totalPages) return;
+
+            // Get current filter values
+            const search = document.getElementById('global_search')?.value || '';
+            const department = document.getElementById('global_department')?.value || '';
+            const status = document.getElementById('global_status')?.value || '';
+
+            // Update URL with page parameter
+            const url = new URL(window.location.href);
+            url.searchParams.set('page', page);
+            url.searchParams.set('per_page', recordsPerPage);
+
+            if (search) url.searchParams.set('search', search);
+            else url.searchParams.delete('search');
+
+            if (department) url.searchParams.set('department', department);
+            else url.searchParams.delete('department');
+
+            if (status) url.searchParams.set('status_filter', status);
+            else url.searchParams.delete('status_filter');
+
+            // Navigate to new page
+            window.location.href = url.toString();
         };
 
-        window.changePerPage = function(perPage) {
+        window.changePerPage = function (perPage) {
             recordsPerPage = parseInt(perPage);
-            currentPage = 1;
-            performSearch();
+
+            // Update URL with new per_page value and reset to page 1
+            const url = new URL(window.location.href);
+            url.searchParams.set('per_page', recordsPerPage);
+            url.searchParams.set('page', 1);
+
+            // Preserve filters
+            const search = document.getElementById('global_search')?.value;
+            const department = document.getElementById('global_department')?.value;
+            const status = document.getElementById('global_status')?.value;
+
+            if (search) url.searchParams.set('search', search);
+            else url.searchParams.delete('search');
+
+            if (department) url.searchParams.set('department', department);
+            else url.searchParams.delete('department');
+
+            if (status) url.searchParams.set('status_filter', status);
+            else url.searchParams.delete('status_filter');
+
+            // Navigate to new page
+            window.location.href = url.toString();
         };
 
         function updatePaginationUI() {
@@ -5239,7 +5886,7 @@ $departments = [
         }
 
         // Filter clear functions
-        window.clearSearch = function() {
+        window.clearSearch = function () {
             if (globalSearch) {
                 globalSearch.value = '';
                 currentPage = 1;
@@ -5247,7 +5894,7 @@ $departments = [
             }
         };
 
-        window.clearDepartment = function() {
+        window.clearDepartment = function () {
             if (globalDepartment) {
                 globalDepartment.value = '';
                 currentPage = 1;
@@ -5255,7 +5902,7 @@ $departments = [
             }
         };
 
-        window.clearStatus = function() {
+        window.clearStatus = function () {
             if (globalStatus) {
                 globalStatus.value = '';
                 currentPage = 1;
@@ -5263,7 +5910,7 @@ $departments = [
             }
         };
 
-        window.clearAllFilters = function() {
+        window.clearAllFilters = function () {
             if (globalSearch) globalSearch.value = '';
             if (globalDepartment) globalDepartment.value = '';
             if (globalStatus) globalStatus.value = '';
@@ -5275,7 +5922,7 @@ $departments = [
         // EDIT ATTENDANCE FUNCTION
         // ============================================
 
-        window.editAttendance = function(attendanceId) {
+        window.editAttendance = function (attendanceId) {
             const modal = document.getElementById('editAttendanceModal');
 
             if (!modal) {
@@ -5409,7 +6056,7 @@ $departments = [
         // CLOSE EDIT MODAL FUNCTION
         // ============================================
 
-        window.closeEditModal = function() {
+        window.closeEditModal = function () {
             const modal = document.getElementById('editAttendanceModal');
             if (modal) {
                 try {
@@ -5422,7 +6069,7 @@ $departments = [
             }
         };
 
-        document.addEventListener('click', function(e) {
+        document.addEventListener('click', function (e) {
             if (e.target.classList.contains('close-edit-modal') ||
                 e.target.closest('.close-edit-modal') ||
                 (e.target.closest('button') && e.target.closest('button').hasAttribute('data-modal-hide') && e.target.closest('button').getAttribute('data-modal-hide') === 'editAttendanceModal')) {
@@ -5434,7 +6081,7 @@ $departments = [
         // DELETE ATTENDANCE FUNCTION
         // ============================================
 
-        window.deleteAttendance = function(attendanceId, employeeName, date) {
+        window.deleteAttendance = function (attendanceId, employeeName, date) {
             if (confirm(`Are you sure you want to delete the attendance record for ${employeeName} on ${date}?`)) {
                 const form = document.createElement('form');
                 form.method = 'POST';
@@ -5462,7 +6109,7 @@ $departments = [
             const dateInputs = document.querySelectorAll('input[type="date"]');
             dateInputs.forEach(input => {
                 if (input.id === 'filter_from_date' || input.id === 'filter_to_date' || input.id === 'date' || input.id === 'edit_date') {
-                    input.addEventListener('change', function() {
+                    input.addEventListener('change', function () {
                         const selectedDate = new Date(this.value);
                         if (selectedDate > today) {
                             this.value = today.toISOString().split('T')[0];
@@ -5479,13 +6126,12 @@ $departments = [
         // SHOW NOTIFICATION FUNCTION
         // ============================================
 
-        window.showNotification = function(message, type = 'success') {
+        window.showNotification = function (message, type = 'success') {
             const notification = document.createElement('div');
-            notification.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white ${
-                type === 'success' ? 'bg-green-500' : 
-                type === 'error' ? 'bg-red-500' : 
-                'bg-blue-500'
-            } transform transition-all duration-300 translate-y-0`;
+            notification.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' :
+                type === 'error' ? 'bg-red-500' :
+                    'bg-blue-500'
+                } transform transition-all duration-300 translate-y-0`;
 
             let icon = 'fa-check-circle';
             if (type === 'error') icon = 'fa-exclamation-circle';
@@ -5515,7 +6161,7 @@ $departments = [
         // SHOW IMPORT RESULTS FUNCTION
         // ============================================
 
-        window.showImportResults = function(data) {
+        window.showImportResults = function (data) {
             const modal = document.getElementById('importResultsModal');
             const header = document.getElementById('importResultsHeader');
             const content = document.getElementById('importResultsContent');
@@ -5525,15 +6171,13 @@ $departments = [
                 return;
             }
 
-            header.className = `flex items-center justify-between p-5 border-b rounded-t ${
-                data.success ? 'bg-green-600' : 'bg-red-600'
-            } text-white`;
+            header.className = `flex items-center justify-between p-5 border-b rounded-t ${data.success ? 'bg-green-600' : 'bg-red-600'
+                } text-white`;
 
             let html = `
                 <div class="text-center mb-4">
-                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full ${
-                        data.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                    } mb-4">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full ${data.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                } mb-4">
                         <i class="fas ${data.success ? 'fa-check-circle' : 'fa-exclamation-circle'} text-3xl"></i>
                     </div>
                     <h4 class="text-xl font-semibold ${data.success ? 'text-green-600' : 'text-red-600'} mb-2">
@@ -5602,9 +6246,9 @@ $departments = [
         // KEYBOARD NAVIGATION
         // ============================================
 
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Keyboard navigation for pagination
-            document.addEventListener('keydown', function(e) {
+            document.addEventListener('keydown', function (e) {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
                     return; // Don't interfere with form inputs
                 }
@@ -5625,6 +6269,182 @@ $departments = [
                 });
             }
         });
+    </script>
+    <script>
+        // ============================================
+        // MONTH AND YEAR FILTER FUNCTIONS
+        // ============================================
+
+        function applyMonthYearFilter() {
+            const month = document.getElementById('monthFilter').value;
+            const year = document.getElementById('yearFilter').value;
+
+            // Get current URL
+            const url = new URL(window.location.href);
+
+            // Update or remove month parameter
+            if (month) {
+                url.searchParams.set('month', month);
+            } else {
+                url.searchParams.delete('month');
+            }
+
+            // Update or remove year parameter
+            if (year) {
+                url.searchParams.set('year', year);
+            } else {
+                url.searchParams.delete('year');
+            }
+
+            // Make sure we keep view_attendance and employee_id
+            if (!url.searchParams.has('view_attendance')) {
+                url.searchParams.set('view_attendance', 'true');
+            }
+
+            // Get employee_id from current URL or from the page
+            let employeeId = url.searchParams.get('employee_id');
+            if (!employeeId) {
+                // Try to get from the page if not in URL
+                const urlParams = new URLSearchParams(window.location.search);
+                employeeId = urlParams.get('employee_id');
+                if (employeeId) {
+                    url.searchParams.set('employee_id', employeeId);
+                }
+            }
+
+            console.log('Applying filter with:', { month, year, employeeId });
+
+            // Reload with new filters
+            window.location.href = url.toString();
+        }
+
+        function clearMonthYearFilter() {
+            const url = new URL(window.location.href);
+
+            // Remove month and year parameters
+            url.searchParams.delete('month');
+            url.searchParams.delete('year');
+
+            // Make sure we keep view_attendance and employee_id
+            if (!url.searchParams.has('view_attendance')) {
+                url.searchParams.set('view_attendance', 'true');
+            }
+
+            // Get employee_id from current URL or from the page
+            let employeeId = url.searchParams.get('employee_id');
+            if (!employeeId) {
+                const urlParams = new URLSearchParams(window.location.search);
+                employeeId = urlParams.get('employee_id');
+                if (employeeId) {
+                    url.searchParams.set('employee_id', employeeId);
+                }
+            }
+
+            console.log('Clearing filters');
+
+            window.location.href = url.toString();
+        }
+
+        // Add event listeners for Enter key
+        document.addEventListener('DOMContentLoaded', function () {
+            const monthFilter = document.getElementById('monthFilter');
+            const yearFilter = document.getElementById('yearFilter');
+
+            if (monthFilter) {
+                monthFilter.addEventListener('keypress', function (e) {
+                    if (e.key === 'Enter') {
+                        applyMonthYearFilter();
+                    }
+                });
+            }
+
+            if (yearFilter) {
+                yearFilter.addEventListener('keypress', function (e) {
+                    if (e.key === 'Enter') {
+                        applyMonthYearFilter();
+                    }
+                });
+            }
+        });
+
+        // Optional: Add this for debugging
+        console.log('Current URL params:', new URLSearchParams(window.location.search).toString());
+    </script>
+    <script>
+        // ============================================
+        // ATTENDANCE PAGINATION FUNCTIONS
+        // ============================================
+
+        function changeAttendancePage(page) {
+            const url = new URL(window.location.href);
+
+            // Ensure page is at least 1 and an integer
+            page = Math.max(1, parseInt(page) || 1);
+
+            url.searchParams.set('att_page', page);
+
+            // Preserve existing filters
+            const month = document.getElementById('monthFilter')?.value;
+            const year = document.getElementById('yearFilter')?.value;
+
+            if (month) {
+                url.searchParams.set('month', month);
+            } else {
+                url.searchParams.delete('month');
+            }
+
+            if (year) {
+                url.searchParams.set('year', year);
+            } else {
+                url.searchParams.delete('year');
+            }
+
+            // Preserve per_page setting
+            const perPage = document.getElementById('attPerPage')?.value;
+            if (perPage) {
+                url.searchParams.set('per_page', perPage);
+            }
+
+            // Make sure we keep view_attendance and employee_id
+            url.searchParams.set('view_attendance', 'true');
+
+            window.location.href = url.toString();
+        }
+
+        function changeAttendancePerPage(perPage) {
+    const url = new URL(window.location.href);
+    
+    // Validate perPage
+    perPage = parseInt(perPage) || 10; // Changed from 20 to 10
+    const validValues = [10, 20, 50, 100];
+    if (!validValues.includes(perPage)) {
+        perPage = 10; // Changed from 20 to 10
+    }
+    
+    url.searchParams.set('per_page', perPage);
+    url.searchParams.set('att_page', '1'); // Reset to first page
+    
+    // Preserve existing filters
+    const month = document.getElementById('monthFilter')?.value;
+    const year = document.getElementById('yearFilter')?.value;
+    
+    if (month) {
+        url.searchParams.set('month', month);
+    } else {
+        url.searchParams.delete('month');
+    }
+    
+    if (year) {
+        url.searchParams.set('year', year);
+    } else {
+        url.searchParams.delete('year');
+    }
+    
+    // Make sure we keep view_attendance and employee_id
+    url.searchParams.set('view_attendance', 'true');
+    
+    window.location.href = url.toString();
+}
     </script>
 </body>
 
