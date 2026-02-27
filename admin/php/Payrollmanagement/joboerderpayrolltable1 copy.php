@@ -54,7 +54,6 @@ $is_full_month = ($selected_cutoff == 'full');
 // PAGINATION SETTINGS
 $records_per_page = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
 $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$search_term = isset($_GET['search']) ? trim($_GET['search']) : '';
 if ($current_page < 1) $current_page = 1;
 
 // Parse selected period
@@ -71,7 +70,7 @@ function getWorkingDays($start_date, $end_date)
 
     while ($current <= $end) {
         $day_of_week = date('N', $current);
-        if ($day_of_week <= 5) { // Monday to Friday
+        if ($day_of_week <= 5) {
             $working_days++;
         }
         $current = strtotime('+1 day', $current);
@@ -111,7 +110,7 @@ function ensurePayrollHistoryTable($pdo)
             CREATE TABLE payroll_history (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 employee_id INT NOT NULL,
-                employee_type VARCHAR(50) DEFAULT 'contractual',
+                employee_type VARCHAR(50) DEFAULT 'joborder',
                 payroll_period VARCHAR(7) NOT NULL,
                 payroll_cutoff VARCHAR(20) DEFAULT 'full',
                 monthly_salaries_wages DECIMAL(10,2) DEFAULT 0,
@@ -119,6 +118,8 @@ function ensurePayrollHistoryTable($pdo)
                 gross_amount DECIMAL(10,2) DEFAULT 0,
                 withholding_tax DECIMAL(10,2) DEFAULT 0,
                 sss DECIMAL(10,2) DEFAULT 0,
+                philhealth DECIMAL(10,2) DEFAULT 0,
+                pagibig DECIMAL(10,2) DEFAULT 0,
                 total_deductions DECIMAL(10,2) DEFAULT 0,
                 net_amount DECIMAL(10,2) DEFAULT 0,
                 days_present DECIMAL(5,2) DEFAULT 0,
@@ -130,7 +131,7 @@ function ensurePayrollHistoryTable($pdo)
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY unique_employee_period_cutoff (employee_id, payroll_period, payroll_cutoff)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
         return true;
     } else {
@@ -139,6 +140,8 @@ function ensurePayrollHistoryTable($pdo)
         $required_columns = [
             'withholding_tax' => "ALTER TABLE payroll_history ADD COLUMN withholding_tax DECIMAL(10,2) DEFAULT 0",
             'sss' => "ALTER TABLE payroll_history ADD COLUMN sss DECIMAL(10,2) DEFAULT 0",
+            'philhealth' => "ALTER TABLE payroll_history ADD COLUMN philhealth DECIMAL(10,2) DEFAULT 0",
+            'pagibig' => "ALTER TABLE payroll_history ADD COLUMN pagibig DECIMAL(10,2) DEFAULT 0",
             'other_comp' => "ALTER TABLE payroll_history ADD COLUMN other_comp DECIMAL(10,2) DEFAULT 0",
             'monthly_salaries_wages' => "ALTER TABLE payroll_history ADD COLUMN monthly_salaries_wages DECIMAL(10,2) DEFAULT 0",
             'gross_amount' => "ALTER TABLE payroll_history ADD COLUMN gross_amount DECIMAL(10,2) DEFAULT 0",
@@ -184,7 +187,7 @@ function ensurePayrollDeductionsTable($pdo)
                 deduction_description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (payroll_id) REFERENCES payroll_history(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
     }
 }
@@ -193,128 +196,6 @@ ensurePayrollHistoryTable($pdo);
 ensurePayrollDeductionsTable($pdo);
 
 $payroll_columns = $pdo->query("SHOW COLUMNS FROM payroll_history")->fetchAll(PDO::FETCH_COLUMN);
-
-// Function to get employee salary column name
-function getSalaryColumnName($pdo)
-{
-    try {
-        $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-        $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-
-        $possible_salary_columns = ['wages', 'monthly_salary', 'salary', 'basic_salary', 'rate_per_day', 'daily_rate'];
-
-        foreach ($possible_salary_columns as $col) {
-            if (in_array($col, $existing_columns)) {
-                return $col;
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error checking salary columns: " . $e->getMessage());
-    }
-
-    return null;
-}
-
-$salary_column = getSalaryColumnName($pdo);
-
-// Function to get employee's payroll data from database
-function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_salary = 0)
-{
-    $data = [
-        'other_comp' => 0,
-        'withholding_tax' => 0,
-        'sss' => 0,
-        'total_deductions' => 0,
-        'gross_amount' => $prorated_salary,
-        'net_amount' => $prorated_salary,
-        'days_present' => 0,
-        'status' => 'draft',
-        'payroll_id' => null,
-        'exists' => false
-    ];
-
-    try {
-        if ($cutoff == 'full') {
-            // For full month, get data from both halves and sum them
-            $stmt = $pdo->prepare("
-                SELECT 
-                    COALESCE(SUM(other_comp), 0) as other_comp,
-                    COALESCE(SUM(withholding_tax), 0) as withholding_tax,
-                    COALESCE(SUM(sss), 0) as sss,
-                    COALESCE(SUM(total_deductions), 0) as total_deductions,
-                    COALESCE(SUM(gross_amount), 0) as gross_amount,
-                    COALESCE(SUM(net_amount), 0) as net_amount,
-                    COALESCE(SUM(days_present), 0) as days_present,
-                    COUNT(*) as record_count
-                FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
-                    AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
-            ");
-            $stmt->execute([$employee_id, $period]);
-            $result = $stmt->fetch();
-
-            if ($result && $result['record_count'] > 0) {
-                $data['other_comp'] = floatval($result['other_comp']);
-                $data['withholding_tax'] = floatval($result['withholding_tax']);
-                $data['sss'] = floatval($result['sss']);
-                $data['total_deductions'] = floatval($result['total_deductions']);
-                $data['gross_amount'] = floatval($result['gross_amount']);
-                $data['net_amount'] = floatval($result['net_amount']);
-                $data['days_present'] = floatval($result['days_present']);
-                $data['exists'] = true;
-
-                // If total_deductions is 0 but we have individual taxes, calculate it
-                if ($data['total_deductions'] == 0 && ($data['withholding_tax'] > 0 || $data['sss'] > 0)) {
-                    $data['total_deductions'] = $data['withholding_tax'] + $data['sss'];
-                }
-
-                // If net_amount is 0 but we have gross and deductions, calculate it
-                if ($data['net_amount'] == 0 && $data['gross_amount'] > 0) {
-                    $data['net_amount'] = $data['gross_amount'] - $data['total_deductions'];
-                    if ($data['net_amount'] < 0) $data['net_amount'] = 0;
-                }
-            }
-        } else {
-            // For specific half, get just that half's data
-            $stmt = $pdo->prepare("
-                SELECT id, other_comp, withholding_tax, sss, total_deductions, gross_amount, net_amount, days_present, status
-                FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
-                    AND payroll_period = ? AND payroll_cutoff = ?
-            ");
-            $stmt->execute([$employee_id, $period, $cutoff]);
-            $result = $stmt->fetch();
-
-            if ($result) {
-                $data['other_comp'] = floatval($result['other_comp'] ?? 0);
-                $data['withholding_tax'] = floatval($result['withholding_tax'] ?? 0);
-                $data['sss'] = floatval($result['sss'] ?? 0);
-                $data['total_deductions'] = floatval($result['total_deductions'] ?? 0);
-                $data['gross_amount'] = floatval($result['gross_amount'] ?? 0);
-                $data['net_amount'] = floatval($result['net_amount'] ?? 0);
-                $data['days_present'] = floatval($result['days_present'] ?? 0);
-                $data['status'] = $result['status'] ?? 'draft';
-                $data['payroll_id'] = $result['id'] ?? null;
-                $data['exists'] = true;
-
-                // If total_deductions is 0 but we have individual taxes, calculate it
-                if ($data['total_deductions'] == 0 && ($data['withholding_tax'] > 0 || $data['sss'] > 0)) {
-                    $data['total_deductions'] = $data['withholding_tax'] + $data['sss'];
-                }
-
-                // If net_amount is 0 but we have gross and deductions, calculate it
-                if ($data['net_amount'] == 0 && $data['gross_amount'] > 0) {
-                    $data['net_amount'] = $data['gross_amount'] - $data['total_deductions'];
-                    if ($data['net_amount'] < 0) $data['net_amount'] = 0;
-                }
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error fetching payroll data: " . $e->getMessage());
-    }
-
-    return $data;
-}
 
 // Handle AJAX requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
@@ -335,66 +216,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
 
             $offset = ($page - 1) * $per_page;
 
-            $contractual_employees_paginated = [];
+            $joborder_employees_paginated = [];
             $total_employees = 0;
 
             try {
-                $table_check = $pdo->query("SHOW TABLES LIKE 'contractofservice'");
+                // Check if job_order table exists
+                $table_check = $pdo->query("SHOW TABLES LIKE 'job_order'");
                 if ($table_check->rowCount() == 0) {
-                    throw new Exception("contractofservice table does not exist");
+                    throw new Exception("job_order table does not exist");
                 }
 
-                $count_sql = "SELECT COUNT(*) as total FROM contractofservice WHERE status = 'active'";
+                // Build SELECT query based on your actual job_order table structure
+                $count_sql = "SELECT COUNT(*) as total FROM job_order WHERE is_archived = 0 OR is_archived IS NULL";
                 if (!empty($search)) {
-                    $count_sql .= " AND (employee_id LIKE :search OR first_name LIKE :search OR last_name LIKE :search OR CONCAT(first_name, ' ', last_name) LIKE :search OR designation LIKE :search OR office LIKE :search)";
+                    $count_sql .= " AND (employee_id LIKE :search OR employee_name LIKE :search OR occupation LIKE :search OR office LIKE :search)";
                 }
 
                 $count_stmt = $pdo->prepare($count_sql);
                 if (!empty($search)) {
-                    $search_term_param = "%$search%";
-                    $count_stmt->bindParam(':search', $search_term_param);
+                    $search_term = "%$search%";
+                    $count_stmt->bindParam(':search', $search_term);
                 }
                 $count_stmt->execute();
                 $total_employees = $count_stmt->fetchColumn();
 
-                $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-                $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-
-                $select_fields = "id as user_id, employee_id, CONCAT(first_name, ' ', last_name) as full_name, first_name, last_name, designation as position, office as department, period_from, period_to, status, email_address, mobile_number";
-
-                if (in_array('contribution', $existing_columns)) {
-                    $select_fields .= ", contribution";
-                }
-
-                // Get salary column dynamically
-                $salary_col = getSalaryColumnName($pdo);
-                if ($salary_col) {
-                    if ($salary_col == 'rate_per_day' || $salary_col == 'daily_rate') {
-                        $select_fields .= ", ($salary_col * 22) as monthly_salary_value";
-                    } else {
-                        $select_fields .= ", $salary_col as monthly_salary_value";
-                    }
-                } else {
-                    $select_fields .= ", 0 as monthly_salary_value";
-                }
-
+                // Select fields from job_order table
                 $sql = "
-                    SELECT $select_fields
-                    FROM contractofservice 
-                    WHERE status = 'active'
+                    SELECT 
+                        id as user_id, 
+                        employee_id, 
+                        employee_name as full_name,
+                        occupation as position, 
+                        office as department,
+                        rate_per_day,
+                        sss_contribution,
+                        ctc_number,
+                        ctc_date,
+                        place_of_issue,
+                        mobile_number,
+                        email_address,
+                        joining_date,
+                        eligibility
+                    FROM job_order 
+                    WHERE is_archived = 0 OR is_archived IS NULL
                 ";
 
                 if (!empty($search)) {
-                    $sql .= " AND (employee_id LIKE :search OR first_name LIKE :search OR last_name LIKE :search OR CONCAT(first_name, ' ', last_name) LIKE :search OR designation LIKE :search OR office LIKE :search)";
+                    $sql .= " AND (employee_id LIKE :search OR employee_name LIKE :search OR occupation LIKE :search OR office LIKE :search)";
                 }
 
-                $sql .= " ORDER BY last_name, first_name LIMIT :offset, :per_page";
+                $sql .= " ORDER BY employee_name LIMIT :offset, :per_page";
 
                 $stmt = $pdo->prepare($sql);
 
                 if (!empty($search)) {
-                    $search_term_param = "%$search%";
-                    $stmt->bindParam(':search', $search_term_param);
+                    $search_term = "%$search%";
+                    $stmt->bindParam(':search', $search_term);
                 }
                 $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
                 $stmt->bindParam(':per_page', $per_page, PDO::PARAM_INT);
@@ -463,70 +340,203 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     $employee['days_present'] = $attendance_days;
                     $employee['total_hours'] = $total_hours;
 
-                    $monthly_salary = floatval($employee['monthly_salary_value'] ?? 0);
-                    $daily_rate = $monthly_salary / 22;
-                    $prorated_salary = $daily_rate * $attendance_days;
+                    // Get rate_per_day directly from job_order table
+                    $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
 
-                    // Get payroll data from database
-                    $payroll_data = getEmployeePayrollData($pdo, $employee['user_id'], $period, $cutoff, $prorated_salary);
+                    // Calculate monthly salary equivalent (22 working days)
+                    $monthly_salary = $rate_per_day * 22;
 
-                    $employee['other_comp'] = $payroll_data['other_comp'];
-                    $employee['withholding_tax'] = $payroll_data['withholding_tax'];
-                    $employee['sss'] = $payroll_data['sss'];
-                    $employee['total_deductions'] = $payroll_data['total_deductions'];
-                    $employee['net_amount'] = $payroll_data['net_amount'];
-                    $employee['gross_amount'] = $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : $prorated_salary + $payroll_data['other_comp'];
+                    // Calculate prorated salary based on days present
+                    $prorated_salary = $rate_per_day * $attendance_days;
+
+                    // Initialize variables
+                    $other_comp = 0;
+                    $withholding_tax = 0;
+                    $sss = 0;
+                    $philhealth = 0;
+                    $pagibig = 0;
+                    $total_deductions = 0;
+                    $net_amount = 0;
+                    $gross_amount = $prorated_salary;
+
+                    // Get saved payroll data from database
+                    try {
+                        $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_history'");
+                        if ($table_check->rowCount() > 0) {
+                            if ($cutoff == 'full') {
+                                // For full month, get data from both halves and sum them
+                                $payroll_stmt = $pdo->prepare("
+                                    SELECT 
+                                        SUM(other_comp) as other_comp,
+                                        SUM(withholding_tax) as withholding_tax,
+                                        SUM(sss) as sss,
+                                        SUM(philhealth) as philhealth,
+                                        SUM(pagibig) as pagibig,
+                                        SUM(total_deductions) as total_deductions,
+                                        SUM(net_amount) as net_amount,
+                                        SUM(gross_amount) as gross_amount
+                                    FROM payroll_history 
+                                    WHERE employee_id = ? AND employee_type = 'joborder' 
+                                        AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
+                                ");
+                                $payroll_stmt->execute([$employee['user_id'], $period]);
+                                $payroll_data = $payroll_stmt->fetch();
+
+                                if ($payroll_data && ($payroll_data['gross_amount'] > 0 || $payroll_data['total_deductions'] > 0 || $payroll_data['net_amount'] > 0)) {
+                                    $other_comp = floatval($payroll_data['other_comp'] ?? 0);
+                                    $withholding_tax = floatval($payroll_data['withholding_tax'] ?? 0);
+                                    $sss = floatval($payroll_data['sss'] ?? 0);
+                                    $philhealth = floatval($payroll_data['philhealth'] ?? 0);
+                                    $pagibig = floatval($payroll_data['pagibig'] ?? 0);
+                                    $total_deductions = floatval($payroll_data['total_deductions'] ?? ($withholding_tax + $sss + $philhealth + $pagibig));
+                                    $gross_amount = floatval($payroll_data['gross_amount'] ?? $prorated_salary + $other_comp);
+                                    $net_amount = floatval($payroll_data['net_amount'] ?? ($gross_amount - $total_deductions));
+
+                                    if ($net_amount == 0 && ($gross_amount > 0 || $total_deductions > 0)) {
+                                        $net_amount = $gross_amount - $total_deductions;
+                                        if ($net_amount < 0) $net_amount = 0;
+                                    }
+                                } else {
+                                    $gross_amount = $prorated_salary + $other_comp;
+                                }
+                            } else {
+                                // For specific half, get just that half's data
+                                $payroll_stmt = $pdo->prepare("
+                                    SELECT 
+                                        other_comp, withholding_tax, sss, philhealth, pagibig,
+                                        total_deductions, net_amount, gross_amount
+                                    FROM payroll_history 
+                                    WHERE employee_id = ? AND employee_type = 'joborder' 
+                                        AND payroll_period = ? AND payroll_cutoff = ?
+                                ");
+                                $payroll_stmt->execute([$employee['user_id'], $period, $cutoff]);
+                                $payroll_data = $payroll_stmt->fetch();
+
+                                if ($payroll_data) {
+                                    $other_comp = floatval($payroll_data['other_comp'] ?? 0);
+                                    $withholding_tax = floatval($payroll_data['withholding_tax'] ?? 0);
+                                    $sss = floatval($payroll_data['sss'] ?? 0);
+                                    $philhealth = floatval($payroll_data['philhealth'] ?? 0);
+                                    $pagibig = floatval($payroll_data['pagibig'] ?? 0);
+                                    $total_deductions = floatval($payroll_data['total_deductions'] ?? ($withholding_tax + $sss + $philhealth + $pagibig));
+                                    $gross_amount = floatval($payroll_data['gross_amount'] ?? $prorated_salary + $other_comp);
+                                    $net_amount = floatval($payroll_data['net_amount'] ?? ($gross_amount - $total_deductions));
+
+                                    if ($net_amount == 0 && ($gross_amount > 0 || $total_deductions > 0)) {
+                                        $net_amount = $gross_amount - $total_deductions;
+                                        if ($net_amount < 0) $net_amount = 0;
+                                    }
+                                } else {
+                                    $gross_amount = $prorated_salary + $other_comp;
+                                }
+                            }
+                        } else {
+                            $gross_amount = $prorated_salary + $other_comp;
+                        }
+                    } catch (Exception $e) {
+                        error_log("Payroll data fetch error: " . $e->getMessage());
+                        $gross_amount = $prorated_salary + $other_comp;
+                    }
+
+                    // Ensure all values are set
+                    $employee['other_comp'] = $other_comp;
+                    $employee['withholding_tax'] = $withholding_tax;
+                    $employee['sss'] = $sss;
+                    $employee['philhealth'] = $philhealth;
+                    $employee['pagibig'] = $pagibig;
+
+                    // Calculate total deductions properly
+                    $employee['total_deductions'] = $total_deductions > 0 ? $total_deductions : ($withholding_tax + $sss + $philhealth + $pagibig);
+
+                    // Calculate net amount properly with other_comp included in gross
+                    if ($net_amount > 0) {
+                        $employee['net_amount'] = $net_amount;
+                    } else {
+                        $employee['net_amount'] = $gross_amount - $employee['total_deductions'];
+                    }
+                    if ($employee['net_amount'] < 0) $employee['net_amount'] = 0;
+
                     $employee['monthly_salary'] = $monthly_salary;
-                    $employee['daily_rate'] = $daily_rate;
+                    $employee['rate_per_day'] = $rate_per_day;
+                    $employee['daily_rate'] = $rate_per_day; // Alias for consistency
                     $employee['prorated_salary'] = $prorated_salary;
-                    $employee['payroll_status'] = $payroll_data['status'];
-                    $employee['payroll_id'] = $payroll_data['payroll_id'];
-                    $employee['payroll_exists'] = $payroll_data['exists'];
+                    $employee['gross_amount'] = $gross_amount;
                 }
 
-                $contractual_employees_paginated = $employees;
+                $joborder_employees_paginated = $employees;
             } catch (Exception $e) {
                 error_log("Database error: " . $e->getMessage());
-                $contractual_employees_paginated = [];
+                $joborder_employees_paginated = [];
                 $total_employees = 0;
             }
 
-            // Calculate totals
             $total_monthly_salaries_wages = 0;
             $total_other_comp = 0;
             $total_gross_amount = 0;
             $total_withholding_tax = 0;
             $total_sss = 0;
+            $total_philhealth = 0;
+            $total_pagibig = 0;
             $total_deductions = 0;
             $total_net_amount = 0;
 
-            foreach ($contractual_employees_paginated as $employee) {
+            foreach ($joborder_employees_paginated as $employee) {
                 $total_monthly_salaries_wages += floatval($employee['prorated_salary'] ?? 0);
                 $total_other_comp += floatval($employee['other_comp'] ?? 0);
                 $total_gross_amount += floatval($employee['gross_amount'] ?? 0);
                 $total_withholding_tax += floatval($employee['withholding_tax'] ?? 0);
                 $total_sss += floatval($employee['sss'] ?? 0);
-                $total_deductions += floatval($employee['total_deductions'] ?? 0);
-                $total_net_amount += floatval($employee['net_amount'] ?? 0);
+                $total_philhealth += floatval($employee['philhealth'] ?? 0);
+                $total_pagibig += floatval($employee['pagibig'] ?? 0);
+
+                // Use saved total_deductions if available, otherwise calculate
+                $emp_total_deductions = floatval($employee['total_deductions'] ?? 0);
+                if ($emp_total_deductions == 0) {
+                    $emp_total_deductions = floatval($employee['withholding_tax'] ?? 0) +
+                        floatval($employee['sss'] ?? 0) +
+                        floatval($employee['philhealth'] ?? 0) +
+                        floatval($employee['pagibig'] ?? 0);
+                }
+                $total_deductions += $emp_total_deductions;
+
+                // Use saved net_amount if available, otherwise calculate
+                $emp_net_amount = floatval($employee['net_amount'] ?? 0);
+                if ($emp_net_amount == 0) {
+                    $gross = floatval($employee['gross_amount'] ?? 0);
+                    $ded = $emp_total_deductions;
+                    $emp_net_amount = ($gross - $ded);
+                    if ($emp_net_amount < 0) $emp_net_amount = 0;
+                }
+                $total_net_amount += $emp_net_amount;
             }
 
             ob_start();
             $counter = $offset + 1;
             $is_full_month_ajax = ($cutoff == 'full');
 
-            foreach ($contractual_employees_paginated as $employee):
+            foreach ($joborder_employees_paginated as $employee):
                 $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-                $daily_rate = floatval($employee['daily_rate'] ?? 0);
+                $daily_rate = floatval($employee['rate_per_day'] ?? 0);
                 $prorated_salary = floatval($employee['prorated_salary'] ?? 0);
                 $other_comp = floatval($employee['other_comp'] ?? 0);
                 $days_present = floatval($employee['days_present'] ?? 0);
                 $gross_amount = floatval($employee['gross_amount'] ?? 0);
                 $withholding_tax = floatval($employee['withholding_tax'] ?? 0);
                 $sss = floatval($employee['sss'] ?? 0);
+                $philhealth = floatval($employee['philhealth'] ?? 0);
+                $pagibig = floatval($employee['pagibig'] ?? 0);
+
+                // Get saved total_deductions and net_amount from database
                 $total_deductions_row = floatval($employee['total_deductions'] ?? 0);
+                if ($total_deductions_row == 0) {
+                    $total_deductions_row = $withholding_tax + $sss + $philhealth + $pagibig;
+                }
+
                 $net_amount_row = floatval($employee['net_amount'] ?? 0);
-                $payroll_id = $employee['payroll_id'] ?? null;
-                $payroll_exists = $employee['payroll_exists'] ?? false;
+                if ($net_amount_row == 0) {
+                    $net_amount_row = $gross_amount - $total_deductions_row;
+                }
+                if ($net_amount_row < 0) $net_amount_row = 0;
 
                 $has_attendance = ($days_present > 0);
                 $row_class = $has_attendance ? '' : 'no-attendance';
@@ -536,10 +546,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                 $full_month_readonly = $is_full_month_ajax ? 'readonly disabled' : '';
                 $full_month_style = $is_full_month_ajax ? 'background-color: #f0f0f0; color: #888; cursor: not-allowed;' : '';
 ?>
-                <tr class="bg-white border-b hover:bg-gray-50 payroll-row <?php echo $row_class; ?>" data-employee-id="<?php echo $employee['user_id']; ?>" data-payroll-id="<?php echo $payroll_id; ?>" data-payroll-exists="<?php echo $payroll_exists ? '1' : '0'; ?>">
-                    <td class="text-center">
-                        <input type="checkbox" class="employee-checkbox" value="<?php echo $employee['user_id']; ?>" data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>">
-                    </td>
+                <tr class="bg-white border-b hover:bg-gray-50 payroll-row <?php echo $row_class; ?>" data-employee-id="<?php echo $employee['user_id']; ?>">
                     <td class="text-center"><?php echo $counter++; ?></td>
                     <td class="font-medium"><?php echo htmlspecialchars($employee['employee_id']); ?></td>
                     <td class="font-medium">
@@ -561,7 +568,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="daily_rate[]"
                             class="payroll-input readonly disabled-field daily-rate"
-                            value="<?php echo number_format($daily_rate, 2, '.', ''); ?>"
+                            value="<?php echo $daily_rate; ?>"
                             readonly
                             disabled
                             tabindex="-1">
@@ -570,7 +577,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="monthly_salaries_wages[]"
                             class="payroll-input readonly disabled-field monthly-salaries-wages"
-                            value="<?php echo number_format($monthly_salary, 2, '.', ''); ?>"
+                            value="<?php echo $monthly_salary; ?>"
                             readonly
                             disabled
                             tabindex="-1">
@@ -579,7 +586,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="other_comp[]"
                             class="payroll-input other-comp <?php echo $is_full_month_ajax ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                            value="<?php echo number_format($other_comp, 2, '.', ''); ?>"
+                            value="<?php echo $other_comp; ?>"
                             min="0"
                             step="0.01"
                             data-employee-id="<?php echo $employee['user_id']; ?>"
@@ -592,7 +599,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="gross_amount[]"
                             class="payroll-input gross-amount readonly disabled-field <?php echo ($gross_amount <= 0) ? 'zero-amount' : ''; ?>"
-                            value="<?php echo number_format($gross_amount, 2, '.', ''); ?>"
+                            value="<?php echo $gross_amount; ?>"
                             readonly
                             disabled
                             tabindex="-1">
@@ -601,7 +608,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="withholding_tax[]"
                             class="payroll-input withholding-tax <?php echo $is_full_month_ajax ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                            value="<?php echo number_format($withholding_tax, 2, '.', ''); ?>"
+                            value="<?php echo $withholding_tax; ?>"
                             min="0"
                             step="0.01"
                             data-employee-id="<?php echo $employee['user_id']; ?>"
@@ -614,7 +621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="sss[]"
                             class="payroll-input sss <?php echo $is_full_month_ajax ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                            value="<?php echo number_format($sss, 2, '.', ''); ?>"
+                            value="<?php echo $sss; ?>"
                             min="0"
                             step="0.01"
                             data-employee-id="<?php echo $employee['user_id']; ?>"
@@ -625,9 +632,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     </td>
                     <td>
                         <input type="number"
+                            name="philhealth[]"
+                            class="payroll-input philhealth <?php echo $is_full_month_ajax ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                            value="<?php echo $philhealth; ?>"
+                            min="0"
+                            step="0.01"
+                            data-employee-id="<?php echo $employee['user_id']; ?>"
+                            data-field="philhealth"
+                            <?php echo $full_month_readonly; ?>
+                            <?php echo $is_full_month_ajax ? 'title="PhilHealth Contribution can only be edited in Half Month views"' : ''; ?>
+                            style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td>
+                        <input type="number"
+                            name="pagibig[]"
+                            class="payroll-input pagibig <?php echo $is_full_month_ajax ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                            value="<?php echo $pagibig; ?>"
+                            min="0"
+                            step="0.01"
+                            data-employee-id="<?php echo $employee['user_id']; ?>"
+                            data-field="pagibig"
+                            <?php echo $full_month_readonly; ?>
+                            <?php echo $is_full_month_ajax ? 'title="Pag-IBIG Contribution can only be edited in Half Month views"' : ''; ?>
+                            style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td>
+                        <input type="number"
                             name="total_deduction[]"
                             class="payroll-input total-deduction readonly disabled-field"
-                            value="<?php echo number_format($total_deductions_row, 2, '.', ''); ?>"
+                            value="<?php echo $total_deductions_row; ?>"
                             readonly
                             disabled
                             tabindex="-1">
@@ -636,7 +669,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                         <input type="number"
                             name="net_amount[]"
                             class="payroll-input net-amount readonly disabled-field <?php echo ($net_amount_row <= 0) ? 'zero-amount' : ''; ?>"
-                            value="<?php echo number_format($net_amount_row, 2, '.', ''); ?>"
+                            value="<?php echo $net_amount_row; ?>"
                             readonly
                             disabled
                             tabindex="-1">
@@ -646,16 +679,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                             <button type="button" class="action-btn view-btn" onclick="viewEmployeeDetails(<?php echo $employee['user_id']; ?>, '<?php echo $period; ?>', '<?php echo $cutoff; ?>')">
                                 <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
                             </button>
-                            <?php if (!$is_full_month_ajax && ($payroll_status == 'pending' || $payroll_status == 'draft')): ?>
-                                <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
-                                    <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
-                                </button>
-                            <?php endif; ?>
-                            <?php if ($payroll_id): ?>
-                                <button type="button" class="action-btn bg-purple-500 text-white hover:bg-purple-600" onclick="viewDeductions(<?php echo $payroll_id; ?>)">
-                                    <i class="fas fa-chart-pie"></i> <span class="hidden md:inline">Deductions</span>
-                                </button>
-                            <?php endif; ?>
+                            <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
+                                <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -701,6 +727,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     'total_gross_amount' => number_format($total_gross_amount, 2),
                     'total_withholding_tax' => number_format($total_withholding_tax, 2),
                     'total_sss' => number_format($total_sss, 2),
+                    'total_philhealth' => number_format($total_philhealth, 2),
+                    'total_pagibig' => number_format($total_pagibig, 2),
                     'total_deductions' => number_format($total_deductions, 2),
                     'total_net_amount' => number_format($total_net_amount, 2)
                 ]
@@ -708,7 +736,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
             exit();
         }
 
-        // Save Other Compensation
+        // Save Other Compensation - FIXED: Using INSERT ... ON DUPLICATE KEY UPDATE
         if ($_POST['ajax_action'] === 'save_other_comp') {
             $employee_id = intval($_POST['employee_id']);
             $other_comp = floatval($_POST['other_comp']);
@@ -725,52 +753,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
             }
 
             try {
-                $pdo->beginTransaction();
-
-                // Check if record exists
-                $check_stmt = $pdo->prepare("
-                    SELECT id, other_comp, gross_amount, withholding_tax, sss, total_deductions, net_amount
-                    FROM payroll_history 
-                    WHERE employee_id = ? AND employee_type = 'contractual' 
-                        AND payroll_period = ? AND payroll_cutoff = ?
-                ");
-                $check_stmt->execute([$employee_id, $period, $cutoff]);
-                $existing = $check_stmt->fetch();
-
                 // Get employee data to recalculate gross amount
                 $emp_stmt = $pdo->prepare("
-                    SELECT id, employee_id 
-                    FROM contractofservice 
+                    SELECT id, employee_id, rate_per_day
+                    FROM job_order 
                     WHERE id = ? OR employee_id = ?
                 ");
                 $emp_stmt->execute([$employee_id, $employee_id]);
                 $employee = $emp_stmt->fetch();
 
-                $monthly_salary = 0;
+                $rate_per_day = 0;
                 $days_present = 0;
 
                 if ($employee) {
-                    // Get salary using the salary column function
-                    $salary_col = getSalaryColumnName($pdo);
-
-                    if ($salary_col) {
-                        $salary_stmt = $pdo->prepare("
-                            SELECT $salary_col as salary_value 
-                            FROM contractofservice 
-                            WHERE id = ? OR employee_id = ?
-                        ");
-                        $salary_stmt->execute([$employee_id, $employee_id]);
-                        $salary_data = $salary_stmt->fetch();
-
-                        if ($salary_data) {
-                            $salary_value = floatval($salary_data['salary_value'] ?? 0);
-                            if ($salary_col == 'rate_per_day' || $salary_col == 'daily_rate') {
-                                $monthly_salary = $salary_value * 22;
-                            } else {
-                                $monthly_salary = $salary_value;
-                            }
-                        }
-                    }
+                    $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
 
                     // Get days present from attendance
                     $year_month = explode('-', $period);
@@ -794,81 +790,107 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     $days_present = floatval($att_data['days_present'] ?? 0);
                 }
 
-                $daily_rate = $monthly_salary / 22;
-                $prorated_salary = $daily_rate * $days_present;
+                $prorated_salary = $rate_per_day * $days_present;
 
-                // Get existing withholding tax and sss
+                // Get existing deductions if any
+                $existing_stmt = $pdo->prepare("
+                    SELECT withholding_tax, sss, philhealth, pagibig
+                    FROM payroll_history 
+                    WHERE employee_id = ? AND employee_type = 'joborder' 
+                        AND payroll_period = ? AND payroll_cutoff = ?
+                ");
+                $existing_stmt->execute([$employee_id, $period, $cutoff]);
+                $existing = $existing_stmt->fetch();
+
                 $withholding_tax = $existing ? floatval($existing['withholding_tax'] ?? 0) : 0;
                 $sss = $existing ? floatval($existing['sss'] ?? 0) : 0;
+                $philhealth = $existing ? floatval($existing['philhealth'] ?? 0) : 0;
+                $pagibig = $existing ? floatval($existing['pagibig'] ?? 0) : 0;
 
                 // Calculate new gross amount with updated other_comp
                 $gross_amount = $prorated_salary + $other_comp;
 
                 // Calculate total deductions and net amount
-                $total_deductions = $withholding_tax + $sss;
+                $total_deductions = $withholding_tax + $sss + $philhealth + $pagibig;
                 $net_amount = $gross_amount - $total_deductions;
                 if ($net_amount < 0) $net_amount = 0;
 
-                if ($existing) {
-                    // Update existing record
-                    $update_sql = "UPDATE payroll_history SET 
-                        other_comp = ?,
-                        gross_amount = ?,
-                        total_deductions = ?,
-                        net_amount = ?,
-                        updated_at = NOW()
-                        WHERE id = ?";
-                    $update_stmt = $pdo->prepare($update_sql);
-                    $update_stmt->execute([
-                        $other_comp,
-                        $gross_amount,
-                        $total_deductions,
-                        $net_amount,
-                        $existing['id']
-                    ]);
+                // Use INSERT ... ON DUPLICATE KEY UPDATE to avoid duplicate key errors
+                $columns_to_check = ['other_comp', 'gross_amount', 'total_deductions', 'net_amount'];
+                $columns_present = array_intersect($columns_to_check, $payroll_columns);
 
-                    $pdo->commit();
+                $insert_fields = ['employee_id', 'employee_type', 'payroll_period', 'payroll_cutoff', 'status'];
+                $insert_values = [$employee_id, 'joborder', $period, $cutoff, 'draft'];
+                $update_fields = [];
 
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'Other compensation updated successfully',
-                        'id' => $existing['id'],
-                        'gross_amount' => $gross_amount,
-                        'total_deductions' => $total_deductions,
-                        'net_amount' => $net_amount
-                    ]);
-                } else {
-                    // Insert new record
-                    $insert_sql = "INSERT INTO payroll_history 
-                        (employee_id, employee_type, payroll_period, payroll_cutoff, other_comp, gross_amount, total_deductions, net_amount, days_present, status) 
-                        VALUES (?, 'contractual', ?, ?, ?, ?, ?, ?, ?, 'draft')";
-                    $insert_stmt = $pdo->prepare($insert_sql);
-                    $insert_stmt->execute([
-                        $employee_id,
-                        $period,
-                        $cutoff,
-                        $other_comp,
-                        $gross_amount,
-                        $total_deductions,
-                        $net_amount,
-                        $days_present
-                    ]);
-
-                    $new_id = $pdo->lastInsertId();
-
-                    $pdo->commit();
-
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'Other compensation saved successfully',
-                        'id' => $new_id,
-                        'gross_amount' => $gross_amount,
-                        'total_deductions' => $total_deductions,
-                        'net_amount' => $net_amount
-                    ]);
+                if (in_array('other_comp', $columns_present)) {
+                    $insert_fields[] = 'other_comp';
+                    $insert_values[] = $other_comp;
+                    $update_fields[] = "other_comp = VALUES(other_comp)";
                 }
+
+                if (in_array('gross_amount', $columns_present)) {
+                    $insert_fields[] = 'gross_amount';
+                    $insert_values[] = $gross_amount;
+                    $update_fields[] = "gross_amount = VALUES(gross_amount)";
+                }
+
+                if (in_array('total_deductions', $columns_present)) {
+                    $insert_fields[] = 'total_deductions';
+                    $insert_values[] = $total_deductions;
+                    $update_fields[] = "total_deductions = VALUES(total_deductions)";
+                }
+
+                if (in_array('net_amount', $columns_present)) {
+                    $insert_fields[] = 'net_amount';
+                    $insert_values[] = $net_amount;
+                    $update_fields[] = "net_amount = VALUES(net_amount)";
+                }
+
+                if (in_array('days_present', $payroll_columns)) {
+                    $insert_fields[] = 'days_present';
+                    $insert_values[] = $days_present;
+                    $update_fields[] = "days_present = VALUES(days_present)";
+                }
+
+                $update_fields[] = "updated_at = NOW()";
+
+                $placeholders = array_fill(0, count($insert_fields), '?');
+
+                $insert_sql = "INSERT INTO payroll_history (" . implode(", ", $insert_fields) . ") 
+                              VALUES (" . implode(", ", $placeholders) . ")
+                              ON DUPLICATE KEY UPDATE " . implode(", ", $update_fields);
+
+                $insert_stmt = $pdo->prepare($insert_sql);
+                $insert_stmt->execute($insert_values);
+
+                // Get the ID of the inserted/updated record
+                if ($insert_stmt->rowCount() > 0) {
+                    if ($pdo->lastInsertId()) {
+                        $record_id = $pdo->lastInsertId();
+                    } else {
+                        // If it was an update, we need to fetch the ID
+                        $id_stmt = $pdo->prepare("
+                            SELECT id FROM payroll_history 
+                            WHERE employee_id = ? AND employee_type = 'joborder' 
+                                AND payroll_period = ? AND payroll_cutoff = ?
+                        ");
+                        $id_stmt->execute([$employee_id, $period, $cutoff]);
+                        $record_id = $id_stmt->fetchColumn();
+                    }
+                } else {
+                    $record_id = null;
+                }
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Other compensation saved successfully',
+                    'id' => $record_id,
+                    'gross_amount' => $gross_amount,
+                    'total_deductions' => $total_deductions,
+                    'net_amount' => $net_amount
+                ]);
             } catch (Exception $e) {
-                $pdo->rollBack();
                 error_log("Save other_comp error: " . $e->getMessage());
                 echo json_encode([
                     'success' => false,
@@ -878,17 +900,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
             exit();
         }
 
-        // Save Deductions
+        // Save Deductions - FIXED: Using INSERT ... ON DUPLICATE KEY UPDATE
         if ($_POST['ajax_action'] === 'save_deductions') {
             $employee_id = intval($_POST['employee_id']);
-            $withholding_tax = floatval($_POST['withholding_tax'] ?? 0);
-            $sss = floatval($_POST['sss'] ?? 0);
-            $other_comp = floatval($_POST['other_comp'] ?? 0);
-            $gross_amount = floatval($_POST['gross_amount'] ?? 0);
-            $total_deductions = floatval($_POST['total_deductions'] ?? 0);
-            $net_amount = floatval($_POST['net_amount'] ?? 0);
-            $monthly_salary = floatval($_POST['monthly_salary'] ?? 0);
-            $days_present = floatval($_POST['days_present'] ?? 0);
+            $withholding_tax = floatval($_POST['withholding_tax']);
+            $sss = floatval($_POST['sss']);
+            $philhealth = floatval($_POST['philhealth'] ?? 0);
+            $pagibig = floatval($_POST['pagibig'] ?? 0);
             $period = $_POST['period'];
             $cutoff = $_POST['cutoff'];
 
@@ -902,146 +920,195 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
             }
 
             try {
-                $pdo->beginTransaction();
+                // Get existing data if any
+                $existing_stmt = $pdo->prepare("
+                    SELECT id, gross_amount, other_comp 
+                    FROM payroll_history 
+                    WHERE employee_id = ? AND employee_type = 'joborder' 
+                        AND payroll_period = ? AND payroll_cutoff = ?
+                ");
+                $existing_stmt->execute([$employee_id, $period, $cutoff]);
+                $existing = $existing_stmt->fetch();
 
-                // Check if record exists
-                $check_stmt = $pdo->prepare("
-        SELECT id FROM payroll_history 
-        WHERE employee_id = ? AND employee_type = 'contractual' 
-            AND payroll_period = ? AND payroll_cutoff = ?
-    ");
-                $check_stmt->execute([$employee_id, $period, $cutoff]);
-                $existing = $check_stmt->fetch();
+                // Calculate total_deductions
+                $total_deductions = $withholding_tax + $sss + $philhealth + $pagibig;
 
-                // Ensure calculations are consistent
-                if ($total_deductions == 0 && ($withholding_tax > 0 || $sss > 0)) {
-                    $total_deductions = $withholding_tax + $sss;
-                }
-
-                if ($net_amount == 0 && $gross_amount > 0) {
-                    $net_amount = $gross_amount - $total_deductions;
-                    if ($net_amount < 0) $net_amount = 0;
-                }
+                // Get gross_amount (either from existing or calculate)
+                $gross_amount = 0;
+                $other_comp = 0;
 
                 if ($existing) {
-                    // Update existing record - update ALL fields
-                    $update_sql = "UPDATE payroll_history SET 
-            other_comp = ?,
-            withholding_tax = ?,
-            sss = ?,
-            gross_amount = ?,
-            total_deductions = ?,
-            net_amount = ?,
-            days_present = ?,
-            updated_at = NOW()
-            WHERE id = ?";
-                    $update_stmt = $pdo->prepare($update_sql);
-                    $update_stmt->execute([
-                        $other_comp,
-                        $withholding_tax,
-                        $sss,
-                        $gross_amount,
-                        $total_deductions,
-                        $net_amount,
-                        $days_present,
-                        $existing['id']
-                    ]);
-
-                    // Update payroll_deductions table
-                    $delete_deductions = $pdo->prepare("DELETE FROM payroll_deductions WHERE payroll_id = ?");
-                    $delete_deductions->execute([$existing['id']]);
-
-                    $deduction_types = [];
-                    if ($withholding_tax > 0) {
-                        $deduction_types[] = ['Withholding Tax', $withholding_tax];
-                    }
-                    if ($sss > 0) {
-                        $deduction_types[] = ['SSS Contribution', $sss];
-                    }
-
-                    foreach ($deduction_types as $deduction) {
-                        $deduction_stmt = $pdo->prepare("
-                INSERT INTO payroll_deductions 
-                (payroll_id, deduction_type, deduction_amount, deduction_description)
-                VALUES (?, ?, ?, ?)
-            ");
-                        $deduction_stmt->execute([
-                            $existing['id'],
-                            $deduction[0],
-                            $deduction[1],
-                            $deduction[0] . ' deduction for ' . $period . ' (' . $cutoff . ')'
-                        ]);
-                    }
-
-                    $pdo->commit();
-
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'Payroll data updated successfully',
-                        'id' => $existing['id'],
-                        'gross_amount' => $gross_amount,
-                        'total_deductions' => $total_deductions,
-                        'net_amount' => $net_amount
-                    ]);
-                } else {
-                    // Insert new record with ALL fields
-                    $insert_sql = "INSERT INTO payroll_history 
-            (employee_id, employee_type, payroll_period, payroll_cutoff, 
-             other_comp, withholding_tax, sss, gross_amount, total_deductions, 
-             net_amount, days_present, status) 
-            VALUES (?, 'contractual', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')";
-                    $insert_stmt = $pdo->prepare($insert_sql);
-                    $insert_stmt->execute([
-                        $employee_id,
-                        $period,
-                        $cutoff,
-                        $other_comp,
-                        $withholding_tax,
-                        $sss,
-                        $gross_amount,
-                        $total_deductions,
-                        $net_amount,
-                        $days_present
-                    ]);
-
-                    $new_id = $pdo->lastInsertId();
-
-                    // Insert into payroll_deductions
-                    $deduction_types = [];
-                    if ($withholding_tax > 0) {
-                        $deduction_types[] = ['Withholding Tax', $withholding_tax];
-                    }
-                    if ($sss > 0) {
-                        $deduction_types[] = ['SSS Contribution', $sss];
-                    }
-
-                    foreach ($deduction_types as $deduction) {
-                        $deduction_stmt = $pdo->prepare("
-                INSERT INTO payroll_deductions 
-                (payroll_id, deduction_type, deduction_amount, deduction_description)
-                VALUES (?, ?, ?, ?)
-            ");
-                        $deduction_stmt->execute([
-                            $new_id,
-                            $deduction[0],
-                            $deduction[1],
-                            $deduction[0] . ' deduction for ' . $period . ' (' . $cutoff . ')'
-                        ]);
-                    }
-
-                    $pdo->commit();
-
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'Payroll data saved successfully',
-                        'id' => $new_id,
-                        'gross_amount' => $gross_amount,
-                        'total_deductions' => $total_deductions,
-                        'net_amount' => $net_amount
-                    ]);
+                    $gross_amount = floatval($existing['gross_amount'] ?? 0);
+                    $other_comp = floatval($existing['other_comp'] ?? 0);
                 }
+
+                // If gross_amount is 0, we need to calculate it
+                if ($gross_amount == 0) {
+                    // Get employee data to calculate gross
+                    $emp_stmt = $pdo->prepare("
+                        SELECT id, employee_id, rate_per_day
+                        FROM job_order 
+                        WHERE id = ? OR employee_id = ?
+                    ");
+                    $emp_stmt->execute([$employee_id, $employee_id]);
+                    $employee = $emp_stmt->fetch();
+
+                    if ($employee) {
+                        $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
+
+                        // Get days present from attendance
+                        $year_month = explode('-', $period);
+                        $year = $year_month[0];
+                        $month = $year_month[1];
+
+                        $cutoff_ranges_local = [
+                            'first_half' => ['start' => "$year-$month-01", 'end' => "$year-$month-15"],
+                            'second_half' => ['start' => "$year-$month-16", 'end' => date('Y-m-t', strtotime("$year-$month-01"))]
+                        ];
+
+                        $range = $cutoff_ranges_local[$cutoff];
+
+                        $att_stmt = $pdo->prepare("
+                            SELECT SUM(CASE WHEN total_hours >= 8 THEN 1 WHEN total_hours >= 4 THEN 0.5 ELSE 0 END) as days_present
+                            FROM attendance 
+                            WHERE employee_id = ? AND date BETWEEN ? AND ?
+                        ");
+                        $att_stmt->execute([$employee_id, $range['start'], $range['end']]);
+                        $att_data = $att_stmt->fetch();
+                        $days_present = floatval($att_data['days_present'] ?? 0);
+
+                        $prorated_salary = $rate_per_day * $days_present;
+                        $gross_amount = $prorated_salary + $other_comp;
+                    }
+                }
+
+                $net_amount = $gross_amount - $total_deductions;
+                if ($net_amount < 0) $net_amount = 0;
+
+                // Use INSERT ... ON DUPLICATE KEY UPDATE to avoid duplicate key errors
+                $columns_to_check = ['withholding_tax', 'sss', 'philhealth', 'pagibig', 'total_deductions', 'net_amount', 'gross_amount', 'other_comp'];
+                $columns_present = array_intersect($columns_to_check, $payroll_columns);
+
+                $insert_fields = ['employee_id', 'employee_type', 'payroll_period', 'payroll_cutoff', 'status'];
+                $insert_values = [$employee_id, 'joborder', $period, $cutoff, 'draft'];
+                $update_fields = [];
+
+                if (in_array('withholding_tax', $columns_present)) {
+                    $insert_fields[] = 'withholding_tax';
+                    $insert_values[] = $withholding_tax;
+                    $update_fields[] = "withholding_tax = VALUES(withholding_tax)";
+                }
+
+                if (in_array('sss', $columns_present)) {
+                    $insert_fields[] = 'sss';
+                    $insert_values[] = $sss;
+                    $update_fields[] = "sss = VALUES(sss)";
+                }
+
+                if (in_array('philhealth', $columns_present)) {
+                    $insert_fields[] = 'philhealth';
+                    $insert_values[] = $philhealth;
+                    $update_fields[] = "philhealth = VALUES(philhealth)";
+                }
+
+                if (in_array('pagibig', $columns_present)) {
+                    $insert_fields[] = 'pagibig';
+                    $insert_values[] = $pagibig;
+                    $update_fields[] = "pagibig = VALUES(pagibig)";
+                }
+
+                if (in_array('total_deductions', $columns_present)) {
+                    $insert_fields[] = 'total_deductions';
+                    $insert_values[] = $total_deductions;
+                    $update_fields[] = "total_deductions = VALUES(total_deductions)";
+                }
+
+                if (in_array('net_amount', $columns_present)) {
+                    $insert_fields[] = 'net_amount';
+                    $insert_values[] = $net_amount;
+                    $update_fields[] = "net_amount = VALUES(net_amount)";
+                }
+
+                if (in_array('gross_amount', $columns_present) && $gross_amount > 0) {
+                    $insert_fields[] = 'gross_amount';
+                    $insert_values[] = $gross_amount;
+                    $update_fields[] = "gross_amount = VALUES(gross_amount)";
+                }
+
+                if (in_array('other_comp', $columns_present) && $other_comp > 0) {
+                    $insert_fields[] = 'other_comp';
+                    $insert_values[] = $other_comp;
+                    $update_fields[] = "other_comp = VALUES(other_comp)";
+                }
+
+                $update_fields[] = "updated_at = NOW()";
+
+                $placeholders = array_fill(0, count($insert_fields), '?');
+
+                $insert_sql = "INSERT INTO payroll_history (" . implode(", ", $insert_fields) . ") 
+                              VALUES (" . implode(", ", $placeholders) . ")
+                              ON DUPLICATE KEY UPDATE " . implode(", ", $update_fields);
+
+                $insert_stmt = $pdo->prepare($insert_sql);
+                $insert_stmt->execute($insert_values);
+
+                // Get the ID of the inserted/updated record
+                if ($insert_stmt->rowCount() > 0) {
+                    if ($pdo->lastInsertId()) {
+                        $record_id = $pdo->lastInsertId();
+                    } else {
+                        // If it was an update, we need to fetch the ID
+                        $id_stmt = $pdo->prepare("
+                            SELECT id FROM payroll_history 
+                            WHERE employee_id = ? AND employee_type = 'joborder' 
+                                AND payroll_period = ? AND payroll_cutoff = ?
+                        ");
+                        $id_stmt->execute([$employee_id, $period, $cutoff]);
+                        $record_id = $id_stmt->fetchColumn();
+                    }
+                } else {
+                    $record_id = null;
+                }
+
+                // Update payroll_deductions table
+                if ($record_id) {
+                    // Delete existing deductions
+                    $delete_deductions = $pdo->prepare("DELETE FROM payroll_deductions WHERE payroll_id = ?");
+                    $delete_deductions->execute([$record_id]);
+
+                    // Insert new deductions
+                    $deduction_types = [
+                        ['Withholding Tax', $withholding_tax],
+                        ['SSS Contribution', $sss],
+                        ['PhilHealth Contribution', $philhealth],
+                        ['Pag-IBIG Contribution', $pagibig]
+                    ];
+
+                    foreach ($deduction_types as $deduction) {
+                        if ($deduction[1] > 0) {
+                            $deduction_stmt = $pdo->prepare("
+                                INSERT INTO payroll_deductions 
+                                (payroll_id, deduction_type, deduction_amount, deduction_description)
+                                VALUES (?, ?, ?, ?)
+                            ");
+                            $deduction_stmt->execute([
+                                $record_id,
+                                $deduction[0],
+                                $deduction[1],
+                                $deduction[0] . ' deduction for ' . $period . ' (' . $cutoff . ')'
+                            ]);
+                        }
+                    }
+                }
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Deductions saved successfully',
+                    'id' => $record_id,
+                    'total_deductions' => $total_deductions,
+                    'net_amount' => $net_amount
+                ]);
             } catch (Exception $e) {
-                $pdo->rollBack();
                 error_log("Save deductions error: " . $e->getMessage());
                 echo json_encode([
                     'success' => false,
@@ -1058,32 +1125,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
             $cutoff = $_POST['cutoff'] ?? 'full';
 
             try {
-                // First, check what columns exist in the table
-                $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-                $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-
-                // Build SELECT query based on existing columns
-                $select_fields = "id as user_id, employee_id, CONCAT(first_name, ' ', last_name) as full_name, first_name, last_name, designation as position, office as department, period_from, period_to, status, email_address, mobile_number";
-
-                if (in_array('contribution', $existing_columns)) {
-                    $select_fields .= ", contribution";
-                }
-
-                // Get salary using the salary column function
-                $salary_col = getSalaryColumnName($pdo);
-                if ($salary_col) {
-                    if ($salary_col == 'rate_per_day' || $salary_col == 'daily_rate') {
-                        $select_fields .= ", ($salary_col * 22) as monthly_salary";
-                    } else {
-                        $select_fields .= ", $salary_col as monthly_salary";
-                    }
-                } else {
-                    $select_fields .= ", 0 as monthly_salary";
-                }
-
                 $stmt = $pdo->prepare("
-                    SELECT $select_fields
-                    FROM contractofservice 
+                    SELECT 
+                        id as user_id, 
+                        employee_id, 
+                        employee_name as full_name,
+                        occupation as position, 
+                        office as department,
+                        rate_per_day,
+                        sss_contribution,
+                        ctc_number,
+                        ctc_date,
+                        place_of_issue,
+                        mobile_number,
+                        email_address,
+                        joining_date,
+                        eligibility
+                    FROM job_order 
                     WHERE id = ? OR employee_id = ?
                 ");
                 $stmt->execute([$employee_id, $employee_id]);
@@ -1122,10 +1180,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                 $attendance_data = ['total_records' => 0, 'days_present' => 0, 'total_hours' => 0];
 
                 try {
-                    // Check if attendance table exists
                     $table_check = $pdo->query("SHOW TABLES LIKE 'attendance'");
                     if ($table_check->rowCount() > 0) {
-                        // Check columns in attendance table
                         $att_columns = $pdo->query("SHOW COLUMNS FROM attendance")->fetchAll(PDO::FETCH_COLUMN);
 
                         if (in_array('total_hours', $att_columns)) {
@@ -1144,32 +1200,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                             ");
                             $attendance_stmt->execute([$employee['employee_id'], $date_range['start'], $date_range['end']]);
                             $attendance_data = $attendance_stmt->fetch();
-                        } else {
-                            // Fallback query without CASE
-                            $attendance_stmt = $pdo->prepare("
-                                SELECT 
-                                    COUNT(*) as total_records,
-                                    SUM(total_hours) as total_hours
-                                FROM attendance 
-                                WHERE employee_id = ? 
-                                    AND date BETWEEN ? AND ?
-                            ");
-                            $attendance_stmt->execute([$employee['employee_id'], $date_range['start'], $date_range['end']]);
-                            $attendance_data = $attendance_stmt->fetch();
-                            $attendance_data['days_present'] = $attendance_data['total_hours'] ? floor($attendance_data['total_hours'] / 8) : 0;
                         }
                     }
                 } catch (Exception $e) {
                     error_log("Attendance query error: " . $e->getMessage());
-                    $attendance_data = ['total_records' => 0, 'days_present' => 0, 'total_hours' => 0];
                 }
 
-                // Get data from payroll_history with proper calculations
-                $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-                $daily_rate = $monthly_salary / 22;
-                $prorated_salary = $daily_rate * floatval($attendance_data['days_present'] ?? 0);
+                // Get data from payroll_history if exists
+                $other_comp = 0;
+                $withholding_tax = 0;
+                $sss = 0;
+                $philhealth = 0;
+                $pagibig = 0;
+                $total_deductions = 0;
+                $net_amount = 0;
+                $gross_amount = 0;
 
-                $payroll_data = getEmployeePayrollData($pdo, $employee['user_id'], $period, $cutoff, $prorated_salary);
+                try {
+                    $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_history'");
+                    if ($table_check->rowCount() > 0) {
+                        if ($cutoff == 'full') {
+                            $payroll_stmt = $pdo->prepare("
+                                SELECT 
+                                    SUM(other_comp) as other_comp,
+                                    SUM(withholding_tax) as withholding_tax,
+                                    SUM(sss) as sss,
+                                    SUM(philhealth) as philhealth,
+                                    SUM(pagibig) as pagibig,
+                                    SUM(total_deductions) as total_deductions,
+                                    SUM(net_amount) as net_amount,
+                                    SUM(gross_amount) as gross_amount
+                                FROM payroll_history 
+                                WHERE employee_id = ? AND employee_type = 'joborder' 
+                                    AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
+                            ");
+                            $payroll_stmt->execute([$employee['user_id'], $period]);
+                            $payroll_data = $payroll_stmt->fetch();
+
+                            if ($payroll_data) {
+                                $other_comp = floatval($payroll_data['other_comp'] ?? 0);
+                                $withholding_tax = floatval($payroll_data['withholding_tax'] ?? 0);
+                                $sss = floatval($payroll_data['sss'] ?? 0);
+                                $philhealth = floatval($payroll_data['philhealth'] ?? 0);
+                                $pagibig = floatval($payroll_data['pagibig'] ?? 0);
+                                $total_deductions = floatval($payroll_data['total_deductions'] ?? ($withholding_tax + $sss + $philhealth + $pagibig));
+                                $net_amount = floatval($payroll_data['net_amount'] ?? 0);
+                                $gross_amount = floatval($payroll_data['gross_amount'] ?? 0);
+                            }
+                        } else {
+                            $payroll_stmt = $pdo->prepare("
+                                SELECT other_comp, withholding_tax, sss, philhealth, pagibig, total_deductions, net_amount, gross_amount
+                                FROM payroll_history 
+                                WHERE employee_id = ? AND employee_type = 'joborder' 
+                                    AND payroll_period = ? AND payroll_cutoff = ?
+                            ");
+                            $payroll_stmt->execute([$employee['user_id'], $period, $cutoff]);
+                            $payroll_data = $payroll_stmt->fetch();
+
+                            if ($payroll_data) {
+                                $other_comp = floatval($payroll_data['other_comp'] ?? 0);
+                                $withholding_tax = floatval($payroll_data['withholding_tax'] ?? 0);
+                                $sss = floatval($payroll_data['sss'] ?? 0);
+                                $philhealth = floatval($payroll_data['philhealth'] ?? 0);
+                                $pagibig = floatval($payroll_data['pagibig'] ?? 0);
+                                $total_deductions = floatval($payroll_data['total_deductions'] ?? ($withholding_tax + $sss + $philhealth + $pagibig));
+                                $net_amount = floatval($payroll_data['net_amount'] ?? 0);
+                                $gross_amount = floatval($payroll_data['gross_amount'] ?? 0);
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Payroll history query error: " . $e->getMessage());
+                }
 
                 // Get payroll history
                 $payroll_history = [];
@@ -1178,7 +1280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     if ($table_check->rowCount() > 0) {
                         $payroll_stmt = $pdo->prepare("
                             SELECT * FROM payroll_history 
-                            WHERE employee_id = ? AND employee_type = 'contractual'
+                            WHERE employee_id = ? AND employee_type = 'joborder'
                             ORDER BY payroll_period DESC, payroll_cutoff DESC
                             LIMIT 6
                         ");
@@ -1187,7 +1289,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     }
                 } catch (Exception $e) {
                     error_log("Payroll history fetch error: " . $e->getMessage());
-                    $payroll_history = [];
+                }
+
+                // Calculate current month values based on cutoff
+                $days_present = floatval($attendance_data['days_present'] ?? 0);
+                $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
+
+                // Calculate monthly salary equivalent
+                $monthly_salary = $rate_per_day * 22;
+
+                // Calculate prorated salary based on days present
+                $prorated_salary = $rate_per_day * $days_present;
+
+                // If gross_amount from database is 0 or not set, calculate it with other_comp
+                if ($gross_amount == 0) {
+                    $gross_amount = $prorated_salary + $other_comp;
+                }
+
+                // If we have saved net_amount, use it, otherwise calculate
+                if ($net_amount == 0 && $total_deductions > 0) {
+                    $net_amount = $gross_amount - $total_deductions;
+                    if ($net_amount < 0) $net_amount = 0;
+                } elseif ($net_amount == 0) {
+                    $net_amount = $gross_amount - ($withholding_tax + $sss + $philhealth + $pagibig);
+                    if ($net_amount < 0) $net_amount = 0;
                 }
 
                 echo json_encode([
@@ -1202,21 +1327,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                     ],
                     'attendance' => [
                         'total_days' => intval($attendance_data['total_records'] ?? 0),
-                        'days_present' => floatval($attendance_data['days_present'] ?? 0),
+                        'days_present' => floatval($days_present),
                         'total_hours' => floatval($attendance_data['total_hours'] ?? 0)
                     ],
                     'payroll_history' => $payroll_history,
                     'calculations' => [
-                        'days_present' => floatval($attendance_data['days_present'] ?? 0),
-                        'monthly_salary' => $monthly_salary,
-                        'daily_rate' => $daily_rate,
-                        'prorated_salary' => $prorated_salary,
-                        'other_comp' => $payroll_data['other_comp'],
-                        'withholding_tax' => $payroll_data['withholding_tax'],
-                        'sss' => $payroll_data['sss'],
-                        'total_deductions' => $payroll_data['total_deductions'],
-                        'net_amount' => $payroll_data['net_amount'],
-                        'gross_amount' => $payroll_data['gross_amount'],
+                        'days_present' => floatval($days_present),
+                        'monthly_salary' => floatval($monthly_salary),
+                        'rate_per_day' => floatval($rate_per_day),
+                        'daily_rate' => floatval($rate_per_day),
+                        'prorated_salary' => floatval($prorated_salary),
+                        'other_comp' => floatval($other_comp),
+                        'withholding_tax' => floatval($withholding_tax),
+                        'sss' => floatval($sss),
+                        'philhealth' => floatval($philhealth),
+                        'pagibig' => floatval($pagibig),
+                        'total_deductions' => floatval($total_deductions > 0 ? $total_deductions : ($withholding_tax + $sss + $philhealth + $pagibig)),
+                        'net_amount' => floatval($net_amount > 0 ? $net_amount : ($gross_amount - ($withholding_tax + $sss + $philhealth + $pagibig))),
+                        'gross_amount' => floatval($gross_amount),
                         'total_hours' => floatval($attendance_data['total_hours'] ?? 0)
                     ]
                 ]);
@@ -1240,14 +1368,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
     }
 }
 
-// Handle form submission for saving payroll
+// Handle form submission for saving payroll - FIXED: Using INSERT ... ON DUPLICATE KEY UPDATE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payroll'])) {
     try {
         $pdo->beginTransaction();
 
         $payroll_period = $_POST['payroll_period'] ?? $current_payroll_period;
         $payroll_cutoff = $_POST['payroll_cutoff'] ?? 'full';
+        $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+        // Get cutoff working days
         $working_days = $cutoff_ranges[$payroll_cutoff]['working_days'] ?? 22;
+
+        // Refresh payroll_columns
+        $payroll_columns = $pdo->query("SHOW COLUMNS FROM payroll_history")->fetchAll(PDO::FETCH_COLUMN);
 
         foreach ($_POST['employee_id'] as $index => $employee_id) {
             $monthly_salaries_wages = floatval($_POST['monthly_salaries_wages'][$index] ?? 0);
@@ -1255,13 +1390,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payroll'])) {
             $gross_amount = floatval($_POST['gross_amount'][$index] ?? 0);
             $withholding_tax = floatval($_POST['withholding_tax'][$index] ?? 0);
             $sss = floatval($_POST['sss'][$index] ?? 0);
+            $philhealth = floatval($_POST['philhealth'][$index] ?? 0);
+            $pagibig = floatval($_POST['pagibig'][$index] ?? 0);
             $total_deductions = floatval($_POST['total_deduction'][$index] ?? 0);
             $net_amount = floatval($_POST['net_amount'][$index] ?? 0);
             $days_present = floatval($_POST['days_present'][$index] ?? 0);
 
             // If total_deductions is 0, calculate it
-            if ($total_deductions == 0 && ($withholding_tax > 0 || $sss > 0)) {
-                $total_deductions = $withholding_tax + $sss;
+            if ($total_deductions == 0) {
+                $total_deductions = $withholding_tax + $sss + $philhealth + $pagibig;
             }
 
             // If net_amount is 0, calculate it
@@ -1270,95 +1407,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payroll'])) {
                 if ($net_amount < 0) $net_amount = 0;
             }
 
-            // Check if payroll record exists
-            $check_stmt = $pdo->prepare("
-                SELECT id FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
-                    AND payroll_period = ? AND payroll_cutoff = ?
-            ");
-            $check_stmt->execute([$employee_id, $payroll_period, $payroll_cutoff]);
-            $existing_id = $check_stmt->fetchColumn();
+            // Use INSERT ... ON DUPLICATE KEY UPDATE to avoid duplicate key errors
+            $insert_fields = ['employee_id', 'employee_type', 'payroll_period', 'payroll_cutoff'];
+            $insert_values = [$employee_id, 'joborder', $payroll_period, $payroll_cutoff];
+            $update_fields = [];
 
-            if ($existing_id) {
-                // Update existing record
-                $update_sql = "UPDATE payroll_history SET 
-                    monthly_salaries_wages = ?,
-                    other_comp = ?,
-                    gross_amount = ?,
-                    withholding_tax = ?,
-                    sss = ?,
-                    total_deductions = ?,
-                    net_amount = ?,
-                    days_present = ?,
-                    working_days = ?,
-                    status = 'pending',
-                    updated_at = NOW()
-                    WHERE id = ?";
-                $update_stmt = $pdo->prepare($update_sql);
-                $update_stmt->execute([
-                    $monthly_salaries_wages,
-                    $other_comp,
-                    $gross_amount,
-                    $withholding_tax,
-                    $sss,
-                    $total_deductions,
-                    $net_amount,
-                    $days_present,
-                    $working_days,
-                    $existing_id
-                ]);
+            if (in_array('monthly_salaries_wages', $payroll_columns)) {
+                $insert_fields[] = 'monthly_salaries_wages';
+                $insert_values[] = $monthly_salaries_wages;
+                $update_fields[] = "monthly_salaries_wages = VALUES(monthly_salaries_wages)";
+            }
+            if (in_array('other_comp', $payroll_columns)) {
+                $insert_fields[] = 'other_comp';
+                $insert_values[] = $other_comp;
+                $update_fields[] = "other_comp = VALUES(other_comp)";
+            }
+            if (in_array('gross_amount', $payroll_columns)) {
+                $insert_fields[] = 'gross_amount';
+                $insert_values[] = $gross_amount;
+                $update_fields[] = "gross_amount = VALUES(gross_amount)";
+            }
+            if (in_array('withholding_tax', $payroll_columns)) {
+                $insert_fields[] = 'withholding_tax';
+                $insert_values[] = $withholding_tax;
+                $update_fields[] = "withholding_tax = VALUES(withholding_tax)";
+            }
+            if (in_array('sss', $payroll_columns)) {
+                $insert_fields[] = 'sss';
+                $insert_values[] = $sss;
+                $update_fields[] = "sss = VALUES(sss)";
+            }
+            if (in_array('philhealth', $payroll_columns)) {
+                $insert_fields[] = 'philhealth';
+                $insert_values[] = $philhealth;
+                $update_fields[] = "philhealth = VALUES(philhealth)";
+            }
+            if (in_array('pagibig', $payroll_columns)) {
+                $insert_fields[] = 'pagibig';
+                $insert_values[] = $pagibig;
+                $update_fields[] = "pagibig = VALUES(pagibig)";
+            }
+            if (in_array('total_deductions', $payroll_columns)) {
+                $insert_fields[] = 'total_deductions';
+                $insert_values[] = $total_deductions;
+                $update_fields[] = "total_deductions = VALUES(total_deductions)";
+            }
+            if (in_array('net_amount', $payroll_columns)) {
+                $insert_fields[] = 'net_amount';
+                $insert_values[] = $net_amount;
+                $update_fields[] = "net_amount = VALUES(net_amount)";
+            }
+            if (in_array('days_present', $payroll_columns)) {
+                $insert_fields[] = 'days_present';
+                $insert_values[] = $days_present;
+                $update_fields[] = "days_present = VALUES(days_present)";
+            }
+            if (in_array('working_days', $payroll_columns)) {
+                $insert_fields[] = 'working_days';
+                $insert_values[] = $working_days;
+                $update_fields[] = "working_days = VALUES(working_days)";
+            }
+            if (in_array('status', $payroll_columns)) {
+                $insert_fields[] = 'status';
+                $insert_values[] = 'pending';
+                $update_fields[] = "status = VALUES(status)";
+            }
+            if (in_array('processed_date', $payroll_columns)) {
+                $insert_fields[] = 'processed_date';
+                $insert_values[] = date('Y-m-d H:i:s');
+                $update_fields[] = "processed_date = VALUES(processed_date)";
+            }
 
-                // Update payroll_deductions
-                $delete_deductions = $pdo->prepare("DELETE FROM payroll_deductions WHERE payroll_id = ?");
-                $delete_deductions->execute([$existing_id]);
+            $update_fields[] = "updated_at = NOW()";
 
-                $deduction_types = [
-                    ['Withholding Tax', $withholding_tax],
-                    ['SSS Contribution', $sss]
-                ];
+            $placeholders = array_fill(0, count($insert_fields), '?');
 
-                foreach ($deduction_types as $deduction) {
-                    if ($deduction[1] > 0) {
-                        $deduction_stmt = $pdo->prepare("
-                            INSERT INTO payroll_deductions 
-                            (payroll_id, deduction_type, deduction_amount, deduction_description)
-                            VALUES (?, ?, ?, ?)
-                        ");
-                        $deduction_stmt->execute([
-                            $existing_id,
-                            $deduction[0],
-                            $deduction[1],
-                            $deduction[0] . ' deduction for ' . $payroll_period . ' (' . $payroll_cutoff . ')'
-                        ]);
-                    }
-                }
+            $insert_sql = "INSERT INTO payroll_history (" . implode(", ", $insert_fields) . ") 
+                          VALUES (" . implode(", ", $placeholders) . ")
+                          ON DUPLICATE KEY UPDATE " . implode(", ", $update_fields);
+
+            $insert_stmt = $pdo->prepare($insert_sql);
+            $insert_stmt->execute($insert_values);
+
+            // Get the ID of the inserted/updated record
+            if ($pdo->lastInsertId()) {
+                $record_id = $pdo->lastInsertId();
             } else {
-                // Insert new record
-                $insert_sql = "INSERT INTO payroll_history 
-                    (employee_id, employee_type, payroll_period, payroll_cutoff, monthly_salaries_wages, other_comp, gross_amount, withholding_tax, sss, total_deductions, net_amount, days_present, working_days, status, processed_date) 
-                    VALUES (?, 'contractual', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())";
-                $insert_stmt = $pdo->prepare($insert_sql);
-                $insert_stmt->execute([
-                    $employee_id,
-                    $payroll_period,
-                    $payroll_cutoff,
-                    $monthly_salaries_wages,
-                    $other_comp,
-                    $gross_amount,
-                    $withholding_tax,
-                    $sss,
-                    $total_deductions,
-                    $net_amount,
-                    $days_present,
-                    $working_days
-                ]);
+                // If it was an update, we need to fetch the ID
+                $id_stmt = $pdo->prepare("
+                    SELECT id FROM payroll_history 
+                    WHERE employee_id = ? AND employee_type = 'joborder' 
+                        AND payroll_period = ? AND payroll_cutoff = ?
+                ");
+                $id_stmt->execute([$employee_id, $payroll_period, $payroll_cutoff]);
+                $record_id = $id_stmt->fetchColumn();
+            }
 
-                $new_id = $pdo->lastInsertId();
+            // Update payroll_deductions table
+            if ($record_id) {
+                // Delete existing deductions
+                $delete_deductions = $pdo->prepare("DELETE FROM payroll_deductions WHERE payroll_id = ?");
+                $delete_deductions->execute([$record_id]);
 
-                // Insert into payroll_deductions
+                // Insert new deductions
                 $deduction_types = [
                     ['Withholding Tax', $withholding_tax],
-                    ['SSS Contribution', $sss]
+                    ['SSS Contribution', $sss],
+                    ['PhilHealth Contribution', $philhealth],
+                    ['Pag-IBIG Contribution', $pagibig]
                 ];
 
                 foreach ($deduction_types as $deduction) {
@@ -1369,7 +1525,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payroll'])) {
                             VALUES (?, ?, ?, ?)
                         ");
                         $deduction_stmt->execute([
-                            $new_id,
+                            $record_id,
                             $deduction[0],
                             $deduction[1],
                             $deduction[0] . ' deduction for ' . $payroll_period . ' (' . $payroll_cutoff . ')'
@@ -1381,12 +1537,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payroll'])) {
 
         $pdo->commit();
         $_SESSION['success_message'] = "Payroll saved successfully for " . $cutoff_ranges[$payroll_cutoff]['label'] . "!";
-        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $payroll_period . "&cutoff=" . $payroll_cutoff . "&page=" . ($_POST['current_page'] ?? 1) . "&per_page=" . ($_POST['records_per_page'] ?? 10) . "&search=" . urlencode($search_term));
+        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $payroll_period . "&cutoff=" . $payroll_cutoff . "&page=" . ($_POST['current_page'] ?? 1) . "&per_page=" . ($_POST['records_per_page'] ?? 10));
         exit();
     } catch (Exception $e) {
         $pdo->rollBack();
         $_SESSION['error_message'] = "Error saving payroll: " . $e->getMessage();
-        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . ($_POST['payroll_period'] ?? $current_payroll_period) . "&cutoff=" . ($_POST['payroll_cutoff'] ?? 'full') . "&page=" . ($_POST['current_page'] ?? 1) . "&per_page=" . ($_POST['records_per_page'] ?? 10) . "&search=" . urlencode($search_term));
+        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . ($_POST['payroll_period'] ?? $current_payroll_period) . "&cutoff=" . ($_POST['payroll_cutoff'] ?? 'full') . "&page=" . ($_POST['current_page'] ?? 1) . "&per_page=" . ($_POST['records_per_page'] ?? 10));
         exit();
     }
 }
@@ -1400,13 +1556,32 @@ if (isset($_GET['approve_payroll']) && isset($_GET['period']) && isset($_GET['cu
         $cutoff = $_GET['cutoff'];
         $approval_notes = $_POST['approval_notes'] ?? 'Approved via system';
 
-        $update_sql = "UPDATE payroll_history SET 
-            status = 'approved',
-            approved_by = ?,
-            approved_date = NOW()
-            WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'contractual'";
-        $update_stmt = $pdo->prepare($update_sql);
-        $update_stmt->execute([$current_user_name, $period, $cutoff]);
+        $payroll_columns = $pdo->query("SHOW COLUMNS FROM payroll_history")->fetchAll(PDO::FETCH_COLUMN);
+
+        $update_fields = [];
+        $update_values = [];
+
+        if (in_array('status', $payroll_columns)) {
+            $update_fields[] = "status = ?";
+            $update_values[] = 'approved';
+        }
+        if (in_array('approved_by', $payroll_columns)) {
+            $update_fields[] = "approved_by = ?";
+            $update_values[] = $current_user_name;
+        }
+        if (in_array('approved_date', $payroll_columns)) {
+            $update_fields[] = "approved_date = NOW()";
+        }
+
+        $update_values[] = $period;
+        $update_values[] = $cutoff;
+
+        if (!empty($update_fields)) {
+            $update_sql = "UPDATE payroll_history SET " . implode(", ", $update_fields) . " 
+                          WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'joborder'";
+            $update_stmt = $pdo->prepare($update_sql);
+            $update_stmt->execute($update_values);
+        }
 
         // Check if payroll_approvals table exists
         $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_approvals'");
@@ -1416,26 +1591,26 @@ if (isset($_GET['approve_payroll']) && isset($_GET['period']) && isset($_GET['cu
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     payroll_period VARCHAR(7) NOT NULL,
                     payroll_cutoff VARCHAR(20) DEFAULT 'full',
-                    employee_type VARCHAR(50) DEFAULT 'contractual',
+                    employee_type VARCHAR(50) DEFAULT 'joborder',
                     approved_by VARCHAR(100),
                     approval_notes TEXT,
                     status VARCHAR(20) DEFAULT 'approved',
                     approved_date DATETIME,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                )
             ");
         }
 
         $approval_stmt = $pdo->prepare("
             INSERT INTO payroll_approvals
             (payroll_period, payroll_cutoff, employee_type, approved_by, approval_notes, status, approved_date)
-            VALUES (?, ?, 'contractual', ?, ?, 'approved', NOW())
+            VALUES (?, ?, 'joborder', ?, ?, 'approved', NOW())
         ");
         $approval_stmt->execute([$period, $cutoff, $current_user_name, $approval_notes]);
 
         $pdo->commit();
         $_SESSION['success_message'] = "Payroll approved successfully!";
-        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $period . "&cutoff=" . $cutoff . "&page=" . ($_GET['page'] ?? 1) . "&per_page=" . ($_GET['per_page'] ?? 10) . "&search=" . urlencode($search_term));
+        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $period . "&cutoff=" . $cutoff . "&page=" . ($_GET['page'] ?? 1) . "&per_page=" . ($_GET['per_page'] ?? 10));
         exit();
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -1477,14 +1652,14 @@ if (isset($_GET['mark_paid']) && isset($_GET['period']) && isset($_GET['cutoff']
                         notes TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (payroll_id) REFERENCES payroll_history(id) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    )
                 ");
             }
 
             $payment_stmt = $pdo->prepare("
                 INSERT INTO payroll_payments
                 (payroll_id, payment_date, payment_method, reference_number, 
-                payment_amount, payment_status, processed_by, notes)
+                 payment_amount, payment_status, processed_by, notes)
                 VALUES (?, CURDATE(), ?, ?, ?, 'completed', ?, ?)
             ");
             $payment_stmt->execute([
@@ -1496,38 +1671,25 @@ if (isset($_GET['mark_paid']) && isset($_GET['period']) && isset($_GET['cutoff']
                 'Payment processed for ' . $period . ' (' . ($cutoff_ranges[$cutoff]['label'] ?? $cutoff) . ')'
             ]);
 
-            $update_stmt = $pdo->prepare("
-                UPDATE payroll_history 
-                SET status = 'paid', updated_at = NOW()
-                WHERE id = ?
-            ");
-            $update_stmt->execute([$payroll_id]);
+            $payroll_columns = $pdo->query("SHOW COLUMNS FROM payroll_history")->fetchAll(PDO::FETCH_COLUMN);
+
+            if (in_array('status', $payroll_columns)) {
+                $update_stmt = $pdo->prepare("
+                    UPDATE payroll_history 
+                    SET status = 'paid', updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $update_stmt->execute([$payroll_id]);
+            }
         }
 
         $pdo->commit();
         $_SESSION['success_message'] = "Payroll marked as paid successfully!";
-        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $period . "&cutoff=" . $cutoff . "&page=" . ($_GET['page'] ?? 1) . "&per_page=" . ($_GET['per_page'] ?? 10) . "&search=" . urlencode($search_term));
+        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $period . "&cutoff=" . $cutoff . "&page=" . ($_GET['page'] ?? 1) . "&per_page=" . ($_GET['per_page'] ?? 10));
         exit();
     } catch (Exception $e) {
         $pdo->rollBack();
         $_SESSION['error_message'] = "Error marking payroll as paid: " . $e->getMessage();
-    }
-}
-
-// Handle multiple payslips print request
-if (isset($_POST['print_payslips']) && isset($_POST['selected_employees'])) {
-    $selected_employees = $_POST['selected_employees'];
-    $period = $_POST['payroll_period'] ?? $selected_period;
-    $cutoff = $_POST['payroll_cutoff'] ?? $selected_cutoff;
-
-    if (!empty($selected_employees)) {
-        $employee_ids = implode(',', array_map('intval', $selected_employees));
-        header("Location: print_multiple_payslips.php?employees=" . urlencode($employee_ids) . "&period=" . urlencode($period) . "&cutoff=" . urlencode($cutoff));
-        exit();
-    } else {
-        $_SESSION['error_message'] = "Please select at least one employee to print payslips.";
-        header("Location: " . $_SERVER['PHP_SELF'] . "?period=" . $period . "&cutoff=" . $cutoff . "&page=" . $current_page . "&per_page=" . $records_per_page . "&search=" . urlencode($search_term));
-        exit();
     }
 }
 
@@ -1548,22 +1710,15 @@ try {
     $tax_config = [];
 }
 
-// Default SSS rate
+// Default rates
 $sss_rate = 4.50;
+$philhealth_rate = 3.00;
+$pagibig_fixed = 100.00;
 
-// Get total count of employees for pagination with search
+// Get total count of employees for pagination
 $total_employees = 0;
 try {
-    $count_sql = "SELECT COUNT(*) FROM contractofservice WHERE status = 'active'";
-    if (!empty($search_term)) {
-        $count_sql .= " AND (employee_id LIKE :search OR first_name LIKE :search OR last_name LIKE :search OR CONCAT(first_name, ' ', last_name) LIKE :search OR designation LIKE :search OR office LIKE :search)";
-    }
-    $count_stmt = $pdo->prepare($count_sql);
-    if (!empty($search_term)) {
-        $search_param = "%$search_term%";
-        $count_stmt->bindParam(':search', $search_param);
-    }
-    $count_stmt->execute();
+    $count_stmt = $pdo->query("SELECT COUNT(*) FROM job_order WHERE is_archived = 0 OR is_archived IS NULL");
     $total_employees = $count_stmt->fetchColumn();
 } catch (Exception $e) {
     error_log("Error counting employees: " . $e->getMessage());
@@ -1573,63 +1728,46 @@ try {
 $total_pages = ceil($total_employees / $records_per_page);
 $offset = ($current_page - 1) * $records_per_page;
 
-// Fetch contractual employees from contractofservice table with pagination and search
-$contractual_employees = [];
+// Fetch joborder employees from job_order table with pagination
+$joborder_employees = [];
 
 try {
-    // Check if contractofservice table exists
-    $table_check = $pdo->query("SHOW TABLES LIKE 'contractofservice'");
+    // Check if job_order table exists
+    $table_check = $pdo->query("SHOW TABLES LIKE 'job_order'");
     if ($table_check->rowCount() == 0) {
-        throw new Exception("contractofservice table does not exist");
+        throw new Exception("job_order table does not exist");
     }
 
-    // First, check what columns exist in the table
-    $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-    $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-
-    // Build SELECT query based on existing columns
-    $select_fields = "id as user_id, employee_id, CONCAT(first_name, ' ', last_name) as full_name, first_name, last_name, designation as position, office as department, period_from, period_to, status, email_address, mobile_number";
-
-    if (in_array('contribution', $existing_columns)) {
-        $select_fields .= ", contribution";
-    }
-
-    // Get salary using the salary column function
-    $salary_col = getSalaryColumnName($pdo);
-    if ($salary_col) {
-        if ($salary_col == 'rate_per_day' || $salary_col == 'daily_rate') {
-            $select_fields .= ", ($salary_col * 22) as monthly_salary";
-        } else {
-            $select_fields .= ", $salary_col as monthly_salary";
-        }
-    } else {
-        $select_fields .= ", 0 as monthly_salary";
-    }
-
+    // Build SELECT query based on your actual job_order table structure
     $sql = "
-        SELECT $select_fields
-        FROM contractofservice 
-        WHERE status = 'active'
+        SELECT 
+            id as user_id, 
+            employee_id, 
+            employee_name as full_name,
+            occupation as position, 
+            office as department,
+            rate_per_day,
+            sss_contribution,
+            ctc_number,
+            ctc_date,
+            place_of_issue,
+            mobile_number,
+            email_address,
+            joining_date,
+            eligibility
+        FROM job_order 
+        WHERE is_archived = 0 OR is_archived IS NULL
+        ORDER BY employee_name
+        LIMIT :offset, :per_page
     ";
 
-    if (!empty($search_term)) {
-        $sql .= " AND (employee_id LIKE :search OR first_name LIKE :search OR last_name LIKE :search OR CONCAT(first_name, ' ', last_name) LIKE :search OR designation LIKE :search OR office LIKE :search)";
-    }
-
-    $sql .= " ORDER BY last_name, first_name LIMIT :offset, :per_page";
-
     $stmt = $pdo->prepare($sql);
-
-    if (!empty($search_term)) {
-        $search_param = "%$search_term%";
-        $stmt->bindParam(':search', $search_param);
-    }
     $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
     $stmt->bindParam(':per_page', $records_per_page, PDO::PARAM_INT);
     $stmt->execute();
     $employees = $stmt->fetchAll();
 
-    // Get attendance and payroll data for each employee
+    // Get attendance and other compensation for each employee based on cutoff
     foreach ($employees as &$employee) {
         // Get attendance records for the selected cutoff period
         $attendance_days = 0;
@@ -1673,35 +1811,342 @@ try {
         $employee['days_present'] = $attendance_days;
         $employee['total_hours'] = $total_hours;
 
-        // Calculate daily rate (based on 22 working days per month)
-        $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-        $daily_rate = $monthly_salary / 22;
+        // Get rate_per_day directly from job_order table
+        $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
+
+        // Calculate monthly salary equivalent (22 working days)
+        $monthly_salary = $rate_per_day * 22;
 
         // Calculate prorated salary based on days present
-        $prorated_salary = $daily_rate * $attendance_days;
+        $prorated_salary = $rate_per_day * $attendance_days;
 
-        // Get payroll data from database
-        $payroll_data = getEmployeePayrollData($pdo, $employee['user_id'], $selected_period, $selected_cutoff, $prorated_salary);
+        // Get data from payroll_history if exists
+        $other_comp = 0;
+        $withholding_tax = 0;
+        $sss = 0;
+        $philhealth = 0;
+        $pagibig = 0;
+        $total_deductions = 0;
+        $net_amount = 0;
+        $gross_amount = $prorated_salary;
 
-        $employee['other_comp'] = $payroll_data['other_comp'];
-        $employee['withholding_tax'] = $payroll_data['withholding_tax'];
-        $employee['sss'] = $payroll_data['sss'];
-        $employee['total_deductions'] = $payroll_data['total_deductions'];
-        $employee['net_amount'] = $payroll_data['net_amount'];
-        $employee['gross_amount'] = $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : $prorated_salary + $payroll_data['other_comp'];
+        try {
+            $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_history'");
+            if ($table_check->rowCount() > 0) {
+                if ($selected_cutoff == 'full') {
+                    // For full month, get data from both halves
+                    $payroll_stmt = $pdo->prepare("
+                        SELECT 
+                            SUM(other_comp) as other_comp,
+                            SUM(withholding_tax) as withholding_tax,
+                            SUM(sss) as sss,
+                            SUM(philhealth) as philhealth,
+                            SUM(pagibig) as pagibig,
+                            SUM(total_deductions) as total_deductions,
+                            SUM(net_amount) as net_amount,
+                            SUM(gross_amount) as gross_amount,
+                            SUM(days_present) as total_days_present
+                        FROM payroll_history 
+                        WHERE employee_id = ? AND employee_type = 'joborder' 
+                            AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
+                    ");
+                    $payroll_stmt->execute([$employee['user_id'], $selected_period]);
+                    $payroll_data = $payroll_stmt->fetch();
+
+                    if ($payroll_data) {
+                        $other_comp = floatval($payroll_data['other_comp'] ?? 0);
+                        $withholding_tax = floatval($payroll_data['withholding_tax'] ?? 0);
+                        $sss = floatval($payroll_data['sss'] ?? 0);
+                        $philhealth = floatval($payroll_data['philhealth'] ?? 0);
+                        $pagibig = floatval($payroll_data['pagibig'] ?? 0);
+                        $total_deductions = floatval($payroll_data['total_deductions'] ?? ($withholding_tax + $sss + $philhealth + $pagibig));
+                        $gross_amount = floatval($payroll_data['gross_amount'] ?? $prorated_salary);
+                        $net_amount = floatval($payroll_data['net_amount'] ?? 0);
+
+                        if ($net_amount == 0 && $gross_amount > 0) {
+                            $net_amount = $gross_amount - $total_deductions;
+                            if ($net_amount < 0) $net_amount = 0;
+                        }
+
+                        if (floatval($payroll_data['total_days_present'] ?? 0) > 0) {
+                            $employee['days_present'] = floatval($payroll_data['total_days_present']);
+                        }
+                    } else {
+                        $gross_amount = $prorated_salary;
+                        $total_deductions = 0;
+                        $net_amount = $prorated_salary;
+                    }
+                } else {
+                    $payroll_stmt = $pdo->prepare("
+                        SELECT other_comp, withholding_tax, sss, philhealth, pagibig, total_deductions, net_amount, gross_amount
+                        FROM payroll_history 
+                        WHERE employee_id = ? AND employee_type = 'joborder' 
+                            AND payroll_period = ? AND payroll_cutoff = ?
+                    ");
+                    $payroll_stmt->execute([$employee['user_id'], $selected_period, $selected_cutoff]);
+                    $payroll_data = $payroll_stmt->fetch();
+
+                    if ($payroll_data) {
+                        $other_comp = floatval($payroll_data['other_comp'] ?? 0);
+                        $withholding_tax = floatval($payroll_data['withholding_tax'] ?? 0);
+                        $sss = floatval($payroll_data['sss'] ?? 0);
+                        $philhealth = floatval($payroll_data['philhealth'] ?? 0);
+                        $pagibig = floatval($payroll_data['pagibig'] ?? 0);
+                        $total_deductions = floatval($payroll_data['total_deductions'] ?? ($withholding_tax + $sss + $philhealth + $pagibig));
+                        $gross_amount = floatval($payroll_data['gross_amount'] ?? $prorated_salary);
+                        $net_amount = floatval($payroll_data['net_amount'] ?? 0);
+
+                        if ($net_amount == 0 && $gross_amount > 0) {
+                            $net_amount = $gross_amount - $total_deductions;
+                            if ($net_amount < 0) $net_amount = 0;
+                        }
+                    } else {
+                        $gross_amount = $prorated_salary;
+                        $total_deductions = 0;
+                        $net_amount = $prorated_salary;
+                    }
+                }
+            } else {
+                $gross_amount = $prorated_salary;
+                $total_deductions = 0;
+                $net_amount = $prorated_salary;
+            }
+        } catch (Exception $e) {
+            error_log("Payroll data fetch error: " . $e->getMessage());
+            $gross_amount = $prorated_salary;
+            $total_deductions = 0;
+            $net_amount = $prorated_salary;
+        }
+
+        // Set all values for the employee
+        $employee['other_comp'] = $other_comp;
+        $employee['withholding_tax'] = $withholding_tax;
+        $employee['sss'] = $sss;
+        $employee['philhealth'] = $philhealth;
+        $employee['pagibig'] = $pagibig;
+        $employee['total_deductions'] = $total_deductions;
+        $employee['net_amount'] = $net_amount;
         $employee['monthly_salary'] = $monthly_salary;
-        $employee['daily_rate'] = $daily_rate;
+        $employee['rate_per_day'] = $rate_per_day;
+        $employee['daily_rate'] = $rate_per_day; // Alias for consistency
         $employee['prorated_salary'] = $prorated_salary;
-        $employee['payroll_status'] = $payroll_data['status'];
-        $employee['payroll_id'] = $payroll_data['payroll_id'];
-        $employee['payroll_exists'] = $payroll_data['exists'];
+        $employee['gross_amount'] = $gross_amount;
+
+        // Check if payroll already exists for this period and cutoff
+        $payroll_data = null;
+        try {
+            $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_history'");
+            if ($table_check->rowCount() > 0) {
+                if ($selected_cutoff == 'full') {
+                    $payroll_stmt = $pdo->prepare("
+                        SELECT COUNT(*) as record_count, 
+                               SUM(withholding_tax) as total_withholding_tax,
+                               SUM(sss) as total_sss,
+                               SUM(philhealth) as total_philhealth,
+                               SUM(pagibig) as total_pagibig,
+                               SUM(other_comp) as total_other_comp,
+                               SUM(gross_amount) as total_gross_amount,
+                               SUM(total_deductions) as total_deductions,
+                               SUM(net_amount) as total_net_amount
+                        FROM payroll_history 
+                        WHERE employee_id = ? AND employee_type = 'joborder' 
+                            AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
+                    ");
+                    $payroll_stmt->execute([$employee['user_id'], $selected_period]);
+                    $payroll_summary_data = $payroll_stmt->fetch();
+
+                    if ($payroll_summary_data && $payroll_summary_data['record_count'] > 0) {
+                        $payroll_data = [
+                            'id' => null,
+                            'withholding_tax' => $payroll_summary_data['total_withholding_tax'],
+                            'sss' => $payroll_summary_data['total_sss'],
+                            'philhealth' => $payroll_summary_data['total_philhealth'],
+                            'pagibig' => $payroll_summary_data['total_pagibig'],
+                            'other_comp' => $payroll_summary_data['total_other_comp'],
+                            'gross_amount' => $payroll_summary_data['total_gross_amount'],
+                            'total_deductions' => $payroll_summary_data['total_deductions'] ?? ($payroll_summary_data['total_withholding_tax'] + $payroll_summary_data['total_sss'] + $payroll_summary_data['total_philhealth'] + $payroll_summary_data['total_pagibig']),
+                            'net_amount' => $payroll_summary_data['total_net_amount']
+                        ];
+
+                        if ($payroll_summary_data['total_gross_amount'] > 0) {
+                            $employee['gross_amount'] = floatval($payroll_summary_data['total_gross_amount']);
+                        }
+                        if ($payroll_summary_data['total_net_amount'] > 0) {
+                            $employee['net_amount'] = floatval($payroll_summary_data['total_net_amount']);
+                        }
+                        if ($payroll_summary_data['total_deductions'] > 0) {
+                            $employee['total_deductions'] = floatval($payroll_summary_data['total_deductions']);
+                        }
+                        if ($payroll_summary_data['total_withholding_tax'] > 0) {
+                            $employee['withholding_tax'] = floatval($payroll_summary_data['total_withholding_tax']);
+                        }
+                        if ($payroll_summary_data['total_sss'] > 0) {
+                            $employee['sss'] = floatval($payroll_summary_data['total_sss']);
+                        }
+                        if ($payroll_summary_data['total_philhealth'] > 0) {
+                            $employee['philhealth'] = floatval($payroll_summary_data['total_philhealth']);
+                        }
+                        if ($payroll_summary_data['total_pagibig'] > 0) {
+                            $employee['pagibig'] = floatval($payroll_summary_data['total_pagibig']);
+                        }
+                        if ($payroll_summary_data['total_other_comp'] > 0) {
+                            $employee['other_comp'] = floatval($payroll_summary_data['total_other_comp']);
+                        }
+                    }
+                } else {
+                    $payroll_stmt = $pdo->prepare("
+                        SELECT * FROM payroll_history 
+                        WHERE employee_id = ? AND employee_type = 'joborder' 
+                            AND payroll_period = ? AND payroll_cutoff = ?
+                    ");
+                    $payroll_stmt->execute([$employee['user_id'], $selected_period, $selected_cutoff]);
+                    $payroll_data = $payroll_stmt->fetch();
+
+                    if ($payroll_data) {
+                        if (isset($payroll_data['gross_amount']) && $payroll_data['gross_amount'] > 0) {
+                            $employee['gross_amount'] = floatval($payroll_data['gross_amount']);
+                        }
+                        if (isset($payroll_data['net_amount']) && $payroll_data['net_amount'] > 0) {
+                            $employee['net_amount'] = floatval($payroll_data['net_amount']);
+                        }
+                        if (isset($payroll_data['total_deductions']) && $payroll_data['total_deductions'] > 0) {
+                            $employee['total_deductions'] = floatval($payroll_data['total_deductions']);
+                        }
+                        if (isset($payroll_data['withholding_tax']) && $payroll_data['withholding_tax'] > 0) {
+                            $employee['withholding_tax'] = floatval($payroll_data['withholding_tax']);
+                        }
+                        if (isset($payroll_data['sss']) && $payroll_data['sss'] > 0) {
+                            $employee['sss'] = floatval($payroll_data['sss']);
+                        }
+                        if (isset($payroll_data['philhealth']) && $payroll_data['philhealth'] > 0) {
+                            $employee['philhealth'] = floatval($payroll_data['philhealth']);
+                        }
+                        if (isset($payroll_data['pagibig']) && $payroll_data['pagibig'] > 0) {
+                            $employee['pagibig'] = floatval($payroll_data['pagibig']);
+                        }
+                        if (isset($payroll_data['other_comp']) && $payroll_data['other_comp'] > 0) {
+                            $employee['other_comp'] = floatval($payroll_data['other_comp']);
+                        }
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            error_log("Payroll check error: " . $e->getMessage());
+        }
+
+        if ($payroll_data) {
+            $employee['payroll_data'] = $payroll_data;
+
+            $deductions_detail = [];
+            try {
+                $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_deductions'");
+                if ($table_check->rowCount() > 0) {
+                    if ($selected_cutoff == 'full' && $payroll_data['id'] === null) {
+                        $deductions_stmt = $pdo->prepare("
+                            SELECT deduction_type, SUM(deduction_amount) as deduction_amount
+                            FROM payroll_deductions pd
+                            JOIN payroll_history ph ON pd.payroll_id = ph.id
+                            WHERE ph.employee_id = ? AND ph.employee_type = 'joborder' 
+                                AND ph.payroll_period = ? AND ph.payroll_cutoff IN ('first_half', 'second_half')
+                            GROUP BY deduction_type
+                        ");
+                        $deductions_stmt->execute([$employee['user_id'], $selected_period]);
+                    } else {
+                        $deductions_stmt = $pdo->prepare("
+                            SELECT deduction_type, deduction_amount 
+                            FROM payroll_deductions 
+                            WHERE payroll_id = ?
+                        ");
+                        $deductions_stmt->execute([$payroll_data['id']]);
+                    }
+
+                    $deductions = $deductions_stmt->fetchAll();
+
+                    foreach ($deductions as $ded) {
+                        $deductions_detail[$ded['deduction_type']] = $ded['deduction_amount'];
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("Deductions fetch error: " . $e->getMessage());
+            }
+
+            $employee['deductions_detail'] = $deductions_detail;
+        } else {
+            $employee['payroll_data'] = null;
+            $employee['deductions_detail'] = [];
+
+            // Calculate default deductions for display
+            $gross = $employee['gross_amount'];
+
+            $calc_withholding_tax = 0;
+            $calc_sss = 0;
+            $calc_philhealth = 0;
+            $calc_pagibig = 0;
+
+            // Withholding tax calculation based on tax config
+            foreach ($tax_config as $bracket) {
+                if (
+                    $gross > $bracket['tax_bracket_min'] &&
+                    ($bracket['tax_bracket_max'] === null || $gross <= $bracket['tax_bracket_max'])
+                ) {
+                    $calc_withholding_tax = ($gross - $bracket['tax_bracket_min']) * ($bracket['tax_rate'] / 100);
+                    break;
+                }
+            }
+
+            // If no tax config found, use a simple default calculation
+            if ($calc_withholding_tax == 0 && empty($tax_config)) {
+                if ($gross > 20000) {
+                    $calc_withholding_tax = ($gross - 20000) * 0.15;
+                } elseif ($gross > 10000) {
+                    $calc_withholding_tax = ($gross - 10000) * 0.10;
+                }
+            }
+
+            // SSS calculation using default rate
+            $calc_sss = $gross * ($sss_rate / 100);
+
+            // PhilHealth calculation
+            $calc_philhealth = $gross * ($philhealth_rate / 100);
+
+            // Pag-IBIG fixed rate
+            $calc_pagibig = $pagibig_fixed;
+
+            $employee['default_deductions'] = [
+                'withholding_tax' => $calc_withholding_tax,
+                'sss' => $calc_sss,
+                'philhealth' => $calc_philhealth,
+                'pagibig' => $calc_pagibig,
+                'total' => $calc_withholding_tax + $calc_sss + $calc_philhealth + $calc_pagibig
+            ];
+
+            if ($employee['withholding_tax'] == 0) {
+                $employee['withholding_tax'] = $calc_withholding_tax;
+            }
+            if ($employee['sss'] == 0) {
+                $employee['sss'] = $calc_sss;
+            }
+            if ($employee['philhealth'] == 0) {
+                $employee['philhealth'] = $calc_philhealth;
+            }
+            if ($employee['pagibig'] == 0) {
+                $employee['pagibig'] = $calc_pagibig;
+            }
+            if ($employee['total_deductions'] == 0) {
+                $employee['total_deductions'] = $calc_withholding_tax + $calc_sss + $calc_philhealth + $calc_pagibig;
+            }
+            if ($employee['net_amount'] == 0) {
+                $employee['net_amount'] = $gross - $employee['total_deductions'];
+                if ($employee['net_amount'] < 0) $employee['net_amount'] = 0;
+            }
+        }
     }
 
-    $contractual_employees = $employees;
+    $joborder_employees = $employees;
 } catch (Exception $e) {
     error_log("Database error: " . $e->getMessage());
     $_SESSION['error_message'] = "Error fetching employees: " . $e->getMessage();
-    $contractual_employees = [];
+    $joborder_employees = [];
 }
 
 // Calculate totals
@@ -1710,12 +2155,14 @@ $total_other_comp = 0;
 $total_gross_amount = 0;
 $total_withholding_tax = 0;
 $total_sss = 0;
+$total_philhealth = 0;
+$total_pagibig = 0;
 $total_deductions = 0;
 $total_net_amount = 0;
 $total_days_present = 0;
 $employees_with_attendance = 0;
 
-foreach ($contractual_employees as $employee) {
+foreach ($joborder_employees as $employee) {
     $total_monthly_salaries_wages += floatval($employee['prorated_salary'] ?? 0);
     $total_other_comp += floatval($employee['other_comp'] ?? 0);
     $total_gross_amount += floatval($employee['gross_amount'] ?? 0);
@@ -1723,10 +2170,27 @@ foreach ($contractual_employees as $employee) {
     $total_days_present += $days;
     if ($days > 0) $employees_with_attendance++;
 
-    $total_deductions += floatval($employee['total_deductions'] ?? 0);
-    $total_net_amount += floatval($employee['net_amount'] ?? 0);
+    $emp_total_deductions = floatval($employee['total_deductions'] ?? 0);
+    if ($emp_total_deductions == 0) {
+        $emp_total_deductions = floatval($employee['withholding_tax'] ?? 0) +
+            floatval($employee['sss'] ?? 0) +
+            floatval($employee['philhealth'] ?? 0) +
+            floatval($employee['pagibig'] ?? 0);
+    }
+    $total_deductions += $emp_total_deductions;
+
+    $emp_net_amount = floatval($employee['net_amount'] ?? 0);
+    if ($emp_net_amount == 0) {
+        $gross = floatval($employee['gross_amount'] ?? 0);
+        $emp_net_amount = $gross - $emp_total_deductions;
+        if ($emp_net_amount < 0) $emp_net_amount = 0;
+    }
+    $total_net_amount += $emp_net_amount;
+
     $total_withholding_tax += floatval($employee['withholding_tax'] ?? 0);
     $total_sss += floatval($employee['sss'] ?? 0);
+    $total_philhealth += floatval($employee['philhealth'] ?? 0);
+    $total_pagibig += floatval($employee['pagibig'] ?? 0);
 }
 
 // Get payroll summary for the period and cutoff
@@ -1739,7 +2203,7 @@ try {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 payroll_period VARCHAR(7) NOT NULL,
                 payroll_cutoff VARCHAR(20) DEFAULT 'full',
-                employee_type VARCHAR(50) DEFAULT 'contractual',
+                employee_type VARCHAR(50) DEFAULT 'joborder',
                 total_employees INT DEFAULT 0,
                 total_days_present DECIMAL(10,2) DEFAULT 0,
                 total_monthly_salaries_wages DECIMAL(10,2) DEFAULT 0,
@@ -1747,60 +2211,43 @@ try {
                 total_gross_amount DECIMAL(10,2) DEFAULT 0,
                 total_withholding_tax DECIMAL(10,2) DEFAULT 0,
                 total_sss DECIMAL(10,2) DEFAULT 0,
+                total_philhealth DECIMAL(10,2) DEFAULT 0,
+                total_pagibig DECIMAL(10,2) DEFAULT 0,
                 total_deductions DECIMAL(10,2) DEFAULT 0,
                 total_net_amount DECIMAL(10,2) DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY unique_period_cutoff (payroll_period, payroll_cutoff, employee_type)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            )
         ");
     }
 
     if ($selected_cutoff == 'full') {
-        // For full month, we need to aggregate from both halves
         $summary_stmt = $pdo->prepare("
             SELECT 
                 COUNT(DISTINCT employee_id) as total_employees,
-                COALESCE(SUM(days_present), 0) as total_days_present,
-                COALESCE(SUM(monthly_salaries_wages), 0) as total_monthly_salaries_wages,
-                COALESCE(SUM(other_comp), 0) as total_other_comp,
-                COALESCE(SUM(gross_amount), 0) as total_gross_amount,
-                COALESCE(SUM(withholding_tax), 0) as total_withholding_tax,
-                COALESCE(SUM(sss), 0) as total_sss,
-                COALESCE(SUM(total_deductions), 0) as total_deductions,
-                COALESCE(SUM(net_amount), 0) as total_net_amount
+                SUM(days_present) as total_days_present,
+                SUM(monthly_salaries_wages) as total_monthly_salaries_wages,
+                SUM(other_comp) as total_other_comp,
+                SUM(gross_amount) as total_gross_amount,
+                SUM(withholding_tax) as total_withholding_tax,
+                SUM(sss) as total_sss,
+                SUM(philhealth) as total_philhealth,
+                SUM(pagibig) as total_pagibig,
+                SUM(total_deductions) as total_deductions,
+                SUM(net_amount) as total_net_amount
             FROM payroll_history 
-            WHERE payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half') AND employee_type = 'contractual'
+            WHERE payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half') AND employee_type = 'joborder'
         ");
         $summary_stmt->execute([$selected_period]);
         $payroll_summary = $summary_stmt->fetch();
     } else {
         $summary_stmt = $pdo->prepare("
             SELECT * FROM payroll_summary 
-            WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'contractual'
+            WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'joborder'
         ");
         $summary_stmt->execute([$selected_period, $selected_cutoff]);
         $payroll_summary = $summary_stmt->fetch();
-
-        if (!$payroll_summary) {
-            // Calculate from payroll_history
-            $calc_stmt = $pdo->prepare("
-                SELECT 
-                    COUNT(DISTINCT employee_id) as total_employees,
-                    COALESCE(SUM(days_present), 0) as total_days_present,
-                    COALESCE(SUM(monthly_salaries_wages), 0) as total_monthly_salaries_wages,
-                    COALESCE(SUM(other_comp), 0) as total_other_comp,
-                    COALESCE(SUM(gross_amount), 0) as total_gross_amount,
-                    COALESCE(SUM(withholding_tax), 0) as total_withholding_tax,
-                    COALESCE(SUM(sss), 0) as total_sss,
-                    COALESCE(SUM(total_deductions), 0) as total_deductions,
-                    COALESCE(SUM(net_amount), 0) as total_net_amount
-                FROM payroll_history 
-                WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'contractual'
-            ");
-            $calc_stmt->execute([$selected_period, $selected_cutoff]);
-            $payroll_summary = $calc_stmt->fetch();
-        }
     }
 } catch (Exception $e) {
     error_log("Payroll summary fetch error: " . $e->getMessage());
@@ -1813,16 +2260,15 @@ try {
     $table_check = $pdo->query("SHOW TABLES LIKE 'payroll_history'");
     if ($table_check->rowCount() > 0) {
         if ($selected_cutoff == 'full') {
-            // For full month, check status from both halves
             $status_stmt = $pdo->prepare("
                 SELECT DISTINCT status FROM payroll_history 
-                WHERE employee_type = 'contractual' AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
+                WHERE employee_type = 'joborder' AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
                 LIMIT 1
             ");
         } else {
             $status_stmt = $pdo->prepare("
                 SELECT DISTINCT status FROM payroll_history 
-                WHERE employee_type = 'contractual' AND payroll_period = ? AND payroll_cutoff = ?
+                WHERE employee_type = 'joborder' AND payroll_period = ? AND payroll_cutoff = ?
                 LIMIT 1
             ");
         }
@@ -1845,13 +2291,13 @@ try {
         if ($selected_cutoff == 'full') {
             $approval_stmt = $pdo->prepare("
                 SELECT * FROM payroll_approvals 
-                WHERE payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half') AND employee_type = 'contractual'
+                WHERE payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half') AND employee_type = 'joborder'
                 ORDER BY approved_date DESC
             ");
         } else {
             $approval_stmt = $pdo->prepare("
                 SELECT * FROM payroll_approvals 
-                WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'contractual'
+                WHERE payroll_period = ? AND payroll_cutoff = ? AND employee_type = 'joborder'
                 ORDER BY approved_date DESC
             ");
         }
@@ -1868,6 +2314,88 @@ $success_message = $_SESSION['success_message'] ?? null;
 $error_message = $_SESSION['error_message'] ?? null;
 unset($_SESSION['success_message'], $_SESSION['error_message']);
 
+// Function to calculate deductions for a row
+function calculateRowDeductions($employee, $tax_config, $sss_rate, $philhealth_rate, $pagibig_fixed, $cutoff = 'full')
+{
+    $gross = floatval($employee['gross_amount'] ?? 0);
+
+    if (isset($employee['total_deductions']) && $employee['total_deductions'] > 0) {
+        return [
+            'withholding_tax' => floatval($employee['withholding_tax'] ?? 0),
+            'sss' => floatval($employee['sss'] ?? 0),
+            'philhealth' => floatval($employee['philhealth'] ?? 0),
+            'pagibig' => floatval($employee['pagibig'] ?? 0),
+            'total' => floatval($employee['total_deductions'])
+        ];
+    }
+
+    if (isset($employee['payroll_data']) && $employee['payroll_data']) {
+        $total = floatval($employee['payroll_data']['total_deductions'] ?? 0);
+        if ($total == 0) {
+            $total = floatval($employee['payroll_data']['withholding_tax'] ?? 0) +
+                floatval($employee['payroll_data']['sss'] ?? 0) +
+                floatval($employee['payroll_data']['philhealth'] ?? 0) +
+                floatval($employee['payroll_data']['pagibig'] ?? 0);
+        }
+        return [
+            'withholding_tax' => floatval($employee['payroll_data']['withholding_tax'] ?? 0),
+            'sss' => floatval($employee['payroll_data']['sss'] ?? 0),
+            'philhealth' => floatval($employee['payroll_data']['philhealth'] ?? 0),
+            'pagibig' => floatval($employee['payroll_data']['pagibig'] ?? 0),
+            'total' => $total
+        ];
+    }
+
+    if (isset($employee['withholding_tax']) && isset($employee['sss']) && isset($employee['philhealth']) && isset($employee['pagibig'])) {
+        $total = floatval($employee['total_deductions'] ?? ($employee['withholding_tax'] + $employee['sss'] + $employee['philhealth'] + $employee['pagibig']));
+        return [
+            'withholding_tax' => floatval($employee['withholding_tax']),
+            'sss' => floatval($employee['sss']),
+            'philhealth' => floatval($employee['philhealth']),
+            'pagibig' => floatval($employee['pagibig']),
+            'total' => $total
+        ];
+    }
+
+    if (isset($employee['default_deductions'])) {
+        return $employee['default_deductions'];
+    }
+
+    $withholding_tax = 0;
+
+    if ($gross > 0) {
+        foreach ($tax_config as $bracket) {
+            if (
+                $gross > $bracket['tax_bracket_min'] &&
+                ($bracket['tax_bracket_max'] === null || $gross <= $bracket['tax_bracket_max'])
+            ) {
+                $withholding_tax = ($gross - $bracket['tax_bracket_min']) * ($bracket['tax_rate'] / 100);
+                break;
+            }
+        }
+
+        if ($withholding_tax == 0 && empty($tax_config)) {
+            if ($gross > 20000) {
+                $withholding_tax = ($gross - 20000) * 0.15;
+            } elseif ($gross > 10000) {
+                $withholding_tax = ($gross - 10000) * 0.10;
+            }
+        }
+    }
+
+    $sss = $gross * ($sss_rate / 100);
+    $philhealth = $gross * ($philhealth_rate / 100);
+    $pagibig = $pagibig_fixed;
+
+    return [
+        'withholding_tax' => $withholding_tax,
+        'sss' => $sss,
+        'philhealth' => $philhealth,
+        'pagibig' => $pagibig,
+        'total' => $withholding_tax + $sss + $philhealth + $pagibig
+    ];
+}
+
 // Flush output buffer at the end
 ob_end_flush();
 ?>
@@ -1877,7 +2405,7 @@ ob_end_flush();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contractual Payroll | HR Management System</title>
+    <title>Job Order Payroll | HR Management System</title>
     <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -2321,7 +2849,7 @@ ob_end_flush();
         }
 
         .payroll-table {
-            min-width: 1400px;
+            min-width: 1600px;
             width: 100%;
             border-collapse: collapse;
         }
@@ -2342,48 +2870,6 @@ ob_end_flush();
 
         .payroll-table tbody tr:hover {
             background-color: #f9fafb;
-        }
-
-        /* Checkbox styling */
-        .employee-checkbox {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-            accent-color: var(--primary);
-        }
-
-        /* Header checkbox container */
-       
-
-        #select-all {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-            accent-color: var(--primary);
-        }
-
-        /* Print actions bar */
-        .print-actions {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-            padding: 0.5rem;
-            background-color: #f9fafb;
-            border-radius: 0.5rem;
-            border: 1px solid #e5e7eb;
-        }
-
-        .selected-count {
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--primary);
-            background-color: #eff6ff;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
         }
 
         /* Highlight rows with no attendance */
@@ -3004,36 +3490,38 @@ ob_end_flush();
             opacity: 1;
         }
 
-        /* Print button styles */
-        .print-btn {
-            background-color: #10b981;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
+        /* Export dropdown */
+        .export-dropdown {
+            position: relative;
+            display: inline-block;
         }
 
-        .print-btn:hover {
-            background-color: #059669;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        .export-dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background-color: white;
+            min-width: 160px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+            border-radius: 0.375rem;
+            overflow: hidden;
         }
 
-        .print-btn:disabled {
-            background-color: #9ca3af;
-            cursor: not-allowed;
-            transform: none;
+        .export-dropdown:hover .export-dropdown-content {
+            display: block;
         }
 
-        .print-btn i {
-            font-size: 1rem;
+        .export-dropdown-content a {
+            color: #333;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            transition: background-color 0.2s;
+        }
+
+        .export-dropdown-content a:hover {
+            background-color: #f3f4f6;
         }
 
         /* Loading overlay */
@@ -3479,6 +3967,15 @@ ob_end_flush();
                 flex-direction: row;
             }
         }
+
+        /* Job Order specific colors */
+        .bg-joborder {
+            background-color: #f0fdf4;
+        }
+
+        .text-joborder {
+            color: #166534;
+        }
     </style>
 </head>
 
@@ -3518,7 +4015,7 @@ ob_end_flush();
                     <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
                     <div class="mobile-brand-text">
                         <span class="mobile-brand-title">HRMS</span>
-                        <span class="mobile-brand-subtitle">Dashboard</span>
+                        <span class="mobile-brand-subtitle">Job Order</span>
                     </div>
                 </div>
             </div>
@@ -3586,17 +4083,17 @@ ob_end_flush();
 
                 <!-- Payroll Dropdown -->
                 <li>
-                    <a href="#" class="sidebar-item active" id="payroll-toggle">
+                    <a href="#" class="sidebar-item" id="payroll-toggle">
                         <i class="fas fa-money-bill-wave"></i>
                         <span>Payroll</span>
                         <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
                     </a>
                     <div class="submenu" id="payroll-submenu">
-                        <a href="contractualpayrolltable1.php" class="submenu-item active">
+                        <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item">
                             <i class="fas fa-circle text-xs"></i>
                             Contractual
                         </a>
-                        <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="submenu-item">
+                        <a href="joborderpayrolltable1.php" class="submenu-item active">
                             <i class="fas fa-circle text-xs"></i>
                             Job Order
                         </a>
@@ -3605,6 +4102,14 @@ ob_end_flush();
                             Permanent
                         </a>
                     </div>
+                </li>
+
+                <!-- Reports -->
+                <li>
+                    <a href="../paysliphistory.php" class="sidebar-item">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Reports</span>
+                    </a>
                 </li>
 
                 <!-- Salary -->
@@ -3650,16 +4155,16 @@ ob_end_flush();
         <?php endif; ?>
 
         <!-- Business Rules Info Banner -->
-        <!-- <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+        <div class="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
             <div class="flex">
                 <div class="flex-shrink-0">
-                    <i class="fas fa-info-circle text-blue-400"></i>
+                    <i class="fas fa-info-circle text-green-400"></i>
                 </div>
                 <div class="ml-3">
-                    <p class="text-sm text-blue-700">
-                        <strong>Payroll Calculation Rules:</strong>
-                        Gross amount is calculated based on days present × daily rate + other compensation.
-                        <span class="font-bold text-green-700">For Full Month view, all deduction fields (Other Compensation, Withholding Tax, and SSS Contribution) are read-only and must be edited in Half Month views.</span>
+                    <p class="text-sm text-green-700">
+                        <strong>Job Order Payroll Rules:</strong>
+                        Gross amount = days present × daily rate + other compensation.
+                        <span class="font-bold">Deductions include: Withholding Tax, SSS, PhilHealth, and Pag-IBIG.</span>
                         <?php if ($is_full_month): ?>
                             You are viewing <strong>Full Month</strong>. All deduction fields are disabled.
                             Please switch to First Half or Second Half to edit these values.
@@ -3670,28 +4175,28 @@ ob_end_flush();
                     </p>
                 </div>
             </div>
-        </div> -->
+        </div>
 
         <!-- Breadcrumb -->
         <nav class="breadcrumb" aria-label="Breadcrumb">
             <ol class="inline-flex items-center space-x-1 md:space-x-2">
                 <li class="inline-flex items-center">
-                    <a href="contractualpayrolltable1.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-primary-700">
-                        <i class="fas fa-home mr-2"></i> Contractual Payroll
+                    <a href="joborderpayrolltable1.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-primary-700">
+                        <i class="fas fa-home mr-2"></i> Job Order Payroll
                     </a>
                 </li>
                 <li>
                     <div class="flex items-center">
                         <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-                        <a href="contractual_payroll_obligation.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">Payroll & Obligation Request</a>
+                        <a href="joborderpayroll.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">Payroll Processing</a>
                     </div>
                 </li>
-                <!-- <li>
+                <li>
                     <div class="flex items-center">
                         <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-                        <a href="contractualobligationrequest.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2"> Obligation Request</a>
+                        <span class="ml-1 text-sm font-medium text-gray-500"><?php echo date('F Y', strtotime($selected_period . '-01')); ?></span>
                     </div>
-                </li> -->
+                </li>
             </ol>
         </nav>
 
@@ -3699,12 +4204,12 @@ ob_end_flush();
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
             <!-- Left side - Title (Compact) -->
             <div class="flex items-center gap-3">
-                <div class="bg-primary-100 p-2 rounded-lg">
-                    <i class="fas fa-file-invoice text-primary-600 text-lg"></i>
+                <div class="bg-green-100 p-2 rounded-lg">
+                    <i class="fas fa-file-invoice text-green-600 text-lg"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-gray-900">Contractual Payroll</h1>
-                    <p class="text-xs text-gray-500">Manage contractual employee payroll</p>
+                    <h1 class="text-xl font-bold text-gray-900">Job Order Payroll</h1>
+                    <p class="text-xs text-gray-500">Manage job order employee payroll</p>
                 </div>
             </div>
 
@@ -3727,16 +4232,16 @@ ob_end_flush();
 
                     <!-- Cutoff Buttons Group -->
                     <div class="flex divide-x divide-gray-200">
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=full&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
-                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'full') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
+                        <a href="?period=<?php echo $selected_period; ?>&cutoff=full&page=1&per_page=<?php echo $records_per_page; ?>"
+                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'full') ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
                             Full
                         </a>
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=first_half&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
-                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'first_half') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
+                        <a href="?period=<?php echo $selected_period; ?>&cutoff=first_half&page=1&per_page=<?php echo $records_per_page; ?>"
+                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'first_half') ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
                             1st Half
                         </a>
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=second_half&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
-                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'second_half') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
+                        <a href="?period=<?php echo $selected_period; ?>&cutoff=second_half&page=1&per_page=<?php echo $records_per_page; ?>"
+                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'second_half') ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
                             2nd Half
                         </a>
                     </div>
@@ -3762,30 +4267,35 @@ ob_end_flush();
                         </button>
                     <?php endif; ?>
 
-                    <!-- Print Button (Replaces Export Dropdown) -->
-                    <button id="print-selected-btn" class="print-btn" onclick="printSelectedPayslips()" disabled>
-                        <i class="fas fa-print"></i>
-                        <span class="hidden sm:inline">Print Payslips</span>
-                        <span id="selected-count-badge" class="ml-1 px-1.5 py-0.5 bg-white text-green-700 rounded-full text-xs font-bold hidden">0</span>
-                    </button>
+                    <!-- Export Dropdown -->
+                    <div class="export-dropdown relative">
+                        <button class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1">
+                            <i class="fas fa-download"></i>
+                            <span class="hidden sm:inline">Export</span>
+                            <i class="fas fa-chevron-down text-[10px]"></i>
+                        </button>
+                        <div class="export-dropdown-content absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50 hidden">
+                            <a href="#" onclick="exportData('pdf')"
+                                class="flex items-center px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-file-pdf mr-2 text-red-500 text-xs"></i> PDF
+                            </a>
+                            <a href="#" onclick="exportData('excel')"
+                                class="flex items-center px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-file-excel mr-2 text-green-600 text-xs"></i> Excel
+                            </a>
+                            <a href="#" onclick="exportData('csv')"
+                                class="flex items-center px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100">
+                                <i class="fas fa-file-csv mr-2 text-blue-600 text-xs"></i> CSV
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Print Actions Bar (Shows when items are selected) -->
-        <div id="print-actions-bar" class="print-actions hidden">
-            <span class="selected-count">
-                <i class="fas fa-check-circle"></i>
-                <span id="selected-count-text">0</span> employee(s) selected
-            </span>
-            <button onclick="clearSelections()" class="text-xs text-gray-600 hover:text-gray-800">
-                <i class="fas fa-times"></i> Clear
-            </button>
-        </div>
-
         <!-- Mobile Info Bar (shows only on small screens) -->
-        <div class="sm:hidden flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg mb-3 text-xs text-blue-700">
-            <i class="fas fa-info-circle text-blue-500"></i>
+        <div class="sm:hidden flex items-center gap-2 bg-green-50 px-3 py-2 rounded-lg mb-3 text-xs text-green-700">
+            <i class="fas fa-info-circle text-green-500"></i>
             <span class="truncate">
                 <?php echo date('M d', strtotime($current_cutoff['start'])); ?> -
                 <?php echo date('M d, Y', strtotime($current_cutoff['end'])); ?>
@@ -3807,7 +4317,7 @@ ob_end_flush();
                 <div class="stat-content">
                     <div class="stat-label">Total Employees</div>
                     <div class="stat-value"><?php echo $total_employees; ?></div>
-                    <div class="stat-desc">Active contractual</div>
+                    <div class="stat-desc">Active job order</div>
                 </div>
             </div>
 
@@ -3829,7 +4339,7 @@ ob_end_flush();
                 <div class="stat-content">
                     <div class="stat-label">Total Deductions</div>
                     <div class="stat-value" id="total-deductions-display">₱<?php echo number_format($total_deductions, 2); ?></div>
-                    <div class="stat-desc">Withholding + SSS</div>
+                    <div class="stat-desc">Tax + SSS + PhilHealth + Pag-IBIG</div>
                 </div>
             </div>
 
@@ -3849,7 +4359,7 @@ ob_end_flush();
         <div class="tabs">
             <div class="tab active" data-tab="payroll">Payroll Details</div>
             <div class="tab" data-tab="summary">Payroll Summary</div>
-            <!-- <div class="tab" data-tab="approvals">Approval History</div> -->
+            <div class="tab" data-tab="approvals">Approval History</div>
         </div>
 
         <!-- Payroll Details Tab -->
@@ -3858,7 +4368,7 @@ ob_end_flush();
             <div class="mb-4 flex justify-between items-center">
                 <div class="search-container">
                     <i class="fas fa-search search-icon"></i>
-                    <input type="text" id="search-employees" class="search-input" placeholder="Search employees..." value="<?php echo htmlspecialchars($search_term); ?>">
+                    <input type="text" id="search-employees" class="search-input" placeholder="Search employees..." value="">
                 </div>
                 <div class="per-page-selector">
                     <label for="per-page" class="text-sm text-gray-600">Show:</label>
@@ -3883,7 +4393,7 @@ ob_end_flush();
                 <div class="card">
                     <div class="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <h2 class="text-lg font-semibold text-gray-900">
-                            Employee Payroll Details for <?php echo date('F Y', strtotime($selected_period . '-01')); ?>
+                            Job Order Payroll Details for <?php echo date('F Y', strtotime($selected_period . '-01')); ?>
                             (<?php echo $current_cutoff['label']; ?>)
                         </h2>
                         <?php if ($is_full_month): ?>
@@ -3897,9 +4407,6 @@ ob_end_flush();
                         <table class="payroll-table" id="payroll-table">
                             <thead>
                                 <tr>
-                                    <th rowspan="2" class="w-12 checkbox-container ">
-                                        <input type="checkbox" id="select-all" class="border border-gray-500 bg-transparent rounded-sm" title="Select all employees">
-                                    </th>
                                     <th rowspan="2" class="w-12">#</th>
                                     <th rowspan="2" class="min-w-[120px]">Employee ID</th>
                                     <th rowspan="2" class="min-w-[150px]">Name</th>
@@ -3907,7 +4414,7 @@ ob_end_flush();
                                     <th rowspan="2" class="min-w-[100px]">Department</th>
                                     <th rowspan="2" class="min-w-[100px]">Days Present</th>
                                     <th colspan="4" class="text-center compensation-header">Compensation</th>
-                                    <th colspan="3" class="text-center deductions-header">Deductions</th>
+                                    <th colspan="5" class="text-center deductions-header">Deductions</th>
                                     <th rowspan="2" class="min-w-[100px] bg-gray-100">Net Amount</th>
                                     <th rowspan="2" class="min-w-[180px]">Actions</th>
                                 </tr>
@@ -3917,57 +4424,59 @@ ob_end_flush();
                                     <th class="min-w-[100px] compensation-header <?php echo $is_full_month ? 'opacity-70' : ''; ?>">Other Compensation</th>
                                     <th class="min-w-[100px] compensation-header">Gross Amount Earned</th>
                                     <th class="min-w-[100px] deductions-header <?php echo $is_full_month ? 'opacity-70' : ''; ?>">Withholding Tax</th>
-                                    <th class="min-w-[100px] deductions-header <?php echo $is_full_month ? 'opacity-70' : ''; ?>">SSS Contribution</th>
+                                    <th class="min-w-[100px] deductions-header <?php echo $is_full_month ? 'opacity-70' : ''; ?>">SSS</th>
+                                    <th class="min-w-[100px] deductions-header <?php echo $is_full_month ? 'opacity-70' : ''; ?>">PhilHealth</th>
+                                    <th class="min-w-[100px] deductions-header <?php echo $is_full_month ? 'opacity-70' : ''; ?>">Pag-IBIG</th>
                                     <th class="min-w-[100px] deductions-header">Total Deductions</th>
                                 </tr>
                             </thead>
                             <tbody id="payroll-tbody">
-                                <?php if (empty($contractual_employees)): ?>
+                                <?php if (empty($joborder_employees)): ?>
                                     <tr>
-                                        <td colspan="17" class="text-center py-8 text-gray-500">
-                                            No contractual employees found.
+                                        <td colspan="18" class="text-center py-8 text-gray-500">
+                                            No job order employees found.
                                         </td>
                                     </tr>
                                 <?php else: ?>
                                     <?php $counter = $offset + 1; ?>
-                                    <?php foreach ($contractual_employees as $employee): ?>
+                                    <?php foreach ($joborder_employees as $employee): ?>
                                         <?php
+                                        $deductions = calculateRowDeductions($employee, $tax_config, $sss_rate, $philhealth_rate, $pagibig_fixed, $selected_cutoff);
                                         $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-                                        $daily_rate = floatval($employee['daily_rate'] ?? 0);
+                                        $daily_rate = floatval($employee['rate_per_day'] ?? 0);
                                         $prorated_salary = floatval($employee['prorated_salary'] ?? 0);
                                         $other_comp = floatval($employee['other_comp'] ?? 0);
                                         $days_present = floatval($employee['days_present'] ?? 0);
                                         $gross_amount = floatval($employee['gross_amount'] ?? 0);
-                                        $withholding_tax = floatval($employee['withholding_tax'] ?? 0);
-                                        $sss = floatval($employee['sss'] ?? 0);
-                                        $total_deductions_row = floatval($employee['total_deductions'] ?? 0);
                                         $net_amount_row = floatval($employee['net_amount'] ?? 0);
-                                        $payroll_id = $employee['payroll_id'] ?? null;
-                                        $payroll_exists = $employee['payroll_exists'] ?? false;
+                                        $total_deductions_row = floatval($employee['total_deductions'] ?? 0);
 
-                                        // Ensure we have valid values
-                                        if ($gross_amount == 0 && $prorated_salary > 0) {
-                                            $gross_amount = $prorated_salary + $other_comp;
-                                        }
-                                        if ($total_deductions_row == 0 && ($withholding_tax > 0 || $sss > 0)) {
-                                            $total_deductions_row = $withholding_tax + $sss;
-                                        }
-                                        if ($net_amount_row == 0 && $gross_amount > 0) {
+                                        // If net_amount is 0 but we have gross and deductions, calculate it
+                                        if ($net_amount_row == 0 && $gross_amount > 0 && $total_deductions_row > 0) {
                                             $net_amount_row = $gross_amount - $total_deductions_row;
-                                            if ($net_amount_row < 0) $net_amount_row = 0;
+                                        } elseif ($net_amount_row == 0 && $gross_amount > 0) {
+                                            $net_amount_row = $gross_amount - ($deductions['withholding_tax'] + $deductions['sss'] + $deductions['philhealth'] + $deductions['pagibig']);
+                                        }
+                                        if ($net_amount_row < 0) $net_amount_row = 0;
+
+                                        // If total_deductions_row is 0 but we have deductions, calculate it
+                                        if ($total_deductions_row == 0 && ($deductions['withholding_tax'] > 0 || $deductions['sss'] > 0 || $deductions['philhealth'] > 0 || $deductions['pagibig'] > 0)) {
+                                            $total_deductions_row = $deductions['withholding_tax'] + $deductions['sss'] + $deductions['philhealth'] + $deductions['pagibig'];
                                         }
 
+                                        $payroll_data = $employee['payroll_data'] ?? null;
+                                        $payroll_id = $payroll_data['id'] ?? null;
+
+                                        // Determine if row has attendance
                                         $has_attendance = ($days_present > 0);
                                         $row_class = $has_attendance ? '' : 'no-attendance';
 
                                         // Set column disable classes for full month - ALL deduction fields disabled
+                                        $full_month_disabled_class = $is_full_month ? 'full-month-disabled' : '';
                                         $full_month_readonly = $is_full_month ? 'readonly disabled' : '';
                                         $full_month_style = $is_full_month ? 'background-color: #f0f0f0; color: #888; cursor: not-allowed;' : '';
                                         ?>
-                                        <tr class="bg-white border-b hover:bg-gray-50 payroll-row <?php echo $row_class; ?>" data-employee-id="<?php echo $employee['user_id']; ?>" data-payroll-id="<?php echo $payroll_id; ?>" data-payroll-exists="<?php echo $payroll_exists ? '1' : '0'; ?>">
-                                            <td class="text-center">
-                                                <input type="checkbox" class="employee-checkbox border border-gray-500 bg-transparent rounded-sm"  value="<?php echo $employee['user_id']; ?>" data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>">
-                                            </td>
+                                        <tr class="bg-white border-b hover:bg-gray-50 payroll-row <?php echo $row_class; ?>" data-employee-id="<?php echo $employee['user_id']; ?>" data-payroll-id="<?php echo $payroll_id; ?>">
                                             <td class="text-center"><?php echo $counter++; ?></td>
                                             <td class="font-medium"><?php echo htmlspecialchars($employee['employee_id']); ?></td>
                                             <td class="font-medium">
@@ -3993,7 +4502,7 @@ ob_end_flush();
                                                 <input type="number"
                                                     name="daily_rate[]"
                                                     class="payroll-input readonly disabled-field daily-rate"
-                                                    value="<?php echo number_format($daily_rate, 2, '.', ''); ?>"
+                                                    value="<?php echo $daily_rate; ?>"
                                                     readonly
                                                     disabled
                                                     tabindex="-1">
@@ -4004,7 +4513,7 @@ ob_end_flush();
                                                 <input type="number"
                                                     name="monthly_salaries_wages[]"
                                                     class="payroll-input readonly disabled-field monthly-salaries-wages"
-                                                    value="<?php echo number_format($monthly_salary, 2, '.', ''); ?>"
+                                                    value="<?php echo $monthly_salary; ?>"
                                                     readonly
                                                     disabled
                                                     tabindex="-1">
@@ -4015,7 +4524,7 @@ ob_end_flush();
                                                 <input type="number"
                                                     name="other_comp[]"
                                                     class="payroll-input other-comp <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                                                    value="<?php echo number_format($other_comp, 2, '.', ''); ?>"
+                                                    value="<?php echo $other_comp; ?>"
                                                     min="0"
                                                     step="0.01"
                                                     data-employee-id="<?php echo $employee['user_id']; ?>"
@@ -4025,12 +4534,12 @@ ob_end_flush();
                                                     style="<?php echo $full_month_style; ?>">
                                             </td>
 
-                                            <!-- Gross Amount - FROM DATABASE, READONLY -->
+                                            <!-- Gross Amount - AUTO-CALCULATED, READONLY -->
                                             <td>
                                                 <input type="number"
                                                     name="gross_amount[]"
                                                     class="payroll-input gross-amount readonly disabled-field <?php echo ($gross_amount <= 0) ? 'zero-amount' : ''; ?>"
-                                                    value="<?php echo number_format($gross_amount, 2, '.', ''); ?>"
+                                                    value="<?php echo $gross_amount; ?>"
                                                     readonly
                                                     disabled
                                                     tabindex="-1">
@@ -4041,7 +4550,7 @@ ob_end_flush();
                                                 <input type="number"
                                                     name="withholding_tax[]"
                                                     class="payroll-input withholding-tax <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                                                    value="<?php echo number_format($withholding_tax, 2, '.', ''); ?>"
+                                                    value="<?php echo $deductions['withholding_tax']; ?>"
                                                     min="0"
                                                     step="0.01"
                                                     data-employee-id="<?php echo $employee['user_id']; ?>"
@@ -4056,7 +4565,7 @@ ob_end_flush();
                                                 <input type="number"
                                                     name="sss[]"
                                                     class="payroll-input sss <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                                                    value="<?php echo number_format($sss, 2, '.', ''); ?>"
+                                                    value="<?php echo $deductions['sss']; ?>"
                                                     min="0"
                                                     step="0.01"
                                                     data-employee-id="<?php echo $employee['user_id']; ?>"
@@ -4066,12 +4575,42 @@ ob_end_flush();
                                                     style="<?php echo $full_month_style; ?>">
                                             </td>
 
+                                            <!-- PhilHealth Contribution - DISABLED in FULL MONTH, EDITABLE in half months -->
+                                            <td>
+                                                <input type="number"
+                                                    name="philhealth[]"
+                                                    class="payroll-input philhealth <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                                                    value="<?php echo $deductions['philhealth']; ?>"
+                                                    min="0"
+                                                    step="0.01"
+                                                    data-employee-id="<?php echo $employee['user_id']; ?>"
+                                                    data-field="philhealth"
+                                                    <?php echo $full_month_readonly; ?>
+                                                    <?php echo $is_full_month ? 'title="PhilHealth Contribution can only be edited in Half Month views"' : ''; ?>
+                                                    style="<?php echo $full_month_style; ?>">
+                                            </td>
+
+                                            <!-- Pag-IBIG Contribution - DISABLED in FULL MONTH, EDITABLE in half months -->
+                                            <td>
+                                                <input type="number"
+                                                    name="pagibig[]"
+                                                    class="payroll-input pagibig <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                                                    value="<?php echo $deductions['pagibig']; ?>"
+                                                    min="0"
+                                                    step="0.01"
+                                                    data-employee-id="<?php echo $employee['user_id']; ?>"
+                                                    data-field="pagibig"
+                                                    <?php echo $full_month_readonly; ?>
+                                                    <?php echo $is_full_month ? 'title="Pag-IBIG Contribution can only be edited in Half Month views"' : ''; ?>
+                                                    style="<?php echo $full_month_style; ?>">
+                                            </td>
+
                                             <!-- Total Deduction - FROM DATABASE, READONLY -->
                                             <td>
                                                 <input type="number"
                                                     name="total_deduction[]"
                                                     class="payroll-input total-deduction readonly disabled-field"
-                                                    value="<?php echo number_format($total_deductions_row, 2, '.', ''); ?>"
+                                                    value="<?php echo $total_deductions_row; ?>"
                                                     readonly
                                                     disabled
                                                     tabindex="-1">
@@ -4082,7 +4621,7 @@ ob_end_flush();
                                                 <input type="number"
                                                     name="net_amount[]"
                                                     class="payroll-input net-amount readonly disabled-field <?php echo ($net_amount_row <= 0) ? 'zero-amount' : ''; ?>"
-                                                    value="<?php echo number_format($net_amount_row, 2, '.', ''); ?>"
+                                                    value="<?php echo $net_amount_row; ?>"
                                                     readonly
                                                     disabled
                                                     tabindex="-1">
@@ -4090,14 +4629,23 @@ ob_end_flush();
 
                                             <td>
                                                 <div class="action-buttons">
+                                                    <!-- View Button with enhanced modal -->
                                                     <button type="button" class="action-btn view-btn" onclick="viewEmployeeDetails(<?php echo $employee['user_id']; ?>, '<?php echo $selected_period; ?>', '<?php echo $selected_cutoff; ?>')">
                                                         <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
                                                     </button>
-                                                    <?php if (!$is_full_month && ($payroll_status == 'pending' || $payroll_status == 'draft')): ?>
+
+                                                    <?php if ($payroll_status == 'pending' || $payroll_status == 'draft'): ?>
                                                         <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
                                                             <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
                                                         </button>
                                                     <?php endif; ?>
+
+                                                    <?php if ($payroll_status == 'approved' && $payroll_id): ?>
+                                                        <button type="button" class="action-btn paid-btn" onclick="showPaymentModal(<?php echo $payroll_id; ?>)">
+                                                            <i class="fas fa-check-double"></i> <span class="hidden md:inline">Pay</span>
+                                                        </button>
+                                                    <?php endif; ?>
+
                                                     <?php if ($payroll_id): ?>
                                                         <button type="button" class="action-btn bg-purple-500 text-white hover:bg-purple-600" onclick="viewDeductions(<?php echo $payroll_id; ?>)">
                                                             <i class="fas fa-chart-pie"></i> <span class="hidden md:inline">Deductions</span>
@@ -4111,7 +4659,6 @@ ob_end_flush();
 
                                 <!-- Totals Row -->
                                 <tr class="bg-gray-100 font-bold">
-                                    <td></td>
                                     <td colspan="6" class="text-right">TOTAL AMOUNT</td>
                                     <td class="text-right">-</td>
                                     <td class="text-right" id="total-monthly-salaries-wages">₱<?php echo number_format($total_monthly_salaries_wages, 2); ?></td>
@@ -4119,6 +4666,8 @@ ob_end_flush();
                                     <td class="text-right" id="total-gross-amount">₱<?php echo number_format($total_gross_amount, 2); ?></td>
                                     <td class="text-right" id="total-withholding-tax">₱<?php echo number_format($total_withholding_tax, 2); ?></td>
                                     <td class="text-right" id="total-sss">₱<?php echo number_format($total_sss, 2); ?></td>
+                                    <td class="text-right" id="total-philhealth">₱<?php echo number_format($total_philhealth, 2); ?></td>
+                                    <td class="text-right" id="total-pagibig">₱<?php echo number_format($total_pagibig, 2); ?></td>
                                     <td class="text-right" id="total-deduction">₱<?php echo number_format($total_deductions, 2); ?></td>
                                     <td class="text-right" id="total-net-amount">₱<?php echo number_format($total_net_amount, 2); ?></td>
                                     <td></td>
@@ -4205,7 +4754,7 @@ ob_end_flush();
                     (<?php echo $current_cutoff['label']; ?>)
                 </h2>
 
-                <?php if ($payroll_summary && ($payroll_summary['total_gross_amount'] > 0 || $payroll_summary['total_net_amount'] > 0)): ?>
+                <?php if ($payroll_summary): ?>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <div class="summary-card">
@@ -4249,8 +4798,16 @@ ob_end_flush();
                                     <span class="font-bold text-blue-600">₱<?php echo number_format($payroll_summary['total_sss'] ?? 0, 2); ?></span>
                                 </div>
                                 <div class="flex justify-between items-center p-3 bg-purple-50 rounded">
+                                    <span class="font-medium">PhilHealth:</span>
+                                    <span class="font-bold text-purple-600">₱<?php echo number_format($payroll_summary['total_philhealth'] ?? 0, 2); ?></span>
+                                </div>
+                                <div class="flex justify-between items-center p-3 bg-green-50 rounded">
+                                    <span class="font-medium">Pag-IBIG:</span>
+                                    <span class="font-bold text-green-600">₱<?php echo number_format($payroll_summary['total_pagibig'] ?? 0, 2); ?></span>
+                                </div>
+                                <div class="flex justify-between items-center p-3 bg-orange-50 rounded">
                                     <span class="font-medium">Total Deductions:</span>
-                                    <span class="font-bold text-purple-600">₱<?php echo number_format($payroll_summary['total_deductions'] ?? 0, 2); ?></span>
+                                    <span class="font-bold text-orange-600">₱<?php echo number_format($payroll_summary['total_deductions'] ?? 0, 2); ?></span>
                                 </div>
                             </div>
 
@@ -4342,7 +4899,7 @@ ob_end_flush();
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
-                <form action="?approve_payroll=1&period=<?php echo $selected_period; ?>&cutoff=<?php echo $selected_cutoff; ?>&page=<?php echo $current_page; ?>&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>" method="POST">
+                <form action="?approve_payroll=1&period=<?php echo $selected_period; ?>&cutoff=<?php echo $selected_cutoff; ?>&page=<?php echo $current_page; ?>&per_page=<?php echo $records_per_page; ?>" method="POST">
                     <div class="modal-body">
                         <p class="mb-4">Are you sure you want to approve the payroll for <?php echo date('F Y', strtotime($selected_period . '-01')); ?> (<?php echo $current_cutoff['label']; ?>)?</p>
                         <p class="mb-4 text-sm text-gray-600">This action cannot be undone.</p>
@@ -4434,23 +4991,14 @@ ob_end_flush();
                 </div>
             </div>
         </div>
-
-        <!-- Hidden form for printing multiple payslips -->
-        <form id="print-payslips-form" method="POST" action="" style="display: none;">
-            <input type="hidden" name="print_payslips" value="1">
-            <input type="hidden" name="payroll_period" value="<?php echo $selected_period; ?>">
-            <input type="hidden" name="payroll_cutoff" value="<?php echo $selected_cutoff; ?>">
-            <input type="hidden" name="selected_employees[]" id="selected-employees-input" value="">
-        </form>
     </main>
 
-    <!-- JavaScript - FIXED VERSION WITH PROPER DATABASE SAVING AND PRINT FUNCTIONALITY -->
+    <!-- JavaScript - Based on Working Contractual Payroll -->
     <script>
         // ============================================
-        // FIXED JAVASCRIPT WITH PROPER DATABASE SAVING AND PRINT FUNCTIONALITY
+        // INITIALIZATION
         // ============================================
 
-        // Initialize states
         let sidebarOpen = false;
         let payrollMenuOpen = true;
         let activeSaves = 0;
@@ -4462,11 +5010,8 @@ ob_end_flush();
         let totalPages = <?php echo $total_pages; ?>;
         let recordsPerPage = <?php echo $records_per_page; ?>;
         let totalEmployees = <?php echo $total_employees; ?>;
-        let searchTerm = '<?php echo addslashes($search_term); ?>';
+        let searchTerm = '';
         let isLoading = false;
-
-        // Selected employees for printing
-        let selectedEmployees = [];
 
         // DOM Ready
         document.addEventListener('DOMContentLoaded', function() {
@@ -4500,162 +5045,7 @@ ob_end_flush();
 
             // Initialize pagination buttons on initial load
             setupPaginationButtons();
-
-            // Initialize checkbox functionality
-            initCheckboxHandlers();
-
-            // Load any existing payroll data from database
-            console.log('Page loaded with data from database');
         });
-
-        // ============================================
-        // CHECKBOX AND PRINT FUNCTIONS
-        // ============================================
-
-        function initCheckboxHandlers() {
-            const selectAllCheckbox = document.getElementById('select-all');
-            const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-            const printBtn = document.getElementById('print-selected-btn');
-            const printActionsBar = document.getElementById('print-actions-bar');
-            const selectedCountBadge = document.getElementById('selected-count-badge');
-            const selectedCountText = document.getElementById('selected-count-text');
-
-            if (selectAllCheckbox) {
-                selectAllCheckbox.addEventListener('change', function() {
-                    const isChecked = this.checked;
-                    employeeCheckboxes.forEach(checkbox => {
-                        checkbox.checked = isChecked;
-                        updateSelectedEmployees();
-                    });
-                });
-            }
-
-            employeeCheckboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    updateSelectedEmployees();
-
-                    // Update select all checkbox state
-                    if (selectAllCheckbox) {
-                        const allChecked = Array.from(employeeCheckboxes).every(cb => cb.checked);
-                        const anyChecked = Array.from(employeeCheckboxes).some(cb => cb.checked);
-                        selectAllCheckbox.checked = allChecked;
-                        selectAllCheckbox.indeterminate = anyChecked && !allChecked;
-                    }
-                });
-            });
-
-            function updateSelectedEmployees() {
-                selectedEmployees = [];
-                employeeCheckboxes.forEach(checkbox => {
-                    if (checkbox.checked) {
-                        selectedEmployees.push({
-                            id: checkbox.value,
-                            name: checkbox.dataset.employeeName || 'Employee'
-                        });
-                    }
-                });
-
-                const count = selectedEmployees.length;
-
-                // Update UI
-                if (printBtn) {
-                    printBtn.disabled = count === 0;
-                    if (count > 0) {
-                        printBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-                        printBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                    } else {
-                        printBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                        printBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
-                    }
-                }
-
-                if (selectedCountBadge) {
-                    selectedCountBadge.textContent = count;
-                    selectedCountBadge.classList.toggle('hidden', count === 0);
-                }
-
-                if (selectedCountText) {
-                    selectedCountText.textContent = count;
-                }
-
-                if (printActionsBar) {
-                    printActionsBar.classList.toggle('hidden', count === 0);
-                }
-
-                // Update hidden input for form submission
-                const selectedInput = document.getElementById('selected-employees-input');
-                if (selectedInput) {
-                    selectedInput.value = selectedEmployees.map(e => e.id).join(',');
-                }
-            }
-        }
-
-        window.printSelectedPayslips = function() {
-            if (selectedEmployees.length === 0) {
-                alert('Please select at least one employee to print payslips.');
-                return;
-            }
-
-            const form = document.getElementById('print-payslips-form');
-            if (form) {
-                // Update selected employees in the form
-                const selectedInput = document.getElementById('selected-employees-input');
-                if (selectedInput) {
-                    selectedInput.value = selectedEmployees.map(e => e.id).join(',');
-                }
-                form.submit();
-            } else {
-                // Fallback: redirect with parameters
-                const employeeIds = selectedEmployees.map(e => e.id).join(',');
-                const period = '<?php echo $selected_period; ?>';
-                const cutoff = '<?php echo $selected_cutoff; ?>';
-                window.location.href = `print_multiple_payslips.php?employees=${encodeURIComponent(employeeIds)}&period=${encodeURIComponent(period)}&cutoff=${encodeURIComponent(cutoff)}`;
-            }
-        };
-
-        window.clearSelections = function() {
-            const selectAllCheckbox = document.getElementById('select-all');
-            const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = false;
-            }
-
-            employeeCheckboxes.forEach(checkbox => {
-                checkbox.checked = false;
-            });
-
-            selectedEmployees = [];
-
-            const printBtn = document.getElementById('print-selected-btn');
-            const printActionsBar = document.getElementById('print-actions-bar');
-            const selectedCountBadge = document.getElementById('selected-count-badge');
-
-            if (printBtn) {
-                printBtn.disabled = true;
-                printBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                printBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
-            }
-
-            if (selectedCountBadge) {
-                selectedCountBadge.classList.add('hidden');
-                selectedCountBadge.textContent = '0';
-            }
-
-            if (printActionsBar) {
-                printActionsBar.classList.add('hidden');
-            }
-
-            const selectedCountText = document.getElementById('selected-count-text');
-            if (selectedCountText) {
-                selectedCountText.textContent = '0';
-            }
-
-            const selectedInput = document.getElementById('selected-employees-input');
-            if (selectedInput) {
-                selectedInput.value = '';
-            }
-        };
 
         // ============================================
         // PAGINATION FUNCTIONS
@@ -4723,7 +5113,7 @@ ob_end_flush();
         };
 
         // ============================================
-        // AUTO-SAVE FUNCTIONS - FIXED TO ACTUALLY SAVE TO DATABASE
+        // AUTO-SAVE FUNCTIONS
         // ============================================
 
         function initAutoSave() {
@@ -4789,57 +5179,41 @@ ob_end_flush();
             showAutoSaveIndicator('saving');
 
             try {
-                const row = field.closest('.payroll-row');
-                if (!row) {
-                    showAutoSaveIndicator('error', 'Row not found');
+                const formData = new FormData();
+
+                if (fieldName === 'other_comp') {
+                    formData.append('ajax_action', 'save_other_comp');
+                    formData.append('other_comp', value);
+                } else if (fieldName === 'withholding_tax' || fieldName === 'sss' || fieldName === 'philhealth' || fieldName === 'pagibig') {
+                    formData.append('ajax_action', 'save_deductions');
+
+                    const row = field.closest('.payroll-row');
+
+                    // Safe query selectors with null checks
+                    const withholdingTaxField = row ? row.querySelector('.withholding-tax') : null;
+                    const sssField = row ? row.querySelector('.sss') : null;
+                    const philhealthField = row ? row.querySelector('.philhealth') : null;
+                    const pagibigField = row ? row.querySelector('.pagibig') : null;
+
+                    const withholdingTax = fieldName === 'withholding_tax' ? value : (withholdingTaxField ? parseFloat(withholdingTaxField.value) || 0 : 0);
+                    const sss = fieldName === 'sss' ? value : (sssField ? parseFloat(sssField.value) || 0 : 0);
+                    const philhealth = fieldName === 'philhealth' ? value : (philhealthField ? parseFloat(philhealthField.value) || 0 : 0);
+                    const pagibig = fieldName === 'pagibig' ? value : (pagibigField ? parseFloat(pagibigField.value) || 0 : 0);
+
+                    formData.append('withholding_tax', withholdingTax);
+                    formData.append('sss', sss);
+                    formData.append('philhealth', philhealth);
+                    formData.append('pagibig', pagibig);
+                } else {
+                    showAutoSaveIndicator('error', 'Unknown field');
                     return;
                 }
 
-                // First, calculate all values for this row
-                await calculateRow(row);
-
-                // Get all current values from the row after calculation
-                const otherCompField = row.querySelector('.other-comp');
-                const withholdingTaxField = row.querySelector('.withholding-tax');
-                const sssField = row.querySelector('.sss');
-                const grossAmountField = row.querySelector('.gross-amount');
-                const totalDeductionField = row.querySelector('.total-deduction');
-                const netAmountField = row.querySelector('.net-amount');
-                const monthlySalaryField = row.querySelector('.monthly-salaries-wages');
-                const daysPresentField = row.querySelector('.hidden-days-present');
-
-                const otherComp = otherCompField ? parseFloat(otherCompField.value) || 0 : 0;
-                const withholdingTax = withholdingTaxField ? parseFloat(withholdingTaxField.value) || 0 : 0;
-                const sss = sssField ? parseFloat(sssField.value) || 0 : 0;
-                const grossAmount = grossAmountField ? parseFloat(grossAmountField.value) || 0 : 0;
-                const totalDeductions = totalDeductionField ? parseFloat(totalDeductionField.value) || 0 : 0;
-                const netAmount = netAmountField ? parseFloat(netAmountField.value) || 0 : 0;
-                const monthlySalary = monthlySalaryField ? parseFloat(monthlySalaryField.value) || 0 : 0;
-                const daysPresent = daysPresentField ? parseFloat(daysPresentField.value) || 0 : 0;
-
-                // Save all fields together using the save_deductions action which handles all fields
-                const formData = new FormData();
-                formData.append('ajax_action', 'save_deductions'); // This action saves all fields
                 formData.append('employee_id', employeeId);
                 formData.append('period', period);
                 formData.append('cutoff', cutoff);
-                formData.append('other_comp', otherComp);
-                formData.append('withholding_tax', withholdingTax);
-                formData.append('sss', sss);
-                formData.append('gross_amount', grossAmount);
-                formData.append('total_deductions', totalDeductions);
-                formData.append('net_amount', netAmount);
-                formData.append('monthly_salary', monthlySalary);
-                formData.append('days_present', daysPresent);
 
-                console.log('Saving all fields for employee:', employeeId, {
-                    other_comp: otherComp,
-                    withholding_tax: withholdingTax,
-                    sss: sss,
-                    gross_amount: grossAmount,
-                    total_deductions: totalDeductions,
-                    net_amount: netAmount
-                });
+                console.log('Saving field:', fieldName, 'value:', value, 'for employee:', employeeId);
 
                 const response = await fetch(window.location.href, {
                     method: 'POST',
@@ -4866,26 +5240,29 @@ ob_end_flush();
 
                 if (result.success) {
                     showAutoSaveIndicator('saved');
+                    const row = field.closest('.payroll-row');
+                    if (row) {
+                        // Update gross amount if returned from server
+                        if (result.gross_amount !== undefined) {
+                            const grossField = row.querySelector('.gross-amount');
+                            if (grossField) grossField.value = result.gross_amount.toFixed(2);
+                        }
 
-                    // Update all fields with server values if returned
-                    if (result.gross_amount !== undefined && grossAmountField) {
-                        grossAmountField.value = result.gross_amount.toFixed(2);
-                    }
-                    if (result.total_deductions !== undefined && totalDeductionField) {
-                        totalDeductionField.value = result.total_deductions.toFixed(2);
-                    }
-                    if (result.net_amount !== undefined && netAmountField) {
-                        netAmountField.value = result.net_amount.toFixed(2);
-                    }
+                        // Update total deductions if returned from server
+                        if (result.total_deductions !== undefined) {
+                            const totalDeductionsField = row.querySelector('.total-deduction');
+                            if (totalDeductionsField) totalDeductionsField.value = result.total_deductions.toFixed(2);
+                        }
 
-                    // Mark that this row has been saved to database
-                    row.setAttribute('data-payroll-exists', '1');
-                    if (result.id) {
-                        row.setAttribute('data-payroll-id', result.id);
-                    }
+                        // Update net amount if returned from server
+                        if (result.net_amount !== undefined) {
+                            const netAmountField = row.querySelector('.net-amount');
+                            if (netAmountField) netAmountField.value = result.net_amount.toFixed(2);
+                        }
 
-                    // Recalculate totals
-                    await calculateAll();
+                        await calculateRow(row);
+                        await calculateAll();
+                    }
                 } else {
                     console.error('Save failed:', result.error);
                     showAutoSaveIndicator('error', result.error || 'Save failed');
@@ -4913,10 +5290,10 @@ ob_end_flush();
                 activeSaves = Math.max(0, activeSaves - 1);
                 if (activeSaves === 0) {
                     indicator.className = 'auto-save-indicator saved';
-                    indicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Saved to Database</span>';
+                    indicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Saved</span>';
                     setTimeout(() => {
                         indicator.style.display = 'none';
-                    }, 2000);
+                    }, 1500);
                 }
             } else if (status === 'error') {
                 activeSaves = Math.max(0, activeSaves - 1);
@@ -4939,7 +5316,6 @@ ob_end_flush();
         function initSearch() {
             const searchInput = document.getElementById('search-employees');
             if (searchInput) {
-                searchInput.value = searchTerm;
                 searchInput.addEventListener('input', function(e) {
                     searchTerm = e.target.value.trim();
                     if (searchTimeout) clearTimeout(searchTimeout);
@@ -4986,6 +5362,8 @@ ob_end_flush();
             const otherCompField = row.querySelector('.other-comp');
             const withholdingTaxField = row.querySelector('.withholding-tax');
             const sssField = row.querySelector('.sss');
+            const philhealthField = row.querySelector('.philhealth');
+            const pagibigField = row.querySelector('.pagibig');
             const monthlySalaryField = row.querySelector('.monthly-salaries-wages');
             const daysPresentField = row.querySelector('.hidden-days-present');
             const dailyRateField = row.querySelector('.daily-rate');
@@ -4996,6 +5374,8 @@ ob_end_flush();
             const otherComp = otherCompField ? parseFloat(otherCompField.value) || 0 : 0;
             const withholdingTax = withholdingTaxField ? parseFloat(withholdingTaxField.value) || 0 : 0;
             const sss = sssField ? parseFloat(sssField.value) || 0 : 0;
+            const philhealth = philhealthField ? parseFloat(philhealthField.value) || 0 : 0;
+            const pagibig = pagibigField ? parseFloat(pagibigField.value) || 0 : 0;
             const monthlySalary = monthlySalaryField ? parseFloat(monthlySalaryField.value) || 0 : 0;
             const daysPresent = daysPresentField ? parseFloat(daysPresentField.value) || 0 : 0;
 
@@ -5007,7 +5387,7 @@ ob_end_flush();
 
             if (grossAmountField) grossAmountField.value = grossAmount.toFixed(2);
 
-            const totalDeduction = withholdingTax + sss;
+            const totalDeduction = withholdingTax + sss + philhealth + pagibig;
             if (totalDeductionField) totalDeductionField.value = totalDeduction.toFixed(2);
 
             let netAmount = grossAmount - totalDeduction;
@@ -5027,7 +5407,9 @@ ob_end_flush();
                 netAmount,
                 otherComp,
                 withholdingTax,
-                sss
+                sss,
+                philhealth,
+                pagibig
             };
         }
 
@@ -5037,6 +5419,8 @@ ob_end_flush();
             let totalGross = 0;
             let totalWithholdingTax = 0;
             let totalSss = 0;
+            let totalPhilhealth = 0;
+            let totalPagibig = 0;
             let totalDeduction = 0;
             let totalNetAmount = 0;
 
@@ -5060,16 +5444,21 @@ ob_end_flush();
                     totalGross += result.grossAmount;
                     totalWithholdingTax += result.withholdingTax;
                     totalSss += result.sss;
+                    totalPhilhealth += result.philhealth;
+                    totalPagibig += result.pagibig;
                     totalDeduction += result.totalDeduction;
                     totalNetAmount += result.netAmount;
                 }
             }
 
+            // Update totals display
             const totalMonthlySalariesEl = document.getElementById('total-monthly-salaries-wages');
             const totalOtherCompEl = document.getElementById('total-other-comp');
             const totalGrossAmountEl = document.getElementById('total-gross-amount');
             const totalWithholdingTaxEl = document.getElementById('total-withholding-tax');
             const totalSssEl = document.getElementById('total-sss');
+            const totalPhilhealthEl = document.getElementById('total-philhealth');
+            const totalPagibigEl = document.getElementById('total-pagibig');
             const totalDeductionEl = document.getElementById('total-deduction');
             const totalNetAmountEl = document.getElementById('total-net-amount');
             const totalDeductionsDisplay = document.getElementById('total-deductions-display');
@@ -5080,6 +5469,8 @@ ob_end_flush();
             if (totalGrossAmountEl) totalGrossAmountEl.textContent = '₱' + totalGross.toFixed(2);
             if (totalWithholdingTaxEl) totalWithholdingTaxEl.textContent = '₱' + totalWithholdingTax.toFixed(2);
             if (totalSssEl) totalSssEl.textContent = '₱' + totalSss.toFixed(2);
+            if (totalPhilhealthEl) totalPhilhealthEl.textContent = '₱' + totalPhilhealth.toFixed(2);
+            if (totalPagibigEl) totalPagibigEl.textContent = '₱' + totalPagibig.toFixed(2);
             if (totalDeductionEl) totalDeductionEl.textContent = '₱' + totalDeduction.toFixed(2);
             if (totalNetAmountEl) totalNetAmountEl.textContent = '₱' + totalNetAmount.toFixed(2);
 
@@ -5108,143 +5499,8 @@ ob_end_flush();
             });
         }
 
-        function viewHandler(e) {
-            e.preventDefault();
-            const button = e.currentTarget;
-            const onclickAttr = button.getAttribute('onclick');
-            if (onclickAttr) {
-                eval(onclickAttr);
-            }
-        }
-
         // ============================================
-        // TABS FUNCTIONS
-        // ============================================
-
-        function initTabs() {
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    const tabId = this.dataset.tab;
-
-                    // Remove active class from all tabs
-                    document.querySelectorAll('.tab').forEach(t => {
-                        t.classList.remove('active');
-                    });
-
-                    // Add active class to clicked tab
-                    this.classList.add('active');
-
-                    // Hide all tab contents
-                    document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.remove('active');
-                    });
-
-                    // Show selected tab content
-                    const tabContent = document.getElementById('tab-' + tabId);
-                    if (tabContent) {
-                        tabContent.classList.add('active');
-                    }
-
-                    // If summary tab is selected and we have data, initialize chart
-                    if (tabId === 'summary') {
-                        setTimeout(() => {
-                            initDeductionsChart();
-                        }, 100);
-                    }
-                });
-            });
-        }
-
-        function initDeductionsChart() {
-            const canvas = document.getElementById('deductionsChart');
-            if (!canvas) return;
-
-            // Get data from the page
-            const withholdingTax = parseFloat('<?php echo $payroll_summary["total_withholding_tax"] ?? 0; ?>');
-            const sss = parseFloat('<?php echo $payroll_summary["total_sss"] ?? 0; ?>');
-
-            if (withholdingTax === 0 && sss === 0) return;
-
-            // Destroy existing chart if any
-            if (window.deductionsChartInstance) {
-                window.deductionsChartInstance.destroy();
-            }
-
-            window.deductionsChartInstance = new Chart(canvas, {
-                type: 'pie',
-                data: {
-                    labels: ['Withholding Tax', 'SSS Contribution'],
-                    datasets: [{
-                        data: [withholdingTax, sss],
-                        backgroundColor: ['#ef4444', '#3b82f6'],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    let value = context.raw || 0;
-                                    let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                    let percentage = ((value / total) * 100).toFixed(1);
-                                    return `${label}: ₱${value.toFixed(2)} (${percentage}%)`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // ============================================
-        // UTILITY FUNCTIONS
-        // ============================================
-
-        function highlightRowsByAttendance() {
-            document.querySelectorAll('.payroll-row').forEach(row => {
-                const daysPresentInput = row.querySelector('.hidden-days-present');
-                if (daysPresentInput) {
-                    const daysPresent = parseFloat(daysPresentInput.value) || 0;
-                    if (daysPresent <= 0) {
-                        row.classList.add('no-attendance');
-                    } else {
-                        row.classList.remove('no-attendance');
-                    }
-                }
-            });
-        }
-
-        function updateDateTime() {
-            const now = new Date();
-            const dateString = now.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-            const timeString = now.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            });
-
-            const dateElement = document.getElementById('current-date');
-            const timeElement = document.getElementById('current-time');
-
-            if (dateElement) dateElement.textContent = dateString;
-            if (timeElement) timeElement.textContent = timeString;
-        }
-
-        // ============================================
-        // MODAL FUNCTIONS
+        // VIEW EMPLOYEE DETAILS
         // ============================================
 
         window.viewEmployeeDetails = async function(employeeId, period, cutoff) {
@@ -5308,7 +5564,7 @@ ob_end_flush();
 
             let html = `
         <div class="space-y-4">
-            <div class="bg-primary-50 p-4 rounded-lg border-l-4 border-primary-600">
+            <div class="bg-green-50 p-4 rounded-lg border-l-4 border-green-600">
                 <h4 class="font-bold text-lg mb-2">Payroll Period: ${cutoff.label}</h4>
                 <p class="text-sm">Period: ${cutoff.start} to ${cutoff.end}</p>
                 <p class="text-sm">Working Days: ${cutoff.working_days} days</p>
@@ -5346,12 +5602,14 @@ ob_end_flush();
             </div>
             
             <div class="border p-4 rounded-lg">
-                <h4 class="font-semibold mb-2">Compensation Information</h4>
+                <h4 class="font-semibold mb-2">Compensation & Deductions</h4>
                 <p class="text-sm">Monthly Salary (Base): ${safeCurrency(calculations.monthly_salary)}</p>
                 <p class="text-sm">Daily Rate: ${safeCurrency(calculations.daily_rate)}</p>
                 <p class="text-sm">Other Compensation: ${safeCurrency(calculations.other_comp)}</p>
                 <p class="text-sm">Withholding Tax: ${safeCurrency(calculations.withholding_tax)}</p>
                 <p class="text-sm">SSS Contribution: ${safeCurrency(calculations.sss)}</p>
+                <p class="text-sm">PhilHealth: ${safeCurrency(calculations.philhealth)}</p>
+                <p class="text-sm">Pag-IBIG: ${safeCurrency(calculations.pagibig)}</p>
                 <p class="text-sm">Total Deductions: ${safeCurrency(calculations.total_deductions)}</p>
                 <p class="text-sm font-bold ${hasAttendance ? 'text-green-600' : 'text-gray-400'} mt-2">Gross Amount Earned: ${safeCurrency(calculations.gross_amount)}</p>
                 <p class="text-sm font-bold text-blue-600">Net Amount: ${safeCurrency(calculations.net_amount)}</p>
@@ -5400,6 +5658,10 @@ ob_end_flush();
             modalBody.innerHTML = html;
             openModal('viewEmployeeModal');
         }
+
+        // ============================================
+        // MODAL FUNCTIONS
+        // ============================================
 
         function openModal(modalId) {
             const modal = document.getElementById(modalId);
@@ -5464,6 +5726,108 @@ ob_end_flush();
                 .catch(error => console.error('Error:', error));
         };
 
+        // ============================================
+        // TABS FUNCTIONS
+        // ============================================
+
+        function initTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.dataset.tab;
+
+                    // Remove active class from all tabs
+                    document.querySelectorAll('.tab').forEach(t => {
+                        t.classList.remove('active');
+                    });
+
+                    // Add active class to clicked tab
+                    this.classList.add('active');
+
+                    // Hide all tab contents
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+
+                    // Show selected tab content
+                    const tabContent = document.getElementById('tab-' + tabId);
+                    if (tabContent) {
+                        tabContent.classList.add('active');
+                    }
+
+                    // If summary tab is selected and we have data, initialize chart
+                    if (tabId === 'summary') {
+                        setTimeout(() => {
+                            initDeductionsChart();
+                        }, 100);
+                    }
+                });
+            });
+        }
+
+        function initDeductionsChart() {
+            const canvas = document.getElementById('deductionsChart');
+            if (!canvas) return;
+
+            // Get data from the page
+            const withholdingTax = parseFloat('<?php echo $payroll_summary["total_withholding_tax"] ?? 0; ?>');
+            const sss = parseFloat('<?php echo $payroll_summary["total_sss"] ?? 0; ?>');
+            const philhealth = parseFloat('<?php echo $payroll_summary["total_philhealth"] ?? 0; ?>');
+            const pagibig = parseFloat('<?php echo $payroll_summary["total_pagibig"] ?? 0; ?>');
+
+            if (withholdingTax === 0 && sss === 0 && philhealth === 0 && pagibig === 0) return;
+
+            // Destroy existing chart if any
+            if (window.deductionsChartInstance) {
+                window.deductionsChartInstance.destroy();
+            }
+
+            window.deductionsChartInstance = new Chart(canvas, {
+                type: 'pie',
+                data: {
+                    labels: ['Withholding Tax', 'SSS', 'PhilHealth', 'Pag-IBIG'],
+                    datasets: [{
+                        data: [withholdingTax, sss, philhealth, pagibig],
+                        backgroundColor: ['#ef4444', '#3b82f6', '#8b5cf6', '#10b981'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    let value = context.raw || 0;
+                                    let total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    let percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ₱${value.toFixed(2)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================
+        // EXPORT FUNCTIONS
+        // ============================================
+
+        window.exportData = function(format) {
+            const periodSelect = document.getElementById('payroll-period');
+            const period = periodSelect ? periodSelect.value : '';
+
+            const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
+            const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
+
+            window.location.href = `export_payroll.php?period=${period}&cutoff=${cutoff}&format=${format}&type=joborder&page=${currentPage}&per_page=${recordsPerPage}`;
+        };
+
         window.generateObligationRequest = function() {
             const periodSelect = document.getElementById('payroll-period');
             const period = periodSelect ? periodSelect.value : '';
@@ -5471,8 +5835,48 @@ ob_end_flush();
             const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
             const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
 
-            window.location.href = `contractualobligationrequest.php?period=${period}&cutoff=${cutoff}`;
+            window.location.href = `joborderobligationrequest.php?period=${period}&cutoff=${cutoff}`;
         };
+
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
+
+        function highlightRowsByAttendance() {
+            document.querySelectorAll('.payroll-row').forEach(row => {
+                const daysPresentInput = row.querySelector('.hidden-days-present');
+                if (daysPresentInput) {
+                    const daysPresent = parseFloat(daysPresentInput.value) || 0;
+                    if (daysPresent <= 0) {
+                        row.classList.add('no-attendance');
+                    } else {
+                        row.classList.remove('no-attendance');
+                    }
+                }
+            });
+        }
+
+        function updateDateTime() {
+            const now = new Date();
+            const dateString = now.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            const timeString = now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+
+            const dateElement = document.getElementById('current-date');
+            const timeElement = document.getElementById('current-time');
+
+            if (dateElement) dateElement.textContent = dateString;
+            if (timeElement) timeElement.textContent = timeString;
+        }
 
         function printEmployeeDetails() {
             const modalBody = document.getElementById('viewEmployeeModalBody');
@@ -5572,36 +5976,34 @@ ob_end_flush();
             if (chevron) chevron.classList.toggle('rotated');
         }
 
-        // Handle browser back/forward
-        window.addEventListener('popstate', function() {
-            window.location.reload();
-        });
+        // ============================================
+        // PAGINATION EVENT HANDLERS
+        // ============================================
 
-        // Initialize pagination events
         function initPaginationEvents() {
-            // Add click handlers to pagination links
-            document.querySelectorAll('.pagination-btn').forEach(btn => {
+            // Add event listeners to pagination buttons
+            document.querySelectorAll('.pagination-btn:not([disabled])').forEach(btn => {
                 btn.addEventListener('click', function(e) {
                     e.preventDefault();
-                    if (this.hasAttribute('disabled')) return;
 
-                    const pageText = this.textContent.trim();
-                    const pageNum = parseInt(pageText);
-
-                    if (!isNaN(pageNum) && pageText === pageNum.toString()) {
-                        changePage(pageNum);
-                    } else if (this.innerHTML.includes('angle-double-left')) {
-                        changePage(1);
-                    } else if (this.innerHTML.includes('angle-double-right')) {
-                        changePage(totalPages);
-                    } else if (this.innerHTML.includes('angle-left') || this.textContent.includes('Previous')) {
+                    if (this.classList.contains('pagination-prev') || this.innerHTML.includes('angle-left')) {
                         changePage(currentPage - 1);
-                    } else if (this.innerHTML.includes('angle-right') || this.textContent.includes('Next')) {
+                    } else if (this.classList.contains('pagination-next') || this.innerHTML.includes('angle-right')) {
                         changePage(currentPage + 1);
+                    } else {
+                        const pageNum = parseInt(this.textContent);
+                        if (!isNaN(pageNum)) {
+                            changePage(pageNum);
+                        }
                     }
                 });
             });
         }
+
+        // Handle browser back/forward
+        window.addEventListener('popstate', function() {
+            window.location.reload();
+        });
     </script>
 </body>
 

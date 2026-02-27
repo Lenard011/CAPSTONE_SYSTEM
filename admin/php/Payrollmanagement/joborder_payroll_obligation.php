@@ -1,4 +1,12 @@
 <?php
+// Enable error reporting for debugging (remove in production)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Start output buffering to catch any unexpected output
+ob_start();
+
 session_start();
 
 // Check if user is logged in
@@ -21,10 +29,22 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
+// Get current user ID from session
+$current_user_id = $_SESSION['user_id'] ?? 1;
+$current_user_name = $_SESSION['full_name'] ?? 'System User';
+
+// Logout functionality
+if (isset($_GET['logout'])) {
+    session_destroy();
+    setcookie('remember_user', '', time() - 3600, "/");
+    header('Location: login.php');
+    exit();
+}
+
 // Load personnel configuration from JSON
 function loadPayrollPersonnel()
 {
-    $config_file = __DIR__ . '/config/payroll_personnel.json';
+    $config_file = __DIR__ . '/config/payroll_personnel_joborder.json';
     $default_config = [
         'certifying_officers' => [
             'A' => ['name' => 'JOREL B. VICENTE', 'title' => 'Administrative Officer IV (HRMO II)', 'active' => true],
@@ -83,8 +103,11 @@ $officer_F = getOfficer('F', $certifying_officers);
 $entity_name = $entity_info['entity_name'];
 $fund_cluster = $entity_info['fund_cluster'];
 
+// Get current payroll period
+$current_payroll_period = date('Y-m');
+
 // Get filter parameters from URL
-$selected_period = isset($_GET['period']) ? $_GET['period'] : date('Y-m');
+$selected_period = isset($_GET['period']) ? $_GET['period'] : $current_payroll_period;
 $selected_cutoff = isset($_GET['cutoff']) ? $_GET['cutoff'] : 'full';
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = 10;
@@ -104,7 +127,7 @@ function getWorkingDays($start_date, $end_date)
 
     while ($current <= $end) {
         $day_of_week = date('N', $current);
-        if ($day_of_week <= 5) {
+        if ($day_of_week <= 5) { // Monday to Friday
             $working_days++;
         }
         $current = strtotime('+1 day', $current);
@@ -136,43 +159,20 @@ $cutoff_ranges = [
 $current_cutoff = $cutoff_ranges[$selected_cutoff];
 $is_full_month = ($selected_cutoff == 'full');
 
-// Logout functionality
-if (isset($_GET['logout'])) {
-    session_destroy();
-    setcookie('remember_user', '', time() - 3600, "/");
-    header('Location: login.php');
-    exit();
-}
-
-// Helper function to get salary column name
-function getSalaryColumnName($pdo)
-{
-    try {
-        $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-        $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-        $possible_salary_columns = ['wages', 'monthly_salary', 'salary', 'basic_salary', 'rate_per_day', 'daily_rate'];
-        foreach ($possible_salary_columns as $col) {
-            if (in_array($col, $existing_columns)) {
-                return $col;
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error checking salary columns: " . $e->getMessage());
-    }
-    return null;
-}
-
-// Function to get employee's payroll data
+// Function to get employee's payroll data from joborder tables
 function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_salary = 0)
 {
     $data = [
         'other_comp' => 0,
         'withholding_tax' => 0,
         'sss' => 0,
+        'philhealth' => 0,
+        'pagibig' => 0,
         'total_deductions' => 0,
         'gross_amount' => $prorated_salary,
         'net_amount' => $prorated_salary,
         'days_present' => 0,
+        'monthly_salaries_wages' => 0,
         'status' => 'draft',
         'payroll_id' => null,
         'exists' => false
@@ -180,18 +180,22 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
 
     try {
         if ($cutoff == 'full') {
+            // For full month, get data from both halves and sum them
             $stmt = $pdo->prepare("
                 SELECT 
                     COALESCE(SUM(other_comp), 0) as other_comp,
                     COALESCE(SUM(withholding_tax), 0) as withholding_tax,
                     COALESCE(SUM(sss), 0) as sss,
+                    COALESCE(SUM(philhealth), 0) as philhealth,
+                    COALESCE(SUM(pagibig), 0) as pagibig,
                     COALESCE(SUM(total_deductions), 0) as total_deductions,
                     COALESCE(SUM(gross_amount), 0) as gross_amount,
                     COALESCE(SUM(net_amount), 0) as net_amount,
                     COALESCE(SUM(days_present), 0) as days_present,
+                    COALESCE(SUM(monthly_salaries_wages), 0) as monthly_salaries_wages,
                     COUNT(*) as record_count
-                FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
+                FROM payroll_history_joborder 
+                WHERE employee_id = ? 
                     AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
             ");
             $stmt->execute([$employee_id, $period]);
@@ -201,17 +205,23 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
                 $data['other_comp'] = floatval($result['other_comp']);
                 $data['withholding_tax'] = floatval($result['withholding_tax']);
                 $data['sss'] = floatval($result['sss']);
+                $data['philhealth'] = floatval($result['philhealth']);
+                $data['pagibig'] = floatval($result['pagibig']);
                 $data['total_deductions'] = floatval($result['total_deductions']);
                 $data['gross_amount'] = floatval($result['gross_amount']);
                 $data['net_amount'] = floatval($result['net_amount']);
                 $data['days_present'] = floatval($result['days_present']);
+                $data['monthly_salaries_wages'] = floatval($result['monthly_salaries_wages']);
                 $data['exists'] = true;
             }
         } else {
+            // For specific half, get just that half's data
             $stmt = $pdo->prepare("
-                SELECT id, other_comp, withholding_tax, sss, total_deductions, gross_amount, net_amount, days_present, status
-                FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
+                SELECT id, other_comp, withholding_tax, sss, philhealth, pagibig, 
+                       total_deductions, gross_amount, net_amount, days_present, 
+                       monthly_salaries_wages, status
+                FROM payroll_history_joborder 
+                WHERE employee_id = ? 
                     AND payroll_period = ? AND payroll_cutoff = ?
             ");
             $stmt->execute([$employee_id, $period, $cutoff]);
@@ -221,10 +231,13 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
                 $data['other_comp'] = floatval($result['other_comp'] ?? 0);
                 $data['withholding_tax'] = floatval($result['withholding_tax'] ?? 0);
                 $data['sss'] = floatval($result['sss'] ?? 0);
+                $data['philhealth'] = floatval($result['philhealth'] ?? 0);
+                $data['pagibig'] = floatval($result['pagibig'] ?? 0);
                 $data['total_deductions'] = floatval($result['total_deductions'] ?? 0);
                 $data['gross_amount'] = floatval($result['gross_amount'] ?? 0);
                 $data['net_amount'] = floatval($result['net_amount'] ?? 0);
                 $data['days_present'] = floatval($result['days_present'] ?? 0);
+                $data['monthly_salaries_wages'] = floatval($result['monthly_salaries_wages'] ?? 0);
                 $data['status'] = $result['status'] ?? 'draft';
                 $data['payroll_id'] = $result['id'] ?? null;
                 $data['exists'] = true;
@@ -237,30 +250,24 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
     return $data;
 }
 
-// Helper function to get employee's community tax certificate
-function getCommunityTaxCertificate($pdo, $employee_id, $period)
+// Function to get employee's community tax certificate from job_order table
+function getCommunityTaxCertificate($pdo, $employee_id)
 {
     try {
-        $table_check = $pdo->query("SHOW TABLES LIKE 'employee_cedula'");
-        if ($table_check->rowCount() == 0) {
-            return ['number' => '', 'date' => ''];
-        }
-
         $stmt = $pdo->prepare("
-            SELECT cedula_number, date_issued 
-            FROM employee_cedula 
-            WHERE employee_id = ? AND (year = ? OR year = YEAR(?))
-            ORDER BY date_issued DESC 
+            SELECT ctc_number as number, ctc_date as date 
+            FROM job_order 
+            WHERE employee_id = ? AND (ctc_number IS NOT NULL AND ctc_number != '')
+            ORDER BY ctc_date DESC 
             LIMIT 1
         ");
-        $year = date('Y', strtotime($period . '-01'));
-        $stmt->execute([$employee_id, $year, $period]);
+        $stmt->execute([$employee_id]);
         $result = $stmt->fetch();
 
         if ($result) {
             return [
-                'number' => $result['cedula_number'] ?? '',
-                'date' => $result['date_issued'] ?? ''
+                'number' => $result['number'] ?? '',
+                'date' => $result['date'] ?? ''
             ];
         }
     } catch (Exception $e) {
@@ -272,7 +279,7 @@ function getCommunityTaxCertificate($pdo, $employee_id, $period)
 // Get total count of employees
 $total_employees = 0;
 try {
-    $count_sql = "SELECT COUNT(*) FROM contractofservice WHERE status = 'active'";
+    $count_sql = "SELECT COUNT(*) FROM job_order WHERE is_archived = 0 OR is_archived IS NULL";
     $count_stmt = $pdo->prepare($count_sql);
     $count_stmt->execute();
     $total_employees = $count_stmt->fetchColumn();
@@ -283,46 +290,36 @@ try {
 
 $total_pages = max(1, ceil($total_employees / $per_page));
 
-// Fetch contractual employees
-$contractual_employees = [];
+// Fetch job order employees
+$joborder_employees = [];
 $totals = [
     'monthly_salaries' => 0,
     'other_comp' => 0,
     'gross_amount' => 0,
     'withholding_tax' => 0,
     'sss' => 0,
+    'philhealth' => 0,
+    'pagibig' => 0,
     'total_deductions' => 0,
     'net_amount' => 0
 ];
 
 try {
-    $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-    $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-
-    $select_fields = "id as user_id, employee_id, CONCAT(first_name, ' ', last_name) as full_name, first_name, last_name, designation as position, office as department, period_from, period_to, status";
-
-    if (in_array('address', $existing_columns)) {
-        $select_fields .= ", address";
-    } else {
-        $select_fields .= ", 'Paluan Occ. Mdo.' as address";
-    }
-
-    $salary_col = getSalaryColumnName($pdo);
-    if ($salary_col) {
-        if ($salary_col == 'rate_per_day' || $salary_col == 'daily_rate') {
-            $select_fields .= ", ($salary_col * 22) as monthly_salary";
-        } else {
-            $select_fields .= ", $salary_col as monthly_salary";
-        }
-    } else {
-        $select_fields .= ", 0 as monthly_salary";
-    }
-
     $sql = "
-        SELECT $select_fields
-        FROM contractofservice 
-        WHERE status = 'active'
-        ORDER BY last_name, first_name 
+        SELECT 
+            id as user_id, 
+            employee_id, 
+            employee_name as full_name,
+            occupation as position, 
+            office as department,
+            rate_per_day,
+            sss_contribution,
+            ctc_number,
+            ctc_date,
+            place_of_issue
+        FROM job_order 
+        WHERE is_archived = 0 OR is_archived IS NULL
+        ORDER BY employee_name 
         LIMIT :offset, :per_page
     ";
 
@@ -373,21 +370,23 @@ try {
         $employee['days_present'] = $attendance_days;
         $employee['total_hours'] = $total_hours;
 
-        $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-        $daily_rate = $monthly_salary / 22;
-        $prorated_salary = $daily_rate * $attendance_days;
+        $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
+        $monthly_salary = $rate_per_day * 22;
+        $prorated_salary = $rate_per_day * $attendance_days;
 
-        $payroll_data = getEmployeePayrollData($pdo, $employee['user_id'], $selected_period, $selected_cutoff, $prorated_salary);
-        $cedula = getCommunityTaxCertificate($pdo, $employee['user_id'], $selected_period);
+        $payroll_data = getEmployeePayrollData($pdo, $employee['employee_id'], $selected_period, $selected_cutoff, $prorated_salary);
+        $cedula = getCommunityTaxCertificate($pdo, $employee['employee_id']);
 
         $employee['other_comp'] = $payroll_data['other_comp'];
         $employee['withholding_tax'] = $payroll_data['withholding_tax'];
         $employee['sss'] = $payroll_data['sss'];
+        $employee['philhealth'] = $payroll_data['philhealth'];
+        $employee['pagibig'] = $payroll_data['pagibig'];
         $employee['total_deductions'] = $payroll_data['total_deductions'];
         $employee['net_amount'] = $payroll_data['net_amount'];
         $employee['gross_amount'] = $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : $prorated_salary + $payroll_data['other_comp'];
         $employee['monthly_salary'] = $monthly_salary;
-        $employee['daily_rate'] = $daily_rate;
+        $employee['daily_rate'] = $rate_per_day;
         $employee['prorated_salary'] = $prorated_salary;
         $employee['payroll_status'] = $payroll_data['status'];
         $employee['payroll_id'] = $payroll_data['payroll_id'];
@@ -400,48 +399,46 @@ try {
         $totals['gross_amount'] += $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : $prorated_salary + $payroll_data['other_comp'];
         $totals['withholding_tax'] += $payroll_data['withholding_tax'];
         $totals['sss'] += $payroll_data['sss'];
+        $totals['philhealth'] += $payroll_data['philhealth'];
+        $totals['pagibig'] += $payroll_data['pagibig'];
         $totals['total_deductions'] += $payroll_data['total_deductions'];
         $totals['net_amount'] += $payroll_data['net_amount'];
     }
 
-    $contractual_employees = $employees;
+    $joborder_employees = $employees;
 } catch (Exception $e) {
     error_log("Error fetching employees: " . $e->getMessage());
-    $contractual_employees = [];
+    $joborder_employees = [];
 }
 
 // Get entity information
-$payroll_number = "CON-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
+$payroll_number = "JO-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
 $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . date('F d, Y', strtotime($current_cutoff['end']));
 
-// OBLIGATION REQUEST SECTION - EXACT MATCH TO PROVIDED STRUCTURE
+// OBLIGATION REQUEST SECTION
 $start_month = date('F', strtotime($current_cutoff['start']));
 $start_day = date('d', strtotime($current_cutoff['start']));
 $end_day = date('d', strtotime($current_cutoff['end']));
 $end_year = date('Y', strtotime($current_cutoff['end']));
 $wages_period_display = "WAGES " . $start_month . " " . $start_day . " - " . $end_day . ", " . $end_year;
 
-$ors_number = "CON-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
+$ors_number = "JO-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
 
-// IMPORTANT FIX: Calculate page total instead of full total
+// Calculate page total amount
 $page_total_amount = 0;
-foreach ($contractual_employees as $employee) {
+foreach ($joborder_employees as $employee) {
     $page_total_amount += $employee['net_amount'];
 }
 
 // If page total is 0 but we have employees with data, use their net_amount
-if ($page_total_amount == 0 && !empty($contractual_employees)) {
-    // Check if any employee has non-zero values
+if ($page_total_amount == 0 && !empty($joborder_employees)) {
     $has_values = false;
-    foreach ($contractual_employees as $employee) {
+    foreach ($joborder_employees as $employee) {
         if ($employee['net_amount'] > 0 || $employee['gross_amount'] > 0 || $employee['monthly_salary'] > 0) {
             $has_values = true;
             break;
         }
     }
-
-    // If no values found, keep as 0 (which matches the example where all are 0.00)
-    // Otherwise use the calculated total
     if (!$has_values) {
         $page_total_amount = 0;
     }
@@ -454,12 +451,12 @@ $employee_office_on_page = '';
 try {
     $sql = "
         SELECT 
-            CONCAT(first_name, ' ', last_name) as full_name,
-            COALESCE(office, department, '') as office_name,
-            designation as position
-        FROM contractofservice 
-        WHERE status = 'active'
-        ORDER BY last_name, first_name 
+            employee_name as full_name,
+            office as office_name,
+            occupation as position
+        FROM job_order 
+        WHERE is_archived = 0 OR is_archived IS NULL
+        ORDER BY employee_name 
         LIMIT :offset, 1
     ";
 
@@ -473,7 +470,7 @@ try {
         $employee_position = $first_employee_data['position'] ?? '';
         $employee_office_on_page = !empty($first_employee_data['office_name'])
             ? $first_employee_data['office_name']
-            : ($employee_position ? "Office of the Nurse I" : 'Office of the Municipal Mayor');
+            : ($employee_position ? "Office of the " . $employee_position : 'Office of the Municipal Mayor');
     } else {
         $first_employee_on_page = 'No employees on this page';
         $employee_office_on_page = 'Office of the Municipal Mayor';
@@ -491,7 +488,7 @@ $save_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
     try {
         $pdo->exec("
-            CREATE TABLE IF NOT EXISTS obligation_requests (
+            CREATE TABLE IF NOT EXISTS obligation_requests_joborder (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 ors_serial VARCHAR(50) NOT NULL,
                 ors_date DATE NOT NULL,
@@ -526,7 +523,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
         $amount = floatval($_POST['amount'] ?? $page_total_amount);
 
         $check_stmt = $pdo->prepare("
-            SELECT id FROM obligation_requests 
+            SELECT id FROM obligation_requests_joborder 
             WHERE payroll_period = ? AND payroll_cutoff = ? AND page_number = ?
         ");
         $check_stmt->execute([$selected_period, $selected_cutoff, $page]);
@@ -534,7 +531,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
 
         if ($existing) {
             $update_stmt = $pdo->prepare("
-                UPDATE obligation_requests SET
+                UPDATE obligation_requests_joborder SET
                     ors_serial = ?,
                     ors_date = ?,
                     fund_cluster = ?,
@@ -565,7 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
             $save_message = "Obligation request updated successfully!";
         } else {
             $insert_stmt = $pdo->prepare("
-                INSERT INTO obligation_requests (
+                INSERT INTO obligation_requests_joborder (
                     ors_serial, ors_date, fund_cluster, payee, office, address,
                     responsibility_center, particulars, mfo_pap, uacs_object_code,
                     amount, payroll_period, payroll_cutoff, page_number
@@ -599,7 +596,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
 $existing_obligation = null;
 try {
     $load_stmt = $pdo->prepare("
-        SELECT * FROM obligation_requests 
+        SELECT * FROM obligation_requests_joborder 
         WHERE payroll_period = ? AND payroll_cutoff = ? AND page_number = ?
         ORDER BY created_at DESC LIMIT 1
     ");
@@ -622,8 +619,8 @@ $default_mfo_pap = $existing_obligation['mfo_pap'] ?? '';
 $default_uacs_object_code = $existing_obligation['uacs_object_code'] ?? '';
 $default_amount = $existing_obligation['amount'] ?? $page_total_amount;
 
-// Create save_personnel_config.php handler
-if (!file_exists('save_personnel_config.php')) {
+// Create save_personnel_config.php handler for job order
+if (!file_exists('save_personnel_config_joborder.php')) {
     $save_config_content = '<?php
 session_start();
 header("Content-Type: application/json");
@@ -639,7 +636,7 @@ if (!$data) {
     exit();
 }
 
-$config_file = __DIR__ . "/config/payroll_personnel.json";
+$config_file = __DIR__ . "/config/payroll_personnel_joborder.json";
 $config_dir = dirname($config_file);
 
 if (!is_dir($config_dir)) {
@@ -653,7 +650,7 @@ try {
     echo json_encode(["success" => false, "error" => $e->getMessage()]);
 }
 ';
-    file_put_contents('save_personnel_config.php', $save_config_content);
+    file_put_contents('save_personnel_config_joborder.php', $save_config_content);
 }
 ?>
 <!DOCTYPE html>
@@ -662,7 +659,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contractual Payroll & Obligation Request</title>
+    <title>Job Order Payroll & Obligation Request</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -684,6 +681,18 @@ try {
                             "800": "#1e40af",
                             "900": "#1e3a8a",
                             "950": "#172554"
+                        },
+                        joborder: {
+                            "50": "#f0fdf4",
+                            "100": "#dcfce7",
+                            "200": "#bbf7d0",
+                            "300": "#86efac",
+                            "400": "#4ade80",
+                            "500": "#22c55e",
+                            "600": "#16a34a",
+                            "700": "#15803d",
+                            "800": "#166534",
+                            "900": "#14532d"
                         }
                     },
                     fontFamily: {
@@ -698,6 +707,7 @@ try {
             --primary: #1e40af;
             --secondary: #1e3a8a;
             --accent: #3b82f6;
+            --joborder: #16a34a;
             --gradient-nav: linear-gradient(90deg, #1e3a8a 0%, #1e40af 100%);
         }
 
@@ -715,7 +725,7 @@ try {
             color: #1f2937;
         }
 
-        /* Scrollbar Styling - ADDED FROM contractualpayrolltable1.php */
+        /* Scrollbar Styling */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -864,138 +874,27 @@ try {
             line-height: 1.3;
         }
 
-        /* User Menu */
-        .user-menu {
-            position: relative;
-        }
-
-        .user-button {
+        /* Logout Button */
+        .logout-btn {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(239, 68, 68, 0.9);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 50px;
-            padding: 0.4rem 0.8rem;
-            cursor: pointer;
+            padding: 0.5rem 1rem;
+            color: white;
+            text-decoration: none;
             transition: all 0.3s ease;
-            border: none;
-            outline: none;
+            font-weight: 500;
+            font-size: 0.9rem;
         }
 
-        .user-button:hover {
-            background: rgba(255, 255, 255, 0.25);
+        .logout-btn:hover {
+            background: rgba(220, 38, 38, 0.9);
             transform: translateY(-2px);
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .user-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            object-fit: cover;
-        }
-
-        .user-info {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .user-name {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: white;
-            line-height: 1.2;
-        }
-
-        .user-role {
-            font-size: 0.7rem;
-            color: rgba(255, 255, 255, 0.8);
-            font-weight: 500;
-        }
-
-        .user-chevron {
-            font-size: 0.8rem;
-            color: white;
-            opacity: 0.8;
-            transition: transform 0.3s ease;
-        }
-
-        .user-button.active .user-chevron {
-            transform: rotate(180deg);
-        }
-
-        .user-dropdown {
-            position: absolute;
-            top: calc(100% + 10px);
-            right: 0;
-            width: 280px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(-10px);
-            transition: all 0.3s ease;
-            z-index: 1000;
-            overflow: hidden;
-        }
-
-        .user-dropdown.active {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0);
-        }
-
-        .dropdown-header {
-            padding: 1.25rem;
-            background: var(--gradient-nav);
-            color: white;
-        }
-
-        .dropdown-header h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-
-        .dropdown-header p {
-            font-size: 0.85rem;
-            opacity: 0.9;
-        }
-
-        .dropdown-menu {
-            padding: 0.5rem;
-        }
-
-        .dropdown-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            color: #4b5563;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .dropdown-item:hover {
-            background: #f3f4f6;
-            color: var(--primary);
-            transform: translateX(5px);
-        }
-
-        .dropdown-item i {
-            width: 20px;
-            text-align: center;
-            color: #9ca3af;
-        }
-
-        .dropdown-item:hover i {
-            color: var(--primary);
         }
 
         /* Mobile Menu Toggle */
@@ -1455,24 +1354,34 @@ try {
             width: 5%;
         }
 
-        /* Total Deductions */
+        /* PhilHealth */
         .payroll-table th:nth-child(11) {
-            width: 6%;
+            width: 5%;
         }
 
-        /* Community Tax Number */
+        /* Pag-IBIG */
         .payroll-table th:nth-child(12) {
-            width: 6%;
+            width: 5%;
         }
 
-        /* Community Tax Date */
+        /* Total Deductions */
         .payroll-table th:nth-child(13) {
             width: 6%;
         }
 
-        /* Net Amount Due */
+        /* Community Tax Number */
         .payroll-table th:nth-child(14) {
-            width: 15%;
+            width: 6%;
+        }
+
+        /* Community Tax Date */
+        .payroll-table th:nth-child(15) {
+            width: 6%;
+        }
+
+        /* Net Amount Due */
+        .payroll-table th:nth-child(16) {
+            width: 10%;
         }
 
         /* Signature */
@@ -1584,7 +1493,7 @@ try {
             padding-bottom: 1px;
         }
 
-        /* OBLIGATION REQUEST STYLES - EXACT MATCH TO PROVIDED STRUCTURE */
+        /* OBLIGATION REQUEST STYLES */
         .obligation-container {
             max-width: 900px;
             margin: 40px auto;
@@ -1808,21 +1717,15 @@ try {
                 display: none;
             }
 
-            .user-info {
+            .logout-btn span {
                 display: none;
             }
 
-            .user-button {
-                padding: 0.4rem;
-            }
-
-            .user-dropdown {
-                position: fixed;
-                top: 70px;
-                right: 1rem;
-                left: 1rem;
-                width: auto;
-                max-width: 300px;
+            .logout-btn {
+                padding: 0.5rem;
+                width: 40px;
+                height: 40px;
+                justify-content: center;
             }
 
             .navbar-container {
@@ -1891,14 +1794,14 @@ try {
                 height: 36px;
             }
 
-            .user-avatar {
-                width: 32px;
-                height: 32px;
-            }
-
             .brand-logo {
                 width: 40px;
                 height: 40px;
+            }
+
+            .logout-btn {
+                width: 36px;
+                height: 36px;
             }
         }
 
@@ -1945,9 +1848,9 @@ try {
         }
 
         .pagination-btn.active {
-            background-color: var(--primary);
+            background-color: var(--joborder);
             color: white;
-            border-color: var(--primary);
+            border-color: var(--joborder);
         }
 
         .pagination-btn:disabled {
@@ -2038,11 +1941,11 @@ try {
             }
 
             .payroll-table th:nth-child(11) {
-                width: 6% !important;
+                width: 5% !important;
             }
 
             .payroll-table th:nth-child(12) {
-                width: 6% !important;
+                width: 5% !important;
             }
 
             .payroll-table th:nth-child(13) {
@@ -2050,7 +1953,15 @@ try {
             }
 
             .payroll-table th:nth-child(14) {
-                width: 15% !important;
+                width: 6% !important;
+            }
+
+            .payroll-table th:nth-child(15) {
+                width: 6% !important;
+            }
+
+            .payroll-table th:nth-child(16) {
+                width: 10% !important;
             }
 
             .certification-grid {
@@ -2164,7 +2075,7 @@ try {
                     <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
                     <div class="mobile-brand-text">
                         <span class="mobile-brand-title">HRMS</span>
-                        <span class="mobile-brand-subtitle">Dashboard</span>
+                        <span class="mobile-brand-subtitle">Job Order</span>
                     </div>
                 </div>
             </div>
@@ -2188,34 +2099,10 @@ try {
                     </div>
                 </div>
 
-                <div class="user-menu">
-                    <button class="user-button" id="user-menu-button">
-                        <img class="user-avatar" src="https://ui-avatars.com/api/?name=<?php echo urlencode($_SESSION['full_name'] ?? 'User'); ?>&background=1e40af&color=fff" alt="User">
-                        <div class="user-info">
-                            <span class="user-name"><?php echo htmlspecialchars($_SESSION['full_name'] ?? 'Admin User'); ?></span>
-                            <span class="user-role"><?php echo htmlspecialchars($_SESSION['role'] ?? 'Administrator'); ?></span>
-                        </div>
-                        <i class="fas fa-chevron-down user-chevron"></i>
-                    </button>
-                    <div class="user-dropdown" id="user-dropdown">
-                        <div class="dropdown-header">
-                            <h3><?php echo htmlspecialchars($_SESSION['full_name'] ?? 'Admin User'); ?></h3>
-                            <p><?php echo htmlspecialchars($_SESSION['email'] ?? 'admin@example.com'); ?></p>
-                        </div>
-                        <div class="dropdown-menu">
-                            <a href="../profile.php" class="dropdown-item">
-                                <i class="fas fa-user-circle"></i> My Profile
-                            </a>
-                            <a href="../settings.php" class="dropdown-item">
-                                <i class="fas fa-cog"></i> Settings
-                            </a>
-                            <hr class="my-2 border-gray-200">
-                            <a href="?logout=true" class="dropdown-item text-red-600 hover:bg-red-50">
-                                <i class="fas fa-sign-out-alt"></i> Logout
-                            </a>
-                        </div>
-                    </div>
-                </div>
+                <a href="?logout=true" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
             </div>
         </div>
     </nav>
@@ -2259,11 +2146,11 @@ try {
                         <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
                     </a>
                     <div class="submenu" id="payroll-submenu">
-                        <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item active">
+                        <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item">
                             <i class="fas fa-circle text-xs"></i>
                             Contractual
                         </a>
-                        <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="submenu-item">
+                        <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="submenu-item active">
                             <i class="fas fa-circle text-xs"></i>
                             Job Order
                         </a>
@@ -2306,14 +2193,14 @@ try {
             <nav class="mt-4 flex" aria-label="Breadcrumb">
                 <ol class="inline-flex items-center space-x-1 md:space-x-2">
                     <li class="inline-flex items-center">
-                        <a href="contractualpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
-                            <i class="fas fa-home mr-2"></i> Contractual Payroll
+                        <a href="joboerderpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-joborder-600 md:ml-2">
+                            <i class="fas fa-home mr-2"></i> Job Order Payroll
                         </a>
                     </li>
                     <li>
                         <div class="flex items-center">
                             <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-                            <span class="ml-1 text-sm font-medium text-primary-600 md:ml-2">Payroll & Obligation Request</span>
+                            <span class="ml-1 text-sm font-medium text-joborder-600 md:ml-2">Payroll & Obligation Request</span>
                         </div>
                     </li>
                 </ol>
@@ -2322,12 +2209,12 @@ try {
 
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 print-hide">
             <div class="flex items-center gap-3">
-                <div class="bg-primary-100 p-2 rounded-lg">
-                    <i class="fas fa-file-invoice text-primary-600 text-lg"></i>
+                <div class="bg-joborder-100 p-2 rounded-lg">
+                    <i class="fas fa-file-invoice text-joborder-600 text-lg"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-gray-900">Contractual Payroll & Obligation Request</h1>
-                    <p class="text-xs text-gray-500">Generate and manage payroll with obligation request</p>
+                    <h1 class="text-xl font-bold text-gray-900">Job Order Payroll & Obligation Request</h1>
+                    <p class="text-xs text-gray-500">Generate and manage job order payroll with obligation request</p>
                 </div>
             </div>
 
@@ -2345,9 +2232,9 @@ try {
                     </select>
 
                     <div class="flex divide-x divide-gray-200">
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=full&page=1" class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'full') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'; ?>">Full</a>
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=first_half&page=1" class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'first_half') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'; ?>">1st Half</a>
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=second_half&page=1" class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'second_half') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'; ?>">2nd Half</a>
+                        <a href="?period=<?php echo $selected_period; ?>&cutoff=full&page=1" class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'full') ? 'bg-joborder-50 text-joborder-700' : 'text-gray-600 hover:bg-gray-50'; ?>">Full</a>
+                        <a href="?period=<?php echo $selected_period; ?>&cutoff=first_half&page=1" class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'first_half') ? 'bg-joborder-50 text-joborder-700' : 'text-gray-600 hover:bg-gray-50'; ?>">1st Half</a>
+                        <a href="?period=<?php echo $selected_period; ?>&cutoff=second_half&page=1" class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'second_half') ? 'bg-joborder-50 text-joborder-700' : 'text-gray-600 hover:bg-gray-50'; ?>">2nd Half</a>
                     </div>
 
                     <div class="hidden sm:flex items-center px-3 bg-gray-50">
@@ -2360,10 +2247,10 @@ try {
             </div>
         </div>
 
-        <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-4 flex flex-wrap items-center justify-between print-hide">
+        <div class="bg-joborder-50 border-l-4 border-joborder-400 p-3 mb-4 flex flex-wrap items-center justify-between print-hide">
             <div class="flex items-center gap-3">
-                <span class="period-badge"><i class="fas fa-calendar-alt mr-1"></i> <?php echo date('F Y', strtotime($selected_period . '-01')); ?></span>
-                <span class="period-badge"><i class="fas fa-cut mr-1"></i> <?php echo $current_cutoff['label']; ?></span>
+                <span class="period-badge bg-joborder-100 text-joborder-800"><i class="fas fa-calendar-alt mr-1"></i> <?php echo date('F Y', strtotime($selected_period . '-01')); ?></span>
+                <span class="period-badge bg-joborder-100 text-joborder-800"><i class="fas fa-cut mr-1"></i> <?php echo $current_cutoff['label']; ?></span>
                 <span class="text-sm text-gray-600"><i class="fas fa-calendar-week mr-1"></i> <?php echo date('M d', strtotime($current_cutoff['start'])); ?> - <?php echo date('M d, Y', strtotime($current_cutoff['end'])); ?> (<?php echo $current_cutoff['working_days']; ?> working days)</span>
             </div>
             <div class="text-sm text-gray-600"><i class="fas fa-users mr-1"></i> Showing page <?php echo $page; ?> of <?php echo $total_pages; ?> | Total: <?php echo $total_employees; ?> employees</div>
@@ -2378,8 +2265,8 @@ try {
 
         <!-- PAYROLL SECTION -->
         <div id="payroll-section" class="payroll-section">
-            <div class="appendix">Appendix 33</div>
-            <div class="payroll-title">PAYROLL</div>
+            <div class="appendix">Appendix 33-A</div>
+            <div class="payroll-title">PAYROLL (JOB ORDER)</div>
 
             <div class="period-container">
                 <span class="period-label">For the period:</span>
@@ -2427,7 +2314,7 @@ try {
                             <th rowspan="2">Position</th>
                             <th rowspan="2">Address</th>
                             <th colspan="3">Compensation</th>
-                            <th colspan="3">Deductions</th>
+                            <th colspan="4">Deductions</th>
                             <th colspan="2">Community Tax Certificate</th>
                             <th rowspan="2">Net Amount Due</th>
                             <th rowspan="2">Signature</th>
@@ -2438,30 +2325,32 @@ try {
                             <th>Gross Amount Earned</th>
                             <th>Withholding Tax</th>
                             <th>SSS Contribution</th>
-                            <th>Total Deductions</th>
+                            <th>PhilHealth</th>
+                            <th>Pag-IBIG</th>
                             <th>Number</th>
                             <th>Date</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($contractual_employees)): ?>
+                        <?php if (empty($joborder_employees)): ?>
                             <tr>
-                                <td colspan="14" class="text-center py-4 text-gray-500">No employees found for this period.</td>
+                                <td colspan="16" class="text-center py-4 text-gray-500">No job order employees found for this period.</td>
                             </tr>
                         <?php else: ?>
                             <?php $counter = $offset + 1; ?>
-                            <?php foreach ($contractual_employees as $employee): ?>
+                            <?php foreach ($joborder_employees as $employee): ?>
                                 <tr>
                                     <td class="text-center"><?php echo $counter++; ?></td>
                                     <td><?php echo htmlspecialchars($employee['full_name']); ?></td>
                                     <td><?php echo htmlspecialchars($employee['position']); ?></td>
-                                    <td><?php echo htmlspecialchars($employee['address'] ?? 'Paluan Occ. Mdo.'); ?></td>
+                                    <td><?php echo htmlspecialchars($entity_info['address']); ?></td>
                                     <td class="text-right"><?php echo number_format($employee['prorated_salary'], 2); ?></td>
                                     <td class="text-right"><?php echo $employee['other_comp'] > 0 ? number_format($employee['other_comp'], 2) : ''; ?></td>
                                     <td class="text-right"><?php echo number_format($employee['gross_amount'], 2); ?></td>
                                     <td class="text-right"><?php echo $employee['withholding_tax'] > 0 ? number_format($employee['withholding_tax'], 2) : ''; ?></td>
                                     <td class="text-right"><?php echo $employee['sss'] > 0 ? number_format($employee['sss'], 2) : ''; ?></td>
-                                    <td class="text-right"><?php echo number_format($employee['total_deductions'], 2); ?></td>
+                                    <td class="text-right"><?php echo $employee['philhealth'] > 0 ? number_format($employee['philhealth'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo $employee['pagibig'] > 0 ? number_format($employee['pagibig'], 2) : ''; ?></td>
                                     <td class="text-center"><?php echo htmlspecialchars($employee['community_tax_number']); ?></td>
                                     <td class="text-center"><?php echo $employee['community_tax_date'] ? date('m/d/Y', strtotime($employee['community_tax_date'])) : ''; ?></td>
                                     <td class="text-right font-bold"><?php echo number_format($employee['net_amount'], 2); ?></td>
@@ -2477,6 +2366,8 @@ try {
                             <td class="text-right"><?php echo number_format($totals['gross_amount'], 2); ?></td>
                             <td class="text-right"><?php echo number_format($totals['withholding_tax'], 2); ?></td>
                             <td class="text-right"><?php echo number_format($totals['sss'], 2); ?></td>
+                            <td class="text-right"><?php echo number_format($totals['philhealth'], 2); ?></td>
+                            <td class="text-right"><?php echo number_format($totals['pagibig'], 2); ?></td>
                             <td class="text-right"><?php echo number_format($totals['total_deductions'], 2); ?></td>
                             <td></td>
                             <td></td>
@@ -2586,7 +2477,7 @@ try {
             </div>
         </div>
 
-        <!-- OBLIGATION REQUEST SECTION - EXACT MATCH TO PROVIDED STRUCTURE -->
+        <!-- OBLIGATION REQUEST SECTION -->
         <div id="obligation-section" class="obligation-container">
             <form method="POST" action="" id="obligation-form">
                 <input type="hidden" name="save_obligation" value="1">
@@ -2675,7 +2566,7 @@ try {
 
                 <!-- CERTIFICATION SECTION A & B -->
                 <div class="flex flex-row w-full border-t-0 border border-black">
-                    <!-- Set A  -->
+                    <!-- Set A -->
                     <div class="certification-box w-[740px]">
                         <p class="mb-4 font-medium"><span class="font-bold">A. Certified:</span> Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal</p>
 
@@ -2687,7 +2578,7 @@ try {
                         <div class="mt-3 text-center">Head, Requesting Office/Authorized Representative</div>
                         <div class="w-full font-semibold mt-2 mb-2">Date<span class="ml-[40px] mr-3">:</span><span class="border-b border-black w-[350px] inline-block"></span></div>
                     </div>
-                    <!-- Set B  -->
+                    <!-- Set B -->
                     <div class="certification-box w-[685px]">
                         <p class="mb-4 font-medium"><span class="font-bold">B. Certified:</span> Allotment available and obligated for the purpose/adjustment necessary as indicated above</p>
 
@@ -2752,25 +2643,25 @@ try {
         </div>
 
         <div class="action-buttons print-hide">
-            <button onclick="printPayrollOnly()" class="text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
+            <button onclick="printPayrollOnly()" class="text-white bg-joborder-700 hover:bg-joborder-800 focus:ring-4 focus:ring-joborder-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-print mr-2"></i> Print Payroll
             </button>
             <button onclick="printObligationOnly()" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-print mr-2"></i> Print Obligation
             </button>
-            <button type="submit" form="obligation-form" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
+            <button type="submit" form="obligation-form" class="text-white bg-joborder-600 hover:bg-joborder-700 focus:ring-4 focus:ring-joborder-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-save mr-2"></i> Save Obligation Data
             </button>
         </div>
 
         <div class="flex justify-center mb-4 print-hide">
-            <button onclick="syncPayeeWithFirstEmployee()" class="text-sm text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors duration-200">
+            <button onclick="syncPayeeWithFirstEmployee()" class="text-sm text-joborder-600 hover:text-joborder-800 bg-joborder-50 hover:bg-joborder-100 px-4 py-2 rounded-lg transition-colors duration-200">
                 <i class="fas fa-sync-alt mr-2"></i> Sync Payee with First Employee on Current Page
             </button>
         </div>
 
         <div class="fixed bottom-4 right-4 z-50 print-hide">
-            <button onclick="toggleEditModal()" class="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center" style="width: 50px; height: 50px;">
+            <button onclick="toggleEditModal()" class="bg-joborder-600 text-white p-3 rounded-full shadow-lg hover:bg-joborder-700 flex items-center justify-center" style="width: 50px; height: 50px;">
                 <i class="fas fa-edit text-xl"></i>
             </button>
         </div>
@@ -2779,34 +2670,34 @@ try {
         <div id="editPersonnelModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center" style="z-index: 99999;">
             <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold">Edit Certifying Officers</h3>
+                    <h3 class="text-xl font-bold">Edit Certifying Officers (Job Order)</h3>
                     <button onclick="toggleEditModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
                 </div>
 
                 <form id="personnelEditForm" onsubmit="savePersonnelChanges(event)">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer A (HRMO)</h4>
+                            <h4 class="font-bold mb-2 text-joborder-800">Officer A (HRMO)</h4>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Name</label><input type="text" name="officer_A_name" value="<?php echo htmlspecialchars($officer_A['name']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Title</label><input type="text" name="officer_A_title" value="<?php echo htmlspecialchars($officer_A['title']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                         </div>
                         <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer B (Accountant)</h4>
+                            <h4 class="font-bold mb-2 text-joborder-800">Officer B (Accountant)</h4>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Name</label><input type="text" name="officer_B_name" value="<?php echo htmlspecialchars($officer_B['name']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Title</label><input type="text" name="officer_B_title" value="<?php echo htmlspecialchars($officer_B['title']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                         </div>
                         <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer C (Treasurer)</h4>
+                            <h4 class="font-bold mb-2 text-joborder-800">Officer C (Treasurer)</h4>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Name</label><input type="text" name="officer_C_name" value="<?php echo htmlspecialchars($officer_C['name']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Title</label><input type="text" name="officer_C_title" value="<?php echo htmlspecialchars($officer_C['title']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                         </div>
                         <div class="border p-3 rounded">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer D (Mayor)</h4>
+                            <h4 class="font-bold mb-2 text-joborder-800">Officer D (Mayor)</h4>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Name</label><input type="text" name="officer_D_name" value="<?php echo htmlspecialchars($officer_D['name']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                             <div class="mb-2"><label class="block text-sm font-medium text-gray-700">Title</label><input type="text" name="officer_D_title" value="<?php echo htmlspecialchars($officer_D['title']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                         </div>
                         <div class="border p-3 rounded col-span-2">
-                            <h4 class="font-bold mb-2 text-blue-800">Officer F (Disbursing)</h4>
+                            <h4 class="font-bold mb-2 text-joborder-800">Officer F (Disbursing)</h4>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="block text-sm font-medium text-gray-700">Name</label><input type="text" name="officer_F_name" value="<?php echo htmlspecialchars($officer_F['name']); ?>" class="w-full border rounded p-2 text-sm" required></div>
                                 <div><label class="block text-sm font-medium text-gray-700">Title</label><input type="text" name="officer_F_title" value="<?php echo htmlspecialchars($officer_F['title']); ?>" class="w-full border rounded p-2 text-sm" required></div>
@@ -2823,7 +2714,7 @@ try {
 
                     <div class="flex justify-end gap-2 mt-4">
                         <button type="button" onclick="toggleEditModal()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
-                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Changes</button>
+                        <button type="submit" class="bg-joborder-600 text-white px-4 py-2 rounded hover:bg-joborder-700">Save Changes</button>
                     </div>
                 </form>
             </div>
@@ -2883,25 +2774,6 @@ try {
                     sidebar.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
                     document.body.style.overflow = '';
-                });
-            }
-
-            // User dropdown functionality
-            const userMenuButton = document.getElementById('user-menu-button');
-            const userDropdown = document.getElementById('user-dropdown');
-
-            if (userMenuButton && userDropdown) {
-                userMenuButton.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    userDropdown.classList.toggle('active');
-                    userMenuButton.classList.toggle('active');
-                });
-
-                document.addEventListener('click', function(event) {
-                    if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
-                        userDropdown.classList.remove('active');
-                        userMenuButton.classList.remove('active');
-                    }
                 });
             }
 
@@ -2978,7 +2850,6 @@ try {
             const payrollClone = payrollSection.cloneNode(true);
             payrollClone.querySelectorAll('.print-hide, .fixed, .pagination, button, a[href*="logout"]').forEach(el => el.remove());
 
-            // Ensure 100% fit for printing
             payrollClone.style.cssText = 'max-width:100%;margin:0;padding:0.15in;background:white;border:1px solid #000;box-sizing:border-box;';
 
             printContainer.appendChild(payrollClone);
@@ -3023,7 +2894,6 @@ try {
             const obligationClone = obligationSection.cloneNode(true);
             obligationClone.querySelectorAll('.print-hide, .fixed, button:not([type="submit"]), a[href*="logout"]').forEach(el => el.remove());
 
-            // Ensure 100% fit for printing
             obligationClone.style.cssText = 'max-width:100%;margin:0;padding:0.2in;background:white;border:2px solid #000;box-sizing:border-box;';
 
             printContainer.appendChild(obligationClone);
@@ -3104,7 +2974,7 @@ try {
             submitBtn.innerHTML = 'Saving...';
             submitBtn.disabled = true;
 
-            fetch('save_personnel_config.php', {
+            fetch('save_personnel_config_joborder.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
