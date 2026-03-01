@@ -1620,15 +1620,15 @@ $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . 
                         <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
                     </a>
                     <div class="submenu" id="payroll-submenu">
-                        <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item active">
+                        <a href="#" class="submenu-item active">
                             <i class="fas fa-circle text-xs"></i>
                             Contractual
                         </a>
-                        <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="submenu-item">
+                        <a href="joboerderpayrolltable1.php" class="submenu-item">
                             <i class="fas fa-circle text-xs"></i>
                             Job Order
                         </a>
-                        <a href="../Payrollmanagement/permanentpayrolltable1.php" class="submenu-item">
+                        <a href="permanentpayrolltable1.php" class="submenu-item">
                             <i class="fas fa-circle text-xs"></i>
                             Permanent
                         </a>

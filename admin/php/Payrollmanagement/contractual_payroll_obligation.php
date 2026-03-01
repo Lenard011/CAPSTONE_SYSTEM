@@ -2758,16 +2758,16 @@ try {
             <button onclick="printObligationOnly()" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-print mr-2"></i> Print Obligation
             </button>
-            <button type="submit" form="obligation-form" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
+            <!-- <button type="submit" form="obligation-form" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-save mr-2"></i> Save Obligation Data
-            </button>
+            </button> -->
         </div>
 
-        <div class="flex justify-center mb-4 print-hide">
+        <!-- <div class="flex justify-center mb-4 print-hide">
             <button onclick="syncPayeeWithFirstEmployee()" class="text-sm text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors duration-200">
                 <i class="fas fa-sync-alt mr-2"></i> Sync Payee with First Employee on Current Page
             </button>
-        </div>
+        </div> -->
 
         <div class="fixed bottom-4 right-4 z-50 print-hide">
             <button onclick="toggleEditModal()" class="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center" style="width: 50px; height: 50px;">
