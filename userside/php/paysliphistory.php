@@ -1,9 +1,9 @@
 <?php
-// homepage.php - SIMPLE WORKING VERSION
+// paysliphistory.php - Employee Payslip History Page
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Set EXACTLY the same session configuration as login.php
+// Set session configuration
 $cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
 
 session_name('HRMS_SESSION');
@@ -20,44 +20,94 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Add debug output as HTML comment (view page source to see)
-echo "<!-- =========== HOMEPAGE SESSION DEBUG =========== -->\n";
-echo "<!-- Session ID: " . session_id() . " -->\n";
-echo "<!-- Cookie Path: " . $cookiePath . " -->\n";
-echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
-echo "<!-- ============================================= -->\n";
-
-// SIMPLE SESSION CHECK
+// Check if user is logged in
 if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
-    // Redirect to login with error
     header('Location: login.php?error=session_missing');
     exit();
 }
 
-// Update last activity
-$_SESSION['last_activity'] = time();
+// Database connection
+$host = 'localhost';
+$username = 'root';
+$password = '';
+$database = 'hrms_paluan';
 
-// User is logged in - get variables
-$user_id = $_SESSION['user_id'];
-$username = $_SESSION['username'];
-$email = $_SESSION['email'] ?? '';
-$first_name = $_SESSION['first_name'] ?? '';
-$last_name = $_SESSION['last_name'] ?? '';
-$full_name = $_SESSION['full_name'] ?? ($first_name . ' ' . $last_name);
-$role = $_SESSION['role'] ?? 'employee';
-$access_level = $_SESSION['access_level'] ?? 1;
-$employee_id = $_SESSION['employee_id'] ?? '';
-$profile_image = $_SESSION['profile_image'] ?? '';
-
-// Check for forced password change
-if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
-    header('Location: change_password.php');
-    exit();
+$conn = new mysqli($host, $username, $password, $database);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
 }
 
-// Log successful access
-error_log("User " . $username . " accessed homepage successfully");
+// Get user info from session
+$user_id = $_SESSION['user_id'];
+$full_name = $_SESSION['full_name'] ?? ($_SESSION['first_name'] . ' ' . $_SESSION['last_name']);
+$employee_id = $_SESSION['employee_id'] ?? '';
 
+// Get employee's payroll records
+$sql = "SELECT 
+            p.*,
+            u.first_name,
+            u.last_name,
+            u.employee_id as emp_id_number,
+            DATE_FORMAT(p.created_at, '%M %Y') as period_display,
+            DATE_FORMAT(p.created_at, '%Y-%m') as period_sort,
+            CASE 
+                WHEN p.status = 'approved' THEN 'paid'
+                WHEN p.status = 'pending' THEN 'pending'
+                WHEN p.status = 'processing' THEN 'processing'
+                ELSE p.status
+            END as status_display
+        FROM payroll p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.user_id = ?
+        ORDER BY p.payroll_period DESC, p.created_at DESC";
+
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+$payslips = [];
+$total_earnings = 0;
+$total_payslips = 0;
+$current_month_earnings = 0;
+$pending_count = 0;
+
+while ($row = $result->fetch_assoc()) {
+    $payslips[] = $row;
+    $total_earnings += floatval($row['net_amount'] ?? 0);
+    $total_payslips++;
+    
+    // Check if current month
+    if (date('Y-m') === date('Y-m', strtotime($row['created_at']))) {
+        $current_month_earnings += floatval($row['net_amount'] ?? 0);
+    }
+    
+    // Count pending/processing payslips
+    if (in_array($row['status_display'], ['pending', 'processing'])) {
+        $pending_count++;
+    }
+}
+
+$stmt->close();
+
+// Get distinct years and months for filters
+$year_sql = "SELECT DISTINCT YEAR(payroll_period) as year FROM payroll WHERE user_id = ? ORDER BY year DESC";
+$year_stmt = $conn->prepare($year_sql);
+$year_stmt->bind_param("i", $user_id);
+$year_stmt->execute();
+$years_result = $year_stmt->get_result();
+$years = [];
+while ($row = $years_result->fetch_assoc()) {
+    $years[] = $row['year'];
+}
+$year_stmt->close();
+
+$conn->close();
+
+// Format currency function
+function formatCurrency($amount) {
+    return '₱' . number_format($amount, 2);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -689,7 +739,7 @@ error_log("User " . $username . " accessed homepage successfully");
             box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);
         }
 
-        /* Mobile Card View (Alternative to table) */
+        /* Mobile Card View */
         .mobile-card-view {
             display: grid;
             grid-template-columns: 1fr;
@@ -710,7 +760,15 @@ error_log("User " . $username . " accessed homepage successfully");
             box-shadow: var(--shadow-md);
             border: 1px solid var(--gray-light);
             position: relative;
+            animation: fadeInUp 0.5s ease-out forwards;
+            opacity: 0;
         }
+
+        .payslip-card:nth-child(1) { animation-delay: 0.1s; }
+        .payslip-card:nth-child(2) { animation-delay: 0.2s; }
+        .payslip-card:nth-child(3) { animation-delay: 0.3s; }
+        .payslip-card:nth-child(4) { animation-delay: 0.4s; }
+        .payslip-card:nth-child(5) { animation-delay: 0.5s; }
 
         .card-header {
             display: flex;
@@ -772,14 +830,6 @@ error_log("User " . $username . " accessed homepage successfully");
             margin-top: 1rem;
             padding-top: 1rem;
             border-top: 1px solid var(--gray-light);
-        }
-
-        .card-checkbox {
-            position: absolute;
-            top: 1rem;
-            left: 1rem;
-            width: 18px;
-            height: 18px;
         }
 
         /* Table Section */
@@ -941,10 +991,6 @@ error_log("User " . $username . " accessed homepage successfully");
             color: var(--danger);
         }
 
-        .amount-zero {
-            color: var(--gray);
-        }
-
         .status-badge {
             display: inline-block;
             padding: 0.25rem 0.75rem;
@@ -968,11 +1014,6 @@ error_log("User " . $username . " accessed homepage successfully");
         .status-processing {
             background: #e0f2fe;
             color: #0369a1;
-        }
-
-        .status-cancelled {
-            background: #fee2e2;
-            color: #991b1b;
         }
 
         .action-btn {
@@ -1565,42 +1606,16 @@ error_log("User " . $username . " accessed homepage successfully");
             background: var(--primary);
         }
 
-        /* Animation for cards */
+        /* Animation */
         @keyframes fadeInUp {
             from {
                 opacity: 0;
                 transform: translateY(20px);
             }
-
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
-        }
-
-        .payslip-card {
-            animation: fadeInUp 0.5s ease-out forwards;
-            opacity: 0;
-        }
-
-        .payslip-card:nth-child(1) {
-            animation-delay: 0.1s;
-        }
-
-        .payslip-card:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-
-        .payslip-card:nth-child(3) {
-            animation-delay: 0.3s;
-        }
-
-        .payslip-card:nth-child(4) {
-            animation-delay: 0.4s;
-        }
-
-        .payslip-card:nth-child(5) {
-            animation-delay: 0.5s;
         }
 
         /* Notification Toast */
@@ -1641,29 +1656,9 @@ error_log("User " . $username . " accessed homepage successfully");
                 transform: translateX(100%);
                 opacity: 0;
             }
-
             to {
                 transform: translateX(0);
                 opacity: 1;
-            }
-        }
-
-        /* Utility Classes */
-        .d-none {
-            display: none !important;
-        }
-
-        .d-block {
-            display: block !important;
-        }
-
-        @media (min-width: 768px) {
-            .d-md-none {
-                display: none !important;
-            }
-
-            .d-md-block {
-                display: block !important;
             }
         }
     </style>
@@ -1700,7 +1695,6 @@ error_log("User " . $username . " accessed homepage successfully");
                         <span>Attendance History</span>
                     </a>
                 </div>
-
                 <div class="nav-item">
                     <a href="paysliphistory.php" class="nav-link active">
                         <i class="fas fa-file-invoice-dollar"></i>
@@ -1729,10 +1723,12 @@ error_log("User " . $username . " accessed homepage successfully");
 
             <div class="user-profile">
                 <div class="user-info">
-                    <div class="user-avatar">JA</div>
+                    <div class="user-avatar">
+                        <?php echo strtoupper(substr($full_name, 0, 1) . (strpos($full_name, ' ') ? substr($full_name, strpos($full_name, ' ') + 1, 1) : '')); ?>
+                    </div>
                     <div class="user-details">
-                        <h4>Joy Ambrosio</h4>
-                        <p>Employee ID: BSC02</p>
+                        <h4><?php echo htmlspecialchars($full_name); ?></h4>
+                        <p>Employee ID: <?php echo htmlspecialchars($employee_id); ?></p>
                     </div>
                 </div>
             </div>
@@ -1749,7 +1745,9 @@ error_log("User " . $username . " accessed homepage successfully");
                 <div class="top-bar-actions">
                     <button class="notification-btn">
                         <i class="fas fa-bell"></i>
-                        <span class="notification-badge">2</span>
+                        <?php if ($pending_count > 0): ?>
+                        <span class="notification-badge"><?php echo $pending_count; ?></span>
+                        <?php endif; ?>
                     </button>
                     <button class="mobile-menu-btn" id="mobileMenuBtn">
                         <i class="fas fa-bars"></i>
@@ -1765,7 +1763,7 @@ error_log("User " . $username . " accessed homepage successfully");
                     </div>
                     <div class="summary-info">
                         <h3>Total Earnings</h3>
-                        <div class="value">₱24,500.00</div>
+                        <div class="value"><?php echo formatCurrency($total_earnings); ?></div>
                     </div>
                 </div>
 
@@ -1775,7 +1773,7 @@ error_log("User " . $username . " accessed homepage successfully");
                     </div>
                     <div class="summary-info">
                         <h3>Payslips</h3>
-                        <div class="value">12</div>
+                        <div class="value"><?php echo $total_payslips; ?></div>
                     </div>
                 </div>
 
@@ -1785,7 +1783,7 @@ error_log("User " . $username . " accessed homepage successfully");
                     </div>
                     <div class="summary-info">
                         <h3>This Month</h3>
-                        <div class="value">₱6,250.00</div>
+                        <div class="value"><?php echo formatCurrency($current_month_earnings); ?></div>
                     </div>
                 </div>
 
@@ -1795,7 +1793,7 @@ error_log("User " . $username . " accessed homepage successfully");
                     </div>
                     <div class="summary-info">
                         <h3>Pending</h3>
-                        <div class="value">1</div>
+                        <div class="value"><?php echo $pending_count; ?></div>
                     </div>
                 </div>
             </div>
@@ -1808,10 +1806,9 @@ error_log("User " . $username . " accessed homepage successfully");
                         <div class="filter-select">
                             <select class="filter-input" id="yearFilter">
                                 <option value="">All Years</option>
-                                <option value="2024">2024</option>
-                                <option value="2023">2023</option>
-                                <option value="2022">2022</option>
-                                <option value="2021">2021</option>
+                                <?php foreach ($years as $year): ?>
+                                <option value="<?php echo $year; ?>"><?php echo $year; ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
 
@@ -1844,7 +1841,7 @@ error_log("User " . $username . " accessed homepage successfully");
 
                         <div class="search-container">
                             <i class="fas fa-search search-icon"></i>
-                            <input type="text" class="search-input" placeholder="Search employee..." id="searchInput">
+                            <input type="text" class="search-input" placeholder="Search period..." id="searchInput">
                         </div>
 
                         <button class="btn btn-primary" id="applyFilter">
@@ -1885,34 +1882,142 @@ error_log("User " . $username . " accessed homepage successfully");
                                         <input type="checkbox" class="payslip-checkbox" id="selectAll">
                                     </div>
                                 </th>
-                                <th>Employee Details</th>
                                 <th>Period</th>
                                 <th>Rate/Day</th>
                                 <th>Days Worked</th>
-                                <th>Total Wage</th>
-                                <th>Overtime</th>
-                                <th>Holiday Pay</th>
                                 <th>Gross Amount</th>
+                                <th>Withholding Tax</th>
+                                <th>SSS</th>
+                                <th>PhilHealth</th>
+                                <th>Pag-IBIG</th>
+                                <th>Total Deductions</th>
                                 <th>Net Amount</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="payslipTableBody">
-                            <!-- Table rows will be populated by JavaScript -->
+                            <?php if (empty($payslips)): ?>
+                            <tr>
+                                <td colspan="13" class="text-center py-8 text-gray-500">
+                                    No payslip records found.
+                                </td>
+                            </tr>
+                            <?php else: ?>
+                                <?php foreach ($payslips as $index => $payslip): ?>
+                                <tr data-id="<?php echo $payslip['payroll_id']; ?>" data-period="<?php echo $payslip['period_display']; ?>" data-status="<?php echo $payslip['status_display']; ?>" data-year="<?php echo date('Y', strtotime($payslip['payroll_period'])); ?>" data-month="<?php echo date('n', strtotime($payslip['payroll_period'])); ?>">
+                                    <td class="checkbox-cell">
+                                        <div class="checkbox-wrapper">
+                                            <input type="checkbox" class="payslip-checkbox" data-id="<?php echo $payslip['payroll_id']; ?>">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="employee-name"><?php echo $payslip['period_display']; ?></div>
+                                        <div class="employee-id">Cutoff: <?php echo ucfirst($payslip['payroll_cutoff'] ?? 'N/A'); ?></div>
+                                    </td>
+                                    <td class="amount-cell"><?php echo formatCurrency($payslip['daily_rate'] ?? 0); ?></td>
+                                    <td><?php echo number_format($payslip['days_present'] ?? 0, 1); ?></td>
+                                    <td class="amount-cell"><?php echo formatCurrency($payslip['gross_amount'] ?? 0); ?></td>
+                                    <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['withholding_tax'] ?? 0); ?></td>
+                                    <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['sss'] ?? 0); ?></td>
+                                    <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['philhealth'] ?? 0); ?></td>
+                                    <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['pagibig'] ?? 0); ?></td>
+                                    <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['total_deductions'] ?? 0); ?></td>
+                                    <td class="amount-cell amount-positive"><?php echo formatCurrency($payslip['net_amount'] ?? 0); ?></td>
+                                    <td>
+                                        <span class="status-badge status-<?php echo $payslip['status_display']; ?>">
+                                            <?php echo ucfirst($payslip['status_display']); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="action-btn view-btn" onclick="viewPayslip(<?php echo $payslip['payroll_id']; ?>)">
+                                            <i class="fas fa-eye"></i> View
+                                        </button>
+                                        <button class="action-btn download-btn" onclick="downloadPayslip(<?php echo $payslip['payroll_id']; ?>)">
+                                            <i class="fas fa-download"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Mobile Card View -->
                 <div class="mobile-card-view" id="mobileCardView">
-                    <!-- Mobile cards will be populated by JavaScript -->
+                    <?php if (!empty($payslips)): ?>
+                        <?php foreach ($payslips as $payslip): ?>
+                        <div class="payslip-card" data-id="<?php echo $payslip['payroll_id']; ?>" data-period="<?php echo $payslip['period_display']; ?>" data-status="<?php echo $payslip['status_display']; ?>" data-year="<?php echo date('Y', strtotime($payslip['payroll_period'])); ?>" data-month="<?php echo date('n', strtotime($payslip['payroll_period'])); ?>">
+                            <input type="checkbox" class="payslip-checkbox card-checkbox" data-id="<?php echo $payslip['payroll_id']; ?>">
+                            <div class="card-header">
+                                <div>
+                                    <div class="card-title"><?php echo $payslip['period_display']; ?></div>
+                                    <div style="font-size: 0.85rem; color: var(--gray); margin-top: 0.25rem;">Cutoff: <?php echo ucfirst($payslip['payroll_cutoff'] ?? 'N/A'); ?></div>
+                                </div>
+                                <span class="card-status status-<?php echo $payslip['status_display']; ?>">
+                                    <?php echo ucfirst($payslip['status_display']); ?>
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                <div class="card-item">
+                                    <span class="card-label">Rate/Day</span>
+                                    <span class="card-value card-amount"><?php echo formatCurrency($payslip['daily_rate'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">Days Worked</span>
+                                    <span class="card-value"><?php echo number_format($payslip['days_present'] ?? 0, 1); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">Gross Amount</span>
+                                    <span class="card-value card-amount"><?php echo formatCurrency($payslip['gross_amount'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">Withholding Tax</span>
+                                    <span class="card-value card-amount amount-negative"><?php echo formatCurrency($payslip['withholding_tax'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">SSS</span>
+                                    <span class="card-value card-amount amount-negative"><?php echo formatCurrency($payslip['sss'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">PhilHealth</span>
+                                    <span class="card-value card-amount amount-negative"><?php echo formatCurrency($payslip['philhealth'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">Pag-IBIG</span>
+                                    <span class="card-value card-amount amount-negative"><?php echo formatCurrency($payslip['pagibig'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">Total Deductions</span>
+                                    <span class="card-value card-amount amount-negative"><?php echo formatCurrency($payslip['total_deductions'] ?? 0); ?></span>
+                                </div>
+                                <div class="card-item">
+                                    <span class="card-label">Net Amount</span>
+                                    <span class="card-value card-amount amount-positive"><?php echo formatCurrency($payslip['net_amount'] ?? 0); ?></span>
+                                </div>
+                            </div>
+                            <div class="card-actions">
+                                <button class="action-btn view-btn" onclick="viewPayslip(<?php echo $payslip['payroll_id']; ?>)" style="flex: 1;">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <button class="action-btn download-btn" onclick="downloadPayslip(<?php echo $payslip['payroll_id']; ?>)" style="flex: 1;">
+                                    <i class="fas fa-download"></i> Download
+                                </button>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="text-center py-8 text-gray-500">
+                            No payslip records found.
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Table Footer -->
                 <div class="table-footer">
                     <div class="summary-info">
-                        Showing <strong id="showingCount">0</strong> of <strong id="totalCount">0</strong> payslips
+                        Showing <strong id="showingCount"><?php echo count($payslips); ?></strong> of <strong id="totalCount"><?php echo count($payslips); ?></strong> payslips
                     </div>
                     <div class="summary-stats">
                         <div class="stat-item">
@@ -1975,10 +2080,10 @@ error_log("User " . $username . " accessed homepage successfully");
                 <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Include:</label>
                 <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
                     <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" checked> Employee Details
+                        <input type="checkbox" checked disabled> Employee Details
                     </label>
                     <label style="display: flex; align-items: center; gap: 0.5rem;">
-                        <input type="checkbox" checked> Salary Breakdown
+                        <input type="checkbox" checked disabled> Salary Breakdown
                     </label>
                     <label style="display: flex; align-items: center; gap: 0.5rem;">
                         <input type="checkbox" id="exportAll"> All Payslips
@@ -2033,8 +2138,8 @@ error_log("User " . $username . " accessed homepage successfully");
                         <ul>
                             <li><a href="homepage.php">Dashboard</a></li>
                             <li><a href="attendance.php">Attendance</a></li>
-                            <li><a href="leave.php">Leave Management</a></li>
                             <li><a href="paysliphistory.php">Payslips</a></li>
+                            <li><a href="about.php">About</a></li>
                         </ul>
                     </div>
                 </div>
@@ -2071,120 +2176,15 @@ error_log("User " . $username . " accessed homepage successfully");
 
     <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
     <script>
-        // Sample data
-        const payslipData = [
-            {
-                id: 1,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "January 2024",
-                rate: "520.00",
-                daysWorked: "22",
-                totalWage: "11,440.00",
-                overtime: "1,560.00",
-                holidayPay: "1,040.00",
-                grossAmount: "14,040.00",
-                netAmount: "12,636.00",
-                status: "paid",
-                selected: false
-            },
-            {
-                id: 2,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "February 2024",
-                rate: "520.00",
-                daysWorked: "20",
-                totalWage: "10,400.00",
-                overtime: "1,040.00",
-                holidayPay: "520.00",
-                grossAmount: "11,960.00",
-                netAmount: "10,764.00",
-                status: "paid",
-                selected: false
-            },
-            {
-                id: 3,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "March 2024",
-                rate: "520.00",
-                daysWorked: "23",
-                totalWage: "11,960.00",
-                overtime: "2,080.00",
-                holidayPay: "0.00",
-                grossAmount: "14,040.00",
-                netAmount: "12,636.00",
-                status: "paid",
-                selected: false
-            },
-            {
-                id: 4,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "April 2024",
-                rate: "520.00",
-                daysWorked: "21",
-                totalWage: "10,920.00",
-                overtime: "1,560.00",
-                holidayPay: "520.00",
-                grossAmount: "13,000.00",
-                netAmount: "11,700.00",
-                status: "pending",
-                selected: false
-            },
-            {
-                id: 5,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "May 2024",
-                rate: "520.00",
-                daysWorked: "22",
-                totalWage: "11,440.00",
-                overtime: "1,040.00",
-                holidayPay: "1,040.00",
-                grossAmount: "13,520.00",
-                netAmount: "12,168.00",
-                status: "processing",
-                selected: false
-            },
-            {
-                id: 6,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "June 2024",
-                rate: "520.00",
-                daysWorked: "21",
-                totalWage: "10,920.00",
-                overtime: "2,600.00",
-                holidayPay: "0.00",
-                grossAmount: "13,520.00",
-                netAmount: "12,168.00",
-                status: "paid",
-                selected: false
-            },
-            {
-                id: 7,
-                employeeName: "Joy Ambrosio",
-                employeeId: "BSC02",
-                period: "July 2024",
-                rate: "520.00",
-                daysWorked: "23",
-                totalWage: "11,960.00",
-                overtime: "1,560.00",
-                holidayPay: "1,040.00",
-                grossAmount: "14,560.00",
-                netAmount: "13,104.00",
-                status: "paid",
-                selected: false
-            }
-        ];
+        // Store payslip data from PHP
+        const payslipData = <?php echo json_encode($payslips); ?>;
 
         // State variables
         let currentData = [...payslipData];
+        let filteredData = [...payslipData];
         let selectedCount = 0;
         let currentPage = 1;
-        const itemsPerPage = 5;
+        const itemsPerPage = 10;
 
         document.addEventListener('DOMContentLoaded', function () {
             // DOM elements
@@ -2218,7 +2218,8 @@ error_log("User " . $username . " accessed homepage successfully");
             const currentPageEl = document.getElementById('currentPage');
             const totalPagesEl = document.getElementById('totalPages');
 
-            // Initialize data
+            // Initialize
+            filteredData = [...payslipData];
             renderTable();
             updateSummary();
             setupPagination();
@@ -2253,56 +2254,80 @@ error_log("User " . $username . " accessed homepage successfully");
             });
 
             // Select all checkbox
-            selectAllCheckbox.addEventListener('change', function () {
-                const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
-                const currentPageData = getCurrentPageData();
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', function () {
+                    const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
+                    const pageData = getCurrentPageData();
 
-                checkboxes.forEach(cb => {
-                    cb.checked = this.checked;
-                    const id = cb.dataset.id;
-                    const item = currentData.find(item => item.id == id);
-                    if (item) {
+                    checkboxes.forEach(cb => {
+                        cb.checked = this.checked;
+                    });
+
+                    pageData.forEach(item => {
                         item.selected = this.checked;
-                    }
-                });
+                    });
 
-                updateSelectedCount();
-                updateSummary();
-            });
+                    updateSelectedCount();
+                    updateSummary();
+                });
+            }
 
             // Select all button
-            selectAllBtn.addEventListener('click', function () {
-                selectAllCheckbox.checked = !selectAllCheckbox.checked;
-                selectAllCheckbox.dispatchEvent(new Event('change'));
-            });
+            if (selectAllBtn) {
+                selectAllBtn.addEventListener('click', function () {
+                    if (selectAllCheckbox) {
+                        selectAllCheckbox.checked = !selectAllCheckbox.checked;
+                        selectAllCheckbox.dispatchEvent(new Event('change'));
+                    }
+                });
+            }
 
             // Export button
-            exportBtn.addEventListener('click', function () {
-                exportModal.classList.add('active');
-                document.body.style.overflow = 'hidden';
-            });
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function () {
+                    exportModal.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                });
+            }
 
             // Print button
-            printBtn.addEventListener('click', function () {
-                const selectedItems = currentData.filter(item => item.selected);
-                if (selectedItems.length === 0) {
-                    showNotification('Please select payslips to print', 'warning');
-                    return;
-                }
-                printSelectedPayslips(selectedItems);
-            });
+            if (printBtn) {
+                printBtn.addEventListener('click', function () {
+                    const selectedItems = filteredData.filter(item => item.selected);
+                    if (selectedItems.length === 0) {
+                        showNotification('Please select payslips to print', 'warning');
+                        return;
+                    }
+                    printSelectedPayslips(selectedItems);
+                });
+            }
 
             // Filter buttons
-            applyFilterBtn.addEventListener('click', applyFilters);
-            resetFilterBtn.addEventListener('click', resetFilters);
+            if (applyFilterBtn) {
+                applyFilterBtn.addEventListener('click', applyFilters);
+            }
+            
+            if (resetFilterBtn) {
+                resetFilterBtn.addEventListener('click', resetFilters);
+            }
 
             // Search input
-            searchInput.addEventListener('input', debounce(applyFilters, 300));
+            if (searchInput) {
+                searchInput.addEventListener('input', debounce(applyFilters, 300));
+            }
 
             // Modal controls
-            closeModalBtn.addEventListener('click', closeModal);
-            cancelExportBtn.addEventListener('click', closeModal);
-            confirmExportBtn.addEventListener('click', confirmExport);
+            if (closeModalBtn) {
+                closeModalBtn.addEventListener('click', closeModal);
+            }
+            
+            if (cancelExportBtn) {
+                cancelExportBtn.addEventListener('click', closeModal);
+            }
+            
+            if (confirmExportBtn) {
+                confirmExportBtn.addEventListener('click', confirmExport);
+            }
 
             // Export options
             exportOptions.forEach(option => {
@@ -2313,438 +2338,398 @@ error_log("User " . $username . " accessed homepage successfully");
             });
 
             // Export all checkbox
-            exportAllCheckbox.addEventListener('change', function () {
-                if (this.checked) {
-                    const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
-                    checkboxes.forEach(cb => cb.checked = true);
-                    currentData.forEach(item => item.selected = true);
-                    updateSelectedCount();
-                    updateSummary();
-                }
-            });
+            if (exportAllCheckbox) {
+                exportAllCheckbox.addEventListener('change', function () {
+                    if (this.checked) {
+                        const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
+                        checkboxes.forEach(cb => cb.checked = true);
+                        filteredData.forEach(item => item.selected = true);
+                        updateSelectedCount();
+                        updateSummary();
+                    }
+                });
+            }
+        });
 
-            // Functions
-            function getCurrentPageData() {
-                const startIndex = (currentPage - 1) * itemsPerPage;
-                const endIndex = startIndex + itemsPerPage;
-                return currentData.slice(startIndex, endIndex);
+        // Functions
+        function getCurrentPageData() {
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            return filteredData.slice(startIndex, endIndex);
+        }
+
+        function renderTable() {
+            const pageData = getCurrentPageData();
+            
+            // Update counts
+            const showingCountEl = document.getElementById('showingCount');
+            const totalCountEl = document.getElementById('totalCount');
+            const currentPageEl = document.getElementById('currentPage');
+            const totalPagesEl = document.getElementById('totalPages');
+            
+            if (showingCountEl) showingCountEl.textContent = pageData.length;
+            if (totalCountEl) totalCountEl.textContent = filteredData.length;
+            if (currentPageEl) currentPageEl.textContent = currentPage;
+            if (totalPagesEl) totalPagesEl.textContent = Math.ceil(filteredData.length / itemsPerPage);
+
+            // Update desktop table visibility
+            const tableBody = document.getElementById('payslipTableBody');
+            const mobileView = document.getElementById('mobileCardView');
+            
+            if (tableBody) {
+                const rows = tableBody.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const id = row.dataset.id;
+                    if (id) {
+                        const item = filteredData.find(i => i.payroll_id == id);
+                        row.style.display = item ? '' : 'none';
+                        
+                        // Update checkbox state
+                        const checkbox = row.querySelector('.payslip-checkbox');
+                        if (checkbox && item) {
+                            checkbox.checked = item.selected || false;
+                        }
+                    }
+                });
+            }
+            
+            // Update mobile cards
+            if (mobileView) {
+                const cards = mobileView.querySelectorAll('.payslip-card');
+                cards.forEach(card => {
+                    const id = card.dataset.id;
+                    if (id) {
+                        const item = filteredData.find(i => i.payroll_id == id);
+                        card.style.display = item ? '' : 'none';
+                        
+                        // Update checkbox state
+                        const checkbox = card.querySelector('.payslip-checkbox');
+                        if (checkbox && item) {
+                            checkbox.checked = item.selected || false;
+                        }
+                    }
+                });
             }
 
-            function renderTable() {
-                // Clear existing content
-                payslipTableBody.innerHTML = '';
-                mobileCardView.innerHTML = '';
-
-                const pageData = getCurrentPageData();
-
-                // Update counts
-                showingCountEl.textContent = pageData.length;
-                totalCountEl.textContent = currentData.length;
-                currentPageEl.textContent = currentPage;
-                totalPagesEl.textContent = Math.ceil(currentData.length / itemsPerPage);
-
-                // Render desktop table
-                pageData.forEach(item => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="checkbox-cell">
-                            <div class="checkbox-wrapper">
-                                <input type="checkbox" class="payslip-checkbox" data-id="${item.id}" ${item.selected ? 'checked' : ''}>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="employee-name">${item.employeeName}</div>
-                            <div class="employee-id">ID: ${item.employeeId}</div>
-                        </td>
-                        <td>${item.period}</td>
-                        <td class="amount-cell">₱${item.rate}</td>
-                        <td>${item.daysWorked}</td>
-                        <td class="amount-cell">₱${item.totalWage}</td>
-                        <td class="amount-cell amount-positive">₱${item.overtime}</td>
-                        <td class="amount-cell amount-positive">₱${item.holidayPay}</td>
-                        <td class="amount-cell">₱${item.grossAmount}</td>
-                        <td class="amount-cell">₱${item.netAmount}</td>
-                        <td>
-                            <span class="status-badge status-${item.status}">
-                                ${item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                            </span>
-                        </td>
-                        <td>
-                            <button class="action-btn view-btn" onclick="viewPayslip(${item.id})">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                            <button class="action-btn download-btn" onclick="downloadPayslip(${item.id})">
-                                <i class="fas fa-download"></i>
-                            </button>
-                        </td>
-                    `;
-                    payslipTableBody.appendChild(row);
+            // Add event listeners to checkboxes
+            const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', function () {
+                    const id = this.dataset.id;
+                    const item = filteredData.find(item => item.payroll_id == id);
+                    if (item) {
+                        item.selected = this.checked;
+                        updateSelectedCount();
+                        updateSummary();
+                    }
                 });
+            });
 
-                // Render mobile cards
-                pageData.forEach(item => {
-                    const card = document.createElement('div');
-                    card.className = 'payslip-card';
-                    card.innerHTML = `
-                        <input type="checkbox" class="payslip-checkbox card-checkbox" data-id="${item.id}" ${item.selected ? 'checked' : ''}>
-                        <div class="card-header">
-                            <div>
-                                <div class="card-title">${item.period}</div>
-                                <div style="font-size: 0.85rem; color: var(--gray); margin-top: 0.25rem;">${item.employeeName}</div>
-                            </div>
-                            <span class="card-status status-${item.status}">
-                                ${item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                            </span>
-                        </div>
-                        <div class="card-body">
-                            <div class="card-item">
-                                <span class="card-label">Rate/Day</span>
-                                <span class="card-value card-amount">₱${item.rate}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Days Worked</span>
-                                <span class="card-value">${item.daysWorked}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Total Wage</span>
-                                <span class="card-value card-amount">₱${item.totalWage}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Overtime</span>
-                                <span class="card-value card-amount amount-positive">₱${item.overtime}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Holiday Pay</span>
-                                <span class="card-value card-amount amount-positive">₱${item.holidayPay}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Gross Amount</span>
-                                <span class="card-value card-amount">₱${item.grossAmount}</span>
-                            </div>
-                            <div class="card-item">
-                                <span class="card-label">Net Amount</span>
-                                <span class="card-value card-amount">₱${item.netAmount}</span>
-                            </div>
-                        </div>
-                        <div class="card-actions">
-                            <button class="action-btn view-btn" onclick="viewPayslip(${item.id})" style="flex: 1;">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                            <button class="action-btn download-btn" onclick="downloadPayslip(${item.id})" style="flex: 1;">
-                                <i class="fas fa-download"></i> Download
-                            </button>
-                        </div>
-                    `;
-                    mobileCardView.appendChild(card);
-                });
-
-                // Add event listeners to checkboxes
-                const checkboxes = document.querySelectorAll('.payslip-checkbox:not(#selectAll)');
-                checkboxes.forEach(cb => {
-                    cb.addEventListener('change', function () {
-                        const id = this.dataset.id;
-                        const item = currentData.find(item => item.id == id);
-                        if (item) {
-                            item.selected = this.checked;
-                            updateSelectedCount();
-                            updateSummary();
-                        }
-                    });
-                });
-
-                // Update select all checkbox
+            // Update select all checkbox
+            const selectAllCheckbox = document.getElementById('selectAll');
+            if (selectAllCheckbox) {
                 const pageDataSelected = pageData.filter(item => item.selected);
                 selectAllCheckbox.checked = pageDataSelected.length > 0 && pageDataSelected.length === pageData.length;
-
-                // Initialize animations
-                const observerOptions = {
-                    threshold: 0.1,
-                    rootMargin: '0px 0px -50px 0px'
-                };
-
-                const observer = new IntersectionObserver((entries) => {
-                    entries.forEach(entry => {
-                        if (entry.isIntersecting) {
-                            entry.target.style.animationPlayState = 'running';
-                        }
-                    });
-                }, observerOptions);
-
-                document.querySelectorAll('.payslip-card').forEach(card => {
-                    card.style.animationPlayState = 'paused';
-                    observer.observe(card);
-                });
             }
+        }
 
-            function updateSelectedCount() {
-                selectedCount = currentData.filter(item => item.selected).length;
+        function updateSelectedCount() {
+            selectedCount = filteredData.filter(item => item.selected).length;
+            const selectedCountEl = document.getElementById('selectedCount');
+            if (selectedCountEl) {
                 selectedCountEl.textContent = selectedCount;
             }
+        }
 
-            function updateSummary() {
-                const selectedItems = currentData.filter(item => item.selected);
-                let totalGross = 0;
-                let totalNet = 0;
+        function updateSummary() {
+            const selectedItems = filteredData.filter(item => item.selected);
+            let totalGross = 0;
+            let totalNet = 0;
 
-                selectedItems.forEach(item => {
-                    totalGross += parseFloat(item.grossAmount.replace(/,/g, ''));
-                    totalNet += parseFloat(item.netAmount.replace(/,/g, ''));
-                });
+            selectedItems.forEach(item => {
+                totalGross += parseFloat(item.gross_amount || 0);
+                totalNet += parseFloat(item.net_amount || 0);
+            });
 
-                totalGrossEl.textContent = `₱${totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                totalNetEl.textContent = `₱${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const totalGrossEl = document.getElementById('totalGross');
+            const totalNetEl = document.getElementById('totalNet');
+            
+            if (totalGrossEl) {
+                totalGrossEl.textContent = '₱' + totalGross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
-
-            function applyFilters() {
-                const searchTerm = searchInput.value.toLowerCase();
-                const year = yearFilter.value;
-                const month = monthFilter.value;
-                const status = statusFilter.value;
-
-                currentData = payslipData.filter(item => {
-                    // Search filter
-                    if (searchTerm && !item.employeeName.toLowerCase().includes(searchTerm) &&
-                        !item.employeeId.toLowerCase().includes(searchTerm)) {
-                        return false;
-                    }
-
-                    // Year filter
-                    if (year) {
-                        const itemYear = item.period.split(' ')[1];
-                        if (itemYear !== year) return false;
-                    }
-
-                    // Month filter
-                    if (month) {
-                        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                            'July', 'August', 'September', 'October', 'November', 'December'];
-                        const itemMonth = item.period.split(' ')[0];
-                        if (monthNames[parseInt(month) - 1] !== itemMonth) return false;
-                    }
-
-                    // Status filter
-                    if (status && item.status !== status) {
-                        return false;
-                    }
-
-                    return true;
-                });
-
-                currentPage = 1;
-                renderTable();
-                updateSummary();
-                setupPagination();
+            
+            if (totalNetEl) {
+                totalNetEl.textContent = '₱' + totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
+        }
 
-            function resetFilters() {
-                searchInput.value = '';
-                yearFilter.value = '';
-                monthFilter.value = '';
-                statusFilter.value = '';
-                applyFilters();
-            }
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+            const year = document.getElementById('yearFilter')?.value || '';
+            const month = document.getElementById('monthFilter')?.value || '';
+            const status = document.getElementById('statusFilter')?.value || '';
 
-            function setupPagination() {
-                // Clear existing controls
-                paginationControls.innerHTML = '';
-
-                const totalPages = Math.ceil(currentData.length / itemsPerPage);
-
-                // Previous button
-                const prevBtn = document.createElement('button');
-                prevBtn.className = 'pagination-btn';
-                prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
-                prevBtn.disabled = currentPage === 1;
-                prevBtn.addEventListener('click', () => {
-                    if (currentPage > 1) {
-                        currentPage--;
-                        renderTable();
-                        setupPagination();
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }
-                });
-                paginationControls.appendChild(prevBtn);
-
-                // Page number buttons
-                const startPage = Math.max(1, currentPage - 2);
-                const endPage = Math.min(totalPages, startPage + 4);
-
-                for (let i = startPage; i <= endPage; i++) {
-                    const pageBtn = document.createElement('button');
-                    pageBtn.className = `pagination-btn ${i === currentPage ? 'active' : ''}`;
-                    pageBtn.textContent = i;
-                    pageBtn.addEventListener('click', () => {
-                        currentPage = i;
-                        renderTable();
-                        setupPagination();
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    });
-                    paginationControls.appendChild(pageBtn);
+            filteredData = payslipData.filter(item => {
+                // Search filter (by period)
+                if (searchTerm && item.period_display && !item.period_display.toLowerCase().includes(searchTerm)) {
+                    return false;
                 }
 
-                // Next button
-                const nextBtn = document.createElement('button');
-                nextBtn.className = 'pagination-btn';
-                nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
-                nextBtn.disabled = currentPage === totalPages;
-                nextBtn.addEventListener('click', () => {
-                    if (currentPage < totalPages) {
-                        currentPage++;
-                        renderTable();
-                        setupPagination();
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }
-                });
-                paginationControls.appendChild(nextBtn);
-
-                // Update page info
-                currentPageEl.textContent = currentPage;
-                totalPagesEl.textContent = totalPages;
-            }
-
-            function closeModal() {
-                exportModal.classList.remove('active');
-                document.body.style.overflow = 'auto';
-                exportOptions.forEach(opt => opt.classList.remove('selected'));
-                exportAllCheckbox.checked = false;
-            }
-
-            function confirmExport() {
-                const selectedFormat = document.querySelector('.export-option.selected')?.dataset.format || 'pdf';
-                const exportAll = exportAllCheckbox.checked;
-                const itemsToExport = exportAll ? currentData : currentData.filter(item => item.selected);
-
-                if (itemsToExport.length === 0) {
-                    showNotification('Please select payslips to export', 'warning');
-                    return;
+                // Year filter
+                if (year) {
+                    const itemYear = new Date(item.payroll_period).getFullYear();
+                    if (itemYear != year) return false;
                 }
 
-                showNotification(`Exporting ${itemsToExport.length} payslip(s) as ${selectedFormat.toUpperCase()}`, 'success');
-                closeModal();
-
-                // In a real application, this would trigger the export/download
-                setTimeout(() => {
-                    if (selectedFormat === 'print') {
-                        window.print();
-                    } else {
-                        // Simulate download
-                        const link = document.createElement('a');
-                        link.href = '#';
-                        link.download = `payslips_${new Date().toISOString().split('T')[0]}.${selectedFormat}`;
-                        link.click();
-                    }
-                }, 1000);
-            }
-
-            // Utility function for debouncing
-            function debounce(func, wait) {
-                let timeout;
-                return function executedFunction(...args) {
-                    const later = () => {
-                        clearTimeout(timeout);
-                        func(...args);
-                    };
-                    clearTimeout(timeout);
-                    timeout = setTimeout(later, wait);
-                };
-            }
-
-            // Keyboard shortcuts
-            document.addEventListener('keydown', function (e) {
-                // Close modal with Escape key
-                if (e.key === 'Escape') {
-                    const modal = document.querySelector('.export-modal.active');
-                    if (modal) closeModal();
+                // Month filter
+                if (month) {
+                    const itemMonth = new Date(item.payroll_period).getMonth() + 1;
+                    if (itemMonth != month) return false;
                 }
 
-                // Close sidebar with Escape key on mobile
-                if (e.key === 'Escape' && window.innerWidth < 1024 && sidebar.classList.contains('active')) {
-                    sidebar.classList.remove('active');
-                    sidebarOverlay.classList.remove('active');
-                    document.body.style.overflow = 'auto';
-                    mobileMenuBtn.querySelector('i').classList.remove('fa-times');
-                    mobileMenuBtn.querySelector('i').classList.add('fa-bars');
+                // Status filter
+                if (status && item.status_display !== status) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            currentPage = 1;
+            renderTable();
+            updateSummary();
+            setupPagination();
+        }
+
+        function resetFilters() {
+            const searchInput = document.getElementById('searchInput');
+            const yearFilter = document.getElementById('yearFilter');
+            const monthFilter = document.getElementById('monthFilter');
+            const statusFilter = document.getElementById('statusFilter');
+            
+            if (searchInput) searchInput.value = '';
+            if (yearFilter) yearFilter.value = '';
+            if (monthFilter) monthFilter.value = '';
+            if (statusFilter) statusFilter.value = '';
+            
+            filteredData = [...payslipData];
+            currentPage = 1;
+            renderTable();
+            updateSummary();
+            setupPagination();
+        }
+
+        function setupPagination() {
+            const paginationControls = document.getElementById('paginationControls');
+            if (!paginationControls) return;
+
+            // Clear existing controls
+            paginationControls.innerHTML = '';
+
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+            // Previous button
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'pagination-btn';
+            prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTable();
+                    setupPagination();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
                 }
             });
-        });
+            paginationControls.appendChild(prevBtn);
+
+            // Page number buttons
+            const startPage = Math.max(1, currentPage - 2);
+            const endPage = Math.min(totalPages, startPage + 4);
+
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.className = `pagination-btn ${i === currentPage ? 'active' : ''}`;
+                pageBtn.textContent = i;
+                pageBtn.addEventListener('click', () => {
+                    currentPage = i;
+                    renderTable();
+                    setupPagination();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+                paginationControls.appendChild(pageBtn);
+            }
+
+            // Next button
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'pagination-btn';
+            nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTable();
+                    setupPagination();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+            paginationControls.appendChild(nextBtn);
+
+            // Update page info
+            const currentPageEl = document.getElementById('currentPage');
+            const totalPagesEl = document.getElementById('totalPages');
+            
+            if (currentPageEl) currentPageEl.textContent = currentPage;
+            if (totalPagesEl) totalPagesEl.textContent = totalPages;
+        }
+
+        function closeModal() {
+            const exportModal = document.getElementById('exportModal');
+            if (exportModal) {
+                exportModal.classList.remove('active');
+            }
+            document.body.style.overflow = 'auto';
+            
+            const exportOptions = document.querySelectorAll('.export-option');
+            exportOptions.forEach(opt => opt.classList.remove('selected'));
+            
+            const exportAllCheckbox = document.getElementById('exportAll');
+            if (exportAllCheckbox) exportAllCheckbox.checked = false;
+        }
+
+        function confirmExport() {
+            const selectedFormat = document.querySelector('.export-option.selected')?.dataset.format || 'pdf';
+            const exportAll = document.getElementById('exportAll')?.checked || false;
+            const itemsToExport = exportAll ? filteredData : filteredData.filter(item => item.selected);
+
+            if (itemsToExport.length === 0) {
+                showNotification('Please select payslips to export', 'warning');
+                return;
+            }
+
+            showNotification(`Exporting ${itemsToExport.length} payslip(s) as ${selectedFormat.toUpperCase()}`, 'success');
+            closeModal();
+
+            // In a real application, this would trigger the export/download
+            setTimeout(() => {
+                if (selectedFormat === 'print') {
+                    printSelectedPayslips(itemsToExport);
+                } else {
+                    // Simulate download
+                    const link = document.createElement('a');
+                    link.href = '#';
+                    link.download = `payslips_${new Date().toISOString().split('T')[0]}.${selectedFormat}`;
+                    link.click();
+                }
+            }, 1000);
+        }
+
+        // Utility function for debouncing
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
 
         // Global functions accessible from onclick handlers
         function viewPayslip(id) {
-            const item = payslipData.find(item => item.id == id);
+            const item = payslipData.find(item => item.payroll_id == id);
             if (item) {
-                showNotification(`Opening payslip for ${item.period}`, 'info');
-                // In a real application, this would open a detailed view or PDF
-                setTimeout(() => {
-                    const modalHtml = `
-                        <div class="export-modal active">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h3 class="modal-title">Payslip Details - ${item.period}</h3>
-                                    <button class="modal-close" onclick="this.closest('.export-modal').remove(); document.body.style.overflow='auto'">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
-                                <div style="margin: 1.5rem 0;">
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                                        <div>
-                                            <strong>Employee:</strong><br>
-                                            ${item.employeeName}<br>
-                                            <small>ID: ${item.employeeId}</small>
-                                        </div>
-                                        <div>
-                                            <strong>Pay Period:</strong><br>
-                                            ${item.period}
-                                        </div>
+                showNotification(`Opening payslip for ${item.period_display}`, 'info');
+                
+                // Create detailed modal view
+                const modalHtml = `
+                    <div class="export-modal active" id="payslipDetailModal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3 class="modal-title">Payslip Details - ${item.period_display}</h3>
+                                <button class="modal-close" onclick="document.getElementById('payslipDetailModal').remove(); document.body.style.overflow='auto'">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div style="margin: 1.5rem 0;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                    <div>
+                                        <strong>Employee:</strong><br>
+                                        ${item.full_name || 'N/A'}<br>
+                                        <small>ID: ${item.emp_id_number || 'N/A'}</small>
                                     </div>
-                                    <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
-                                        <h4 style="margin-bottom: 0.5rem;">Earnings</h4>
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                                            <div>Basic Wage (${item.daysWorked} days):</div>
-                                            <div class="amount-cell">₱${item.totalWage}</div>
-                                            <div>Overtime:</div>
-                                            <div class="amount-cell">₱${item.overtime}</div>
-                                            <div>Holiday Pay:</div>
-                                            <div class="amount-cell">₱${item.holidayPay}</div>
-                                            <div><strong>Gross Amount:</strong></div>
-                                            <div class="amount-cell"><strong>₱${item.grossAmount}</strong></div>
-                                        </div>
-                                    </div>
-                                    <div style="background: #f8fafc; padding: 1rem; border-radius: 8px;">
-                                        <h4 style="margin-bottom: 0.5rem;">Net Pay</h4>
-                                        <div style="text-align: center; font-size: 1.5rem; font-weight: bold; color: var(--success);">
-                                            ₱${item.netAmount}
-                                        </div>
-                                        <div style="text-align: center; margin-top: 0.5rem; color: var(--gray);">
-                                            Status: <span class="status-badge status-${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span>
-                                        </div>
+                                    <div>
+                                        <strong>Pay Period:</strong><br>
+                                        ${item.period_display}<br>
+                                        <small>Cutoff: ${item.payroll_cutoff || 'N/A'}</small>
                                     </div>
                                 </div>
-                                <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
-                                    <button class="btn btn-secondary" onclick="this.closest('.export-modal').remove(); document.body.style.overflow='auto'" style="flex: 1;">
-                                        Close
-                                    </button>
-                                    <button class="btn btn-primary" onclick="downloadPayslip(${id})" style="flex: 1;">
-                                        <i class="fas fa-download mr-2"></i> Download
-                                    </button>
+                                
+                                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                                    <h4 style="margin-bottom: 0.5rem;">Earnings</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                        <div>Daily Rate:</div>
+                                        <div class="amount-cell">₱${parseFloat(item.daily_rate || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                        <div>Days Present:</div>
+                                        <div>${item.days_present || 0}</div>
+                                        <div>Gross Amount:</div>
+                                        <div class="amount-cell">₱${parseFloat(item.gross_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                    </div>
+                                </div>
+                                
+                                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                                    <h4 style="margin-bottom: 0.5rem;">Deductions</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                        <div>Withholding Tax:</div>
+                                        <div class="amount-cell amount-negative">₱${parseFloat(item.withholding_tax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                        <div>SSS:</div>
+                                        <div class="amount-cell amount-negative">₱${parseFloat(item.sss || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                        <div>PhilHealth:</div>
+                                        <div class="amount-cell amount-negative">₱${parseFloat(item.philhealth || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                        <div>Pag-IBIG:</div>
+                                        <div class="amount-cell amount-negative">₱${parseFloat(item.pagibig || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                                        <div><strong>Total Deductions:</strong></div>
+                                        <div class="amount-cell amount-negative"><strong>₱${parseFloat(item.total_deductions || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></div>
+                                    </div>
+                                </div>
+                                
+                                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px;">
+                                    <h4 style="margin-bottom: 0.5rem;">Net Pay</h4>
+                                    <div style="text-align: center; font-size: 1.5rem; font-weight: bold; color: var(--success);">
+                                        ₱${parseFloat(item.net_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </div>
+                                    <div style="text-align: center; margin-top: 0.5rem; color: var(--gray);">
+                                        Status: <span class="status-badge status-${item.status_display}">${item.status_display.charAt(0).toUpperCase() + item.status_display.slice(1)}</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+                                <button class="btn btn-secondary" onclick="document.getElementById('payslipDetailModal').remove(); document.body.style.overflow='auto'" style="flex: 1;">
+                                    Close
+                                </button>
+                                <button class="btn btn-primary" onclick="downloadPayslip(${id})" style="flex: 1;">
+                                    <i class="fas fa-download mr-2"></i> Download
+                                </button>
+                            </div>
                         </div>
-                    `;
-                    document.body.insertAdjacentHTML('beforeend', modalHtml);
-                    document.body.style.overflow = 'hidden';
-                }, 500);
+                    </div>
+                `;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                document.body.style.overflow = 'hidden';
             }
         }
 
         function downloadPayslip(id) {
-            const item = payslipData.find(item => item.id == id);
+            const item = payslipData.find(item => item.payroll_id == id);
             if (item) {
-                showNotification(`Downloading payslip for ${item.period}`, 'success');
+                showNotification(`Downloading payslip for ${item.period_display}`, 'success');
                 // In a real application, this would trigger a file download
                 setTimeout(() => {
                     const link = document.createElement('a');
                     link.href = '#';
-                    link.download = `payslip_${item.period.replace(' ', '_')}.pdf`;
+                    link.download = `payslip_${item.period_display.replace(' ', '_')}.pdf`;
                     link.click();
                 }, 500);
             }
@@ -2768,9 +2753,9 @@ error_log("User " . $username . " accessed homepage successfully");
             const notification = document.createElement('div');
             notification.className = `notification-toast ${type}`;
             notification.innerHTML = `
-                <div class="flex items-start">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'danger' ? 'times-circle' : 'info-circle'} mr-3 mt-0.5"></i>
-                    <span class="text-sm md:text-base">${message}</span>
+                <div style="display: flex; align-items: flex-start;">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'danger' ? 'times-circle' : 'info-circle'}" style="margin-right: 0.75rem; margin-top: 0.25rem;"></i>
+                    <span style="font-size: 0.9rem;">${message}</span>
                 </div>
             `;
 

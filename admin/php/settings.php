@@ -139,6 +139,182 @@ if (file_exists($mailerPath)) {
     }
 }
 
+// Handle Profile Update
+if (isset($_POST['update_profile'])) {
+    $first_name = trim($conn->real_escape_string($_POST['first_name']));
+    $middle_name = trim($conn->real_escape_string($_POST['middle_name'] ?? ''));
+    $last_name = trim($conn->real_escape_string($_POST['last_name']));
+    $email = trim($conn->real_escape_string($_POST['email']));
+    $phone = trim($conn->real_escape_string($_POST['phone'] ?? ''));
+
+    // Validation
+    $errors = [];
+
+    if (empty($first_name)) {
+        $errors[] = "First name is required";
+    }
+
+    if (empty($last_name)) {
+        $errors[] = "Last name is required";
+    }
+
+    if (empty($email)) {
+        $errors[] = "Email is required";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "Invalid email format";
+    }
+
+    // Validate phone number if provided (Philippine format)
+    if (!empty($phone) && !preg_match('/^(09|\+639)\d{9}$/', preg_replace('/\s+/', '', $phone))) {
+        $errors[] = "Please enter a valid Philippine mobile number (e.g., 09123456789 or +639123456789)";
+    }
+
+    // Check if email already exists (excluding current user)
+    if (!empty($email)) {
+        $check_email = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+        $check_email->bind_param("si", $email, $user_id);
+        $check_email->execute();
+        $email_result = $check_email->get_result();
+
+        if ($email_result->num_rows > 0) {
+            $errors[] = "Email address is already in use by another account";
+        }
+        $check_email->close();
+    }
+
+    if (empty($errors)) {
+        // Create full name
+        $full_name = trim($first_name . ' ' . ($middle_name ? $middle_name . ' ' : '') . $last_name);
+
+        // Update database
+        $sql = "UPDATE admins SET 
+                first_name = ?,
+                middle_name = ?,
+                last_name = ?,
+                full_name = ?,
+                email = ?,
+                phone = ?,
+                updated_at = NOW()
+                WHERE id = ?";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "ssssssi",
+            $first_name,
+            $middle_name,
+            $last_name,
+            $full_name,
+            $email,
+            $phone,
+            $user_id
+        );
+
+        if ($stmt->execute()) {
+            // Update session variables
+            $_SESSION['user_name'] = $full_name;
+            $_SESSION['user_email'] = $email;
+
+            // Log the action
+            logAuditTrail($conn, $user_id, 'update', 'Updated profile information');
+
+            $_SESSION['profile_success'] = "Profile updated successfully!";
+
+            // Refresh user data
+            $refresh_sql = "SELECT * FROM admins WHERE id = ?";
+            $refresh_stmt = $conn->prepare($refresh_sql);
+            $refresh_stmt->bind_param("i", $user_id);
+            $refresh_stmt->execute();
+            $refresh_result = $refresh_stmt->get_result();
+            if ($refresh_result->num_rows > 0) {
+                $user_profile = $refresh_result->fetch_assoc();
+            }
+            $refresh_stmt->close();
+
+        } else {
+            $_SESSION['profile_error'] = "Error updating profile: " . $conn->error;
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['profile_error'] = implode("<br>", $errors);
+    }
+
+    // Redirect to prevent form resubmission
+    header("Location: " . $_SERVER['PHP_SELF'] . "?tab=profile");
+    exit();
+}
+
+// Handle Profile Picture Upload
+if (isset($_POST['update_profile_picture'])) {
+    if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
+        $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+        $max_size = 2 * 1024 * 1024; // 2MB
+
+        $file_name = $_FILES['profile_picture']['name'];
+        $file_tmp = $_FILES['profile_picture']['tmp_name'];
+        $file_size = $_FILES['profile_picture']['size'];
+        $file_type = $_FILES['profile_picture']['type'];
+
+        // Get file extension
+        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+
+        // Validate file type
+        if (!in_array($file_type, $allowed_types)) {
+            $_SESSION['profile_error'] = "Only JPG, PNG, and GIF files are allowed";
+        }
+        // Validate file size
+        elseif ($file_size > $max_size) {
+            $_SESSION['profile_error'] = "File size must be less than 2MB";
+        } else {
+            // Create upload directory if it doesn't exist
+            $upload_dir = '../uploads/profile_pictures/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
+            }
+
+            // Generate unique filename
+            $new_filename = 'profile_' . $user_id . '_' . time() . '.' . $file_ext;
+            $upload_path = $upload_dir . $new_filename;
+
+            // Delete old profile picture if exists
+            if (!empty($user_profile['profile_picture'])) {
+                $old_file = $upload_dir . $user_profile['profile_picture'];
+                if (file_exists($old_file)) {
+                    unlink($old_file);
+                }
+            }
+
+            // Upload new file
+            if (move_uploaded_file($file_tmp, $upload_path)) {
+                // Update database with new profile picture filename
+                $update_sql = "UPDATE admins SET profile_picture = ?, updated_at = NOW() WHERE id = ?";
+                $update_stmt = $conn->prepare($update_sql);
+                $update_stmt->bind_param("si", $new_filename, $user_id);
+
+                if ($update_stmt->execute()) {
+                    $_SESSION['profile_success'] = "Profile picture updated successfully!";
+                    logAuditTrail($conn, $user_id, 'update', 'Updated profile picture');
+                } else {
+                    $_SESSION['profile_error'] = "Database error: " . $conn->error;
+                }
+                $update_stmt->close();
+            } else {
+                $_SESSION['profile_error'] = "Failed to upload file";
+            }
+        }
+    } else {
+        $_SESSION['profile_error'] = "Please select a file to upload";
+    }
+
+    // Redirect to prevent form resubmission
+    header("Location: " . $_SERVER['PHP_SELF'] . "?tab=profile");
+    exit();
+}
+
+// Create upload directory if it doesn't exist
+$upload_dir = '../uploads/profile_pictures/';
+if (!file_exists($upload_dir)) {
+    mkdir($upload_dir, 0755, true);
+}
 // Function to log audit trail
 function logAuditTrail($conn, $user_id, $action_type, $description): void
 {
@@ -217,8 +393,7 @@ function getCompleteUserData($conn, $user_id, $employment_type)
 function updateEmployeeTable($conn, $employment_type, $user_id, $post_data, $user_data)
 {
     switch ($employment_type) {
-        case 'contractofservice':
-        case 'contractual':
+        case 'contract_of_service':
             updateContractOfService($conn, $user_id, $post_data, $user_data);
             break;
         case 'job_order':
@@ -361,37 +536,34 @@ function updateJobOrder($conn, $user_id, $post_data, $user_data)
 // Update Permanent employee
 function updatePermanent($conn, $user_id, $post_data, $user_data)
 {
-    // First, check if record exists in permanent_employees
-    $check_sql = "SELECT id, employee_id FROM permanent WHERE user_id = ?";
+    // Check if record exists in permanent table
+    $check_sql = "SELECT id FROM permanent WHERE user_id = ?";
     $check_stmt = $conn->prepare($check_sql);
     $check_stmt->bind_param("i", $user_id);
     $check_stmt->execute();
     $check_result = $check_stmt->get_result();
     $record_exists = $check_result->num_rows > 0;
-    $existing_record = $record_exists ? $check_result->fetch_assoc() : null;
     $check_stmt->close();
 
-    $employee_id = $conn->real_escape_string($post_data['employee_id'] ?? '');
-    $position = $conn->real_escape_string($post_data['position'] ?? '');
-    $office = $conn->real_escape_string($post_data['office'] ?? '');
-    $monthly_salary = floatval($post_data['monthly_salary'] ?? 0);
-    $amount_accrued = floatval($post_data['amount_accrued'] ?? 0);
-    $mobile_number = $conn->real_escape_string($post_data['mobile_number'] ?? '');
-    $email = $conn->real_escape_string($post_data['email'] ?? '');
-
-    // Handle date fields - convert null to empty string
-    $date_of_birth = !empty($post_data['dob']) ? $post_data['dob'] : null;
-    $joining_date = !empty($post_data['joining_date']) ? $post_data['joining_date'] : null;
-
-    $marital_status = $conn->real_escape_string($post_data['marital_status'] ?? 'Single');
-    $gender = $conn->real_escape_string($post_data['gender'] ?? 'Male');
-    $nationality = $conn->real_escape_string($post_data['nationality'] ?? 'Filipino');
-    $street_address = $conn->real_escape_string($post_data['street_address'] ?? '');
-    $city = $conn->real_escape_string($post_data['city'] ?? '');
-    $state_region = $conn->real_escape_string($post_data['state_region'] ?? '');
-    $zip_code = $conn->real_escape_string($post_data['zip_code'] ?? '');
-    $eligibility = $conn->real_escape_string($post_data['eligibility'] ?? 'Eligible');
-    $status = $conn->real_escape_string($post_data['status'] ?? 'Active');
+    // Map form fields to database fields
+    $employee_id = $conn->real_escape_string($post_data['perm_employee_id'] ?? '');
+    $position = $conn->real_escape_string($post_data['perm_position'] ?? '');
+    $office = $conn->real_escape_string($post_data['perm_office'] ?? '');
+    $monthly_salary = floatval($post_data['perm_monthly_salary'] ?? 0);
+    $amount_accrued = floatval($post_data['perm_amount_accrued'] ?? 0);
+    $mobile_number = $conn->real_escape_string($post_data['perm_mobile_number'] ?? '');
+    $email = $conn->real_escape_string($post_data['perm_email'] ?? '');
+    $date_of_birth = !empty($post_data['perm_dob']) ? $post_data['perm_dob'] : null;
+    $marital_status = $conn->real_escape_string($post_data['perm_marital_status'] ?? 'Single');
+    $gender = $conn->real_escape_string($post_data['perm_gender'] ?? 'Male');
+    $nationality = $conn->real_escape_string($post_data['perm_nationality'] ?? 'Filipino');
+    $street_address = $conn->real_escape_string($post_data['perm_street_address'] ?? '');
+    $city = $conn->real_escape_string($post_data['perm_city'] ?? '');
+    $state_region = $conn->real_escape_string($post_data['perm_state_region'] ?? '');
+    $zip_code = $conn->real_escape_string($post_data['perm_zip_code'] ?? '');
+    $joining_date = !empty($post_data['perm_joining_date']) ? $post_data['perm_joining_date'] : null;
+    $eligibility = $conn->real_escape_string($post_data['perm_eligibility'] ?? 'Eligible');
+    $status = $conn->real_escape_string($post_data['perm_status'] ?? 'Active');
 
     // Create full name
     $full_name = trim(
@@ -400,21 +572,6 @@ function updatePermanent($conn, $user_id, $post_data, $user_data)
         ($user_data['middle_name'] ?? '') . ' ' .
         ($user_data['last_name'] ?? '')
     );
-
-    // Check if employee_id already exists in another record (excluding current user)
-    if (!empty($employee_id)) {
-        $dup_check = $conn->prepare("SELECT id FROM permanent WHERE employee_id = ? AND user_id != ?");
-        $dup_check->bind_param("si", $employee_id, $user_id);
-        $dup_check->execute();
-        $dup_result = $dup_check->get_result();
-        if ($dup_result->num_rows > 0) {
-            // Employee ID already exists in another record
-            error_log("Duplicate employee_id: $employee_id for another user");
-            // You might want to handle this by generating a unique ID or showing an error
-            $employee_id = $employee_id . '_' . uniqid(); // Make it unique
-        }
-        $dup_check->close();
-    }
 
     if ($record_exists) {
         // UPDATE existing record
@@ -442,15 +599,6 @@ function updatePermanent($conn, $user_id, $post_data, $user_data)
                 WHERE user_id = ?";
 
         $stmt = $conn->prepare($sql);
-
-        // Handle null dates properly - if null, set to NULL in database
-        if ($date_of_birth === null) {
-            $date_of_birth = null;
-        }
-        if ($joining_date === null) {
-            $joining_date = null;
-        }
-
         $stmt->bind_param(
             "ssssddsssssssssssssi",
             $employee_id,
@@ -474,139 +622,9 @@ function updatePermanent($conn, $user_id, $post_data, $user_data)
             $status,
             $user_id
         );
-
+        
         if (!$stmt->execute()) {
             error_log("Error updating permanent employee: " . $stmt->error);
-
-            // If duplicate entry error, try with modified employee_id
-            if ($stmt->errno == 1062) { // Duplicate entry error
-                $employee_id = $employee_id . '_' . date('His');
-
-                // Retry with new employee_id
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param(
-                    "ssssddsssssssssssssi",
-                    $employee_id,
-                    $full_name,
-                    $position,
-                    $office,
-                    $monthly_salary,
-                    $amount_accrued,
-                    $mobile_number,
-                    $email,
-                    $date_of_birth,
-                    $marital_status,
-                    $gender,
-                    $nationality,
-                    $street_address,
-                    $city,
-                    $state_region,
-                    $zip_code,
-                    $joining_date,
-                    $eligibility,
-                    $status,
-                    $user_id
-                );
-                $stmt->execute();
-            }
-        }
-        $stmt->close();
-    } else {
-        // INSERT new record
-        // First check if employee_id already exists
-        if (!empty($employee_id)) {
-            $dup_check = $conn->prepare("SELECT id FROM permanent WHERE employee_id = ?");
-            $dup_check->bind_param("s", $employee_id);
-            $dup_check->execute();
-            $dup_result = $dup_check->get_result();
-            if ($dup_result->num_rows > 0) {
-                // Generate unique employee_id
-                $employee_id = $employee_id . '_' . uniqid();
-            }
-            $dup_check->close();
-        }
-
-        $sql = "INSERT INTO permanent (
-                user_id, employee_id, full_name, position, office,
-                monthly_salary, amount_accrued, first_name, last_name, middle,
-                mobile_number, email_address, date_of_birth, marital_status,
-                gender, nationality, street_address, city, state_region,
-                zip_code, joining_date, eligibility, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-
-        $stmt = $conn->prepare($sql);
-
-        $first_name = $user_data['first_name'] ?? '';
-        $last_name = $user_data['last_name'] ?? '';
-        $middle = $user_data['middle_name'] ?? '';
-
-        // Handle null dates
-        $date_of_birth_param = $date_of_birth;
-        $joining_date_param = $joining_date;
-
-        $stmt->bind_param(
-            "issssddssssssssssssssss",
-            $user_id,
-            $employee_id,
-            $full_name,
-            $position,
-            $office,
-            $monthly_salary,
-            $amount_accrued,
-            $first_name,
-            $last_name,
-            $middle,
-            $mobile_number,
-            $email,
-            $date_of_birth_param,
-            $marital_status,
-            $gender,
-            $nationality,
-            $street_address,
-            $city,
-            $state_region,
-            $zip_code,
-            $joining_date_param,
-            $eligibility,
-            $status
-        );
-
-        if (!$stmt->execute()) {
-            error_log("Error inserting permanent employee: " . $stmt->error);
-
-            // If duplicate entry error, retry with modified employee_id
-            if ($stmt->errno == 1062) { // Duplicate entry error
-                $employee_id = $employee_id . '_' . date('His');
-
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param(
-                    "issssddssssssssssssssss",
-                    $user_id,
-                    $employee_id,
-                    $full_name,
-                    $position,
-                    $office,
-                    $monthly_salary,
-                    $amount_accrued,
-                    $first_name,
-                    $last_name,
-                    $middle,
-                    $mobile_number,
-                    $email,
-                    $date_of_birth_param,
-                    $marital_status,
-                    $gender,
-                    $nationality,
-                    $street_address,
-                    $city,
-                    $state_region,
-                    $zip_code,
-                    $joining_date_param,
-                    $eligibility,
-                    $status
-                );
-                $stmt->execute();
-            }
         }
         $stmt->close();
     }
@@ -1550,12 +1568,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt->bind_param("ssii", $update_role, $update_access_level, $update_is_active, $update_user_id);
 
         if ($stmt->execute()) {
-            $success_message = "User updated successfully!";
-            logAuditTrail($conn, $user_id, 'update', 'Updated user ID: ' . $update_user_id . ' (Role: ' . $update_role . ')');
-
             // Now update the specific employee table based on employment type
+            // FIX: Pass the correct parameters - $_POST and $user_data
             updateEmployeeTable($conn, $employment_type, $update_user_id, $_POST, $user_data);
 
+            $success_message = "User updated successfully!";
+            logAuditTrail($conn, $user_id, 'update', 'Updated user ID: ' . $update_user_id . ' (Role: ' . $update_role . ')');
         } else {
             $error_message = "Error updating user: " . $conn->error;
         }
@@ -1722,15 +1740,54 @@ if ($result && $result->num_rows > 0) {
     $email_settings = array_merge($email_settings, $result->fetch_assoc());
 }
 
-// Get user profile from database
-$sql = "SELECT * FROM users WHERE id = ? LIMIT 1";
+// Get user profile from the correct table based on login type
+if (isset($_SESSION['admin_id']) && !empty($_SESSION['admin_id'])) {
+    // Admin is logged in - fetch from admins table (without username field)
+    $sql = "SELECT id, email, first_name, middle_name, last_name, 
+                   phone, profile_picture, created_at 
+            FROM admins 
+            WHERE id = ? LIMIT 1";
+} else {
+    // Regular user is logged in - fetch from users table
+    $sql = "SELECT id, username, email, first_name, middle_name, last_name, 
+                   phone, profile_picture, role, created_at 
+            FROM users 
+            WHERE id = ? LIMIT 1";
+}
+
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
+
 if ($result && $result->num_rows > 0) {
     $user_data = $result->fetch_assoc();
-    $user_profile = array_merge($user_profile, $user_data);
+
+    // For admins, ensure all expected fields are present
+    if (isset($_SESSION['admin_id']) && !empty($_SESSION['admin_id'])) {
+        // Map admin fields to match the expected structure
+        $user_profile = array_merge($user_profile, [
+            'first_name' => $user_data['first_name'] ?? '',
+            'middle_name' => $user_data['middle_name'] ?? '',
+            'last_name' => $user_data['last_name'] ?? '',
+            'email' => $user_data['email'] ?? $user_email,
+            'phone' => $user_data['phone'] ?? '',
+            'username' => $user_data['email'] ?? '', // Use email as username for display
+            'created_at' => $user_data['created_at'] ?? '',
+            'profile_picture' => $user_data['profile_picture'] ?? ''
+        ]);
+    } else {
+        // Regular user - merge all data
+        $user_profile = array_merge($user_profile, $user_data);
+    }
+} else {
+    // Fallback to session data if no record found
+    if (isset($_SESSION['admin_id']) && !empty($_SESSION['admin_id'])) {
+        $user_profile['email'] = $user_email;
+        $user_profile['first_name'] = explode(' ', $user_name)[0] ?? 'Admin';
+        $user_profile['last_name'] = explode(' ', $user_name, 2)[1] ?? 'User';
+        $user_profile['username'] = $user_email; // Use email as username
+    }
 }
 $stmt->close();
 
@@ -2872,6 +2929,116 @@ $stmt->close();
             margin-bottom: 0.75rem;
         }
     </style>
+    <style>
+        .profile-picture-container .btn {
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .profile-picture-container .btn:hover {
+            transform: scale(1.1);
+            background-color: var(--primary-dark);
+        }
+
+        .profile-picture-container img {
+            transition: transform 0.3s ease;
+        }
+
+        .profile-picture-container:hover img {
+            transform: scale(1.02);
+        }
+
+        .form-section {
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .text-danger {
+            color: var(--danger);
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1100;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--gray-500);
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -3065,10 +3232,10 @@ $stmt->close();
                     Security
                 </button>
                 <?php if ($is_admin): ?>
-                    <button class="settings-tab <?php echo $current_tab == 'backup' ? 'active' : ''; ?>" data-tab="backup">
+                    <!-- <button class="settings-tab <?php echo $current_tab == 'backup' ? 'active' : ''; ?>" data-tab="backup">
                         <i class="fas fa-database"></i>
                         Backup & Restore
-                    </button>
+                    </button> -->
                     <button class="settings-tab <?php echo $current_tab == 'logs' ? 'active' : ''; ?>" data-tab="logs">
                         <i class="fas fa-history"></i>
                         Audit Logs
@@ -3417,81 +3584,219 @@ $stmt->close();
             <div id="profile" class="tab-content <?php echo $current_tab == 'profile' ? 'active' : ''; ?>">
                 <div class="settings-card">
                     <div class="card-header">
-                        <h2><i class="fas fa-user"></i> User Profile</h2>
+                        <h2><i class="fas fa-user-cog"></i> Administrator Profile</h2>
                     </div>
                     <div class="card-body">
-                        <form method="POST">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label" for="first_name">First Name <span>*</span></label>
-                                    <input type="text" class="form-control" id="first_name" name="first_name"
-                                        value="<?php echo htmlspecialchars($user_profile['first_name'] ?? ''); ?>"
-                                        required>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label" for="middle_name">Middle Name</label>
-                                    <input type="text" class="form-control" id="middle_name" name="middle_name"
-                                        value="<?php echo htmlspecialchars($user_profile['middle_name'] ?? ''); ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label" for="last_name">Last Name <span>*</span></label>
-                                    <input type="text" class="form-control" id="last_name" name="last_name"
-                                        value="<?php echo htmlspecialchars($user_profile['last_name'] ?? ''); ?>"
-                                        required>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label" for="email">Email Address <span>*</span></label>
-                                    <input type="email" class="form-control" id="email" name="email"
-                                        value="<?php echo htmlspecialchars($user_profile['email']); ?>" required>
+                        <!-- Success/Error Messages -->
+                        <?php if (isset($_SESSION['profile_success'])): ?>
+                            <div class="alert alert-success" id="profileSuccessMessage">
+                                <i class="fas fa-check-circle"></i>
+                                <?php
+                                echo $_SESSION['profile_success'];
+                                unset($_SESSION['profile_success']);
+                                ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (isset($_SESSION['profile_error'])): ?>
+                            <div class="alert alert-danger" id="profileErrorMessage">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <?php
+                                echo $_SESSION['profile_error'];
+                                unset($_SESSION['profile_error']);
+                                ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Profile Picture Section -->
+                        <div class="profile-picture-section" style="text-align: center; margin-bottom: 2rem;">
+                            <div class="profile-picture-container" style="position: relative; display: inline-block;">
+                                <?php
+                                // Get profile picture path
+                                $profile_pic = !empty($user_profile['profile_picture'])
+                                    ? '../uploads/profile_pictures/' . htmlspecialchars($user_profile['profile_picture'])
+                                    : 'https://ui-avatars.com/api/?name=' . urlencode($user_profile['first_name'] ?? 'Admin') . '+' . urlencode($user_profile['last_name'] ?? 'User') . '&size=150&background=1e40af&color=fff&bold=true';
+
+                                // Check if file exists
+                                if (!empty($user_profile['profile_picture']) && !file_exists('../uploads/profile_pictures/' . $user_profile['profile_picture'])) {
+                                    $profile_pic = 'https://ui-avatars.com/api/?name=' . urlencode($user_profile['first_name'] ?? 'Admin') . '+' . urlencode($user_profile['last_name'] ?? 'User') . '&size=150&background=1e40af&color=fff&bold=true';
+                                }
+                                ?>
+                                <img src="<?php echo $profile_pic; ?>" alt="Profile Picture" id="profileImage"
+                                    style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary); box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="openProfilePictureModal()"
+                                    style="position: absolute; bottom: 10px; right: 10px; border-radius: 50%; width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-camera"></i>
+                                </button>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <small class="text-muted">Click camera icon to update profile picture</small>
+                            </div>
+                        </div>
+
+                        <!-- Admin Profile Information Form -->
+                        <form method="POST" action="" id="profileForm" enctype="multipart/form-data">
+                            <input type="hidden" name="update_profile" value="1">
+
+                            <!-- Personal Information Section -->
+                            <div class="form-section">
+                                <h3
+                                    style="color: var(--primary); margin-bottom: 1.5rem; font-size: 1.1rem; font-weight: 600; border-bottom: 2px solid var(--gray-200); padding-bottom: 0.5rem;">
+                                    <i class="fas fa-user-circle"></i> Personal Information
+                                </h3>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="first_name">First Name <span
+                                                class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="first_name" name="first_name"
+                                            value="<?php echo htmlspecialchars($user_profile['first_name'] ?? ''); ?>"
+                                            required maxlength="50">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="middle_name">Middle Name</label>
+                                        <input type="text" class="form-control" id="middle_name" name="middle_name"
+                                            value="<?php echo htmlspecialchars($user_profile['middle_name'] ?? ''); ?>"
+                                            maxlength="50">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="last_name">Last Name <span
+                                                class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="last_name" name="last_name"
+                                            value="<?php echo htmlspecialchars($user_profile['last_name'] ?? ''); ?>"
+                                            required maxlength="50">
+                                    </div>
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label" for="phone">Phone Number</label>
-                                    <input type="tel" class="form-control" id="phone" name="phone"
-                                        value="<?php echo htmlspecialchars($user_profile['phone'] ?? ''); ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label" for="department">Department</label>
-                                    <input type="text" class="form-control" id="department" name="department"
-                                        value="<?php echo htmlspecialchars($user_profile['department'] ?? ''); ?>">
-                                </div>
-                            </div>
+                            <!-- Contact Information Section -->
+                            <div class="form-section">
+                                <h3
+                                    style="color: var(--primary); margin-bottom: 1.5rem; font-size: 1.1rem; font-weight: 600; border-bottom: 2px solid var(--gray-200); padding-bottom: 0.5rem;">
+                                    <i class="fas fa-address-card"></i> Contact Information
+                                </h3>
 
-                            <div class="form-group">
-                                <label class="form-label" for="position">Position</label>
-                                <input type="text" class="form-control" id="position" name="position"
-                                    value="<?php echo htmlspecialchars($user_profile['position'] ?? ''); ?>">
-                            </div>
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label" for="phone">Phone Number</label>
-                                    <input type="tel" class="form-control" id="phone" name="phone"
-                                        value="<?php echo htmlspecialchars($user_profile['phone'] ?? ''); ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label" for="department">Department</label>
-                                    <input type="text" class="form-control" id="department" name="department"
-                                        value="<?php echo htmlspecialchars($user_profile['department'] ?? ''); ?>">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="email">Email Address <span
+                                                class="text-danger">*</span></label>
+                                        <input type="email" class="form-control" id="email" name="email"
+                                            value="<?php echo htmlspecialchars($user_profile['email']); ?>" required>
+                                        <small class="form-text text-muted">Used for system notifications and
+                                            login</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="phone">Contact Number</label>
+                                        <input type="tel" class="form-control" id="phone" name="phone"
+                                            value="<?php echo htmlspecialchars($user_profile['phone'] ?? ''); ?>"
+                                            placeholder="09XXXXXXXXX">
+                                    </div>
                                 </div>
                             </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="position">Position</label>
-                                <input type="text" class="form-control" id="position" name="position"
-                                    value="<?php echo htmlspecialchars($user_profile['position'] ?? ''); ?>">
+                            <!-- Account Information - Read-only -->
+                            <div class="form-section"
+                                style="background-color: var(--gray-50); padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                                <h3
+                                    style="color: var(--primary); margin-bottom: 1rem; font-size: 1rem; font-weight: 600;">
+                                    <i class="fas fa-info-circle"></i> Account Information
+                                </h3>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Username</label>
+                                        <input type="text" class="form-control"
+                                            value="<?php echo htmlspecialchars($user_profile['username'] ?? ''); ?>"
+                                            readonly style="background-color: var(--gray-200);">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Role</label>
+                                        <input type="text" class="form-control"
+                                            value="<?php echo ucfirst($user_profile['role'] ?? 'Administrator'); ?>"
+                                            readonly style="background-color: var(--gray-200);">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Member Since</label>
+                                        <input type="text" class="form-control"
+                                            value="<?php echo isset($user_profile['created_at']) ? date('F d, Y', strtotime($user_profile['created_at'])) : 'N/A'; ?>"
+                                            readonly style="background-color: var(--gray-200);">
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="form-group">
-                                <button type="submit" name="update_profile" class="btn btn-primary">
+                            <!-- Form Actions -->
+                            <div class="form-group" style="display: flex; gap: 1rem; margin-top: 2rem;">
+                                <button type="submit" name="update_profile" class="btn btn-primary" id="saveProfileBtn">
                                     <i class="fas fa-save"></i>
                                     Update Profile
+                                </button>
+                                <button type="button" class="btn btn-secondary" onclick="resetProfileForm()">
+                                    <i class="fas fa-undo"></i>
+                                    Reset Changes
                                 </button>
                             </div>
                         </form>
                     </div>
+                </div>
+            </div>
+
+            <!-- Profile Picture Upload Modal -->
+            <div class="modal" id="profilePictureModal">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-camera"></i> Update Profile Picture</h3>
+                        <button class="modal-close" onclick="closeProfilePictureModal()">&times;</button>
+                    </div>
+                    <form method="POST" enctype="multipart/form-data" id="profilePictureForm" action="">
+                        <input type="hidden" name="update_profile_picture" value="1">
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label class="form-label">Upload New Picture</label>
+                                <input type="file" class="form-control" name="profile_picture" id="profilePictureInput"
+                                    accept="image/jpeg,image/png,image/gif" required>
+                                <small class="form-text">Max size: 2MB. Allowed: JPG, PNG, GIF</small>
+                            </div>
+                            <div id="imagePreview" style="text-align: center; margin-top: 1rem; display: none;">
+                                <img src="" alt="Preview"
+                                    style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2px solid var(--primary);">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary"
+                                onclick="closeProfilePictureModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="uploadPictureBtn">Upload Picture</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Profile Picture Upload Modal -->
+            <div class="modal" id="profilePictureModal">
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-camera"></i> Update Profile Picture</h3>
+                        <button class="modal-close" onclick="closeProfilePictureModal()">&times;</button>
+                    </div>
+                    <form method="POST" enctype="multipart/form-data" id="profilePictureForm">
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label class="form-label">Upload New Picture</label>
+                                <input type="file" class="form-control" name="profile_picture" id="profilePictureInput"
+                                    accept="image/jpeg,image/png,image/gif" required>
+                                <small class="form-text">Max size: 2MB. Allowed: JPG, PNG, GIF</small>
+                            </div>
+                            <div id="imagePreview" style="text-align: center; margin-top: 1rem; display: none;">
+                                <img src="" alt="Preview"
+                                    style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2px solid var(--primary);">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary"
+                                onclick="closeProfilePictureModal()">Cancel</button>
+                            <button type="submit" name="update_profile_picture" class="btn btn-primary">Upload
+                                Picture</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
@@ -3539,7 +3844,7 @@ $stmt->close();
 
             <?php if ($is_admin): ?>
                 <!-- Backup & Restore Tab -->
-                <div id="backup" class="tab-content <?php echo $current_tab == 'backup' ? 'active' : ''; ?>">
+                <!-- <div id="backup" class="tab-content <?php echo $current_tab == 'backup' ? 'active' : ''; ?>">
                     <div class="settings-card">
                         <div class="card-header">
                             <h2><i class="fas fa-database"></i> Backup & Restore</h2>
@@ -3617,7 +3922,7 @@ $stmt->close();
                             </div>
                         </div>
                     </div>
-                </div>
+                </div> -->
 
                 <!-- Audit Logs Tab -->
                 <div id="logs" class="tab-content <?php echo $current_tab == 'logs' ? 'active' : ''; ?>">
@@ -4460,6 +4765,123 @@ $stmt->close();
         </div>
     </div>
 
+    <script>
+        // Profile Picture Modal Functions
+        function openProfilePictureModal() {
+            document.getElementById('profilePictureModal').classList.add('active');
+        }
+
+        function closeProfilePictureModal() {
+            document.getElementById('profilePictureModal').classList.remove('active');
+            document.getElementById('profilePictureInput').value = '';
+            document.getElementById('imagePreview').style.display = 'none';
+        }
+
+        // Image preview
+        document.getElementById('profilePictureInput')?.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Validate file size (2MB)
+                if (file.size > 2 * 1024 * 1024) {
+                    alert('File size must be less than 2MB');
+                    this.value = '';
+                    return;
+                }
+
+                // Validate file type
+                const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+                if (!validTypes.includes(file.type)) {
+                    alert('Please upload a valid image file (JPG, PNG, GIF)');
+                    this.value = '';
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const preview = document.getElementById('imagePreview');
+                    preview.querySelector('img').src = e.target.result;
+                    preview.style.display = 'block';
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Reset profile form to original values
+        function resetProfileForm() {
+            if (confirm('Reset all changes to original values?')) {
+                location.reload();
+            }
+        }
+
+        // Form validation before submit
+        document.getElementById('profileForm')?.addEventListener('submit', function (e) {
+            const firstName = document.getElementById('first_name').value.trim();
+            const lastName = document.getElementById('last_name').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const email = document.getElementById('email').value.trim();
+
+            // Validate names
+            if (!firstName || !lastName) {
+                e.preventDefault();
+                alert('First name and last name are required!');
+                return false;
+            }
+
+            // Validate phone number if provided (Philippine format)
+            if (phone) {
+                const cleanPhone = phone.replace(/\s+/g, '');
+                const phoneRegex = /^(09|\+639)\d{9}$/;
+                if (!phoneRegex.test(cleanPhone)) {
+                    e.preventDefault();
+                    alert('Please enter a valid Philippine mobile number (e.g., 09123456789 or +639123456789)');
+                    return false;
+                }
+            }
+
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                e.preventDefault();
+                alert('Please enter a valid email address');
+                return false;
+            }
+
+            // Show loading state
+            const submitBtn = document.getElementById('saveProfileBtn');
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+            submitBtn.disabled = true;
+
+            return true;
+        });
+
+        // Auto-hide success/error messages after 5 seconds
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(function () {
+                const successMsg = document.getElementById('profileSuccessMessage');
+                const errorMsg = document.getElementById('profileErrorMessage');
+
+                if (successMsg) {
+                    successMsg.style.transition = 'opacity 0.5s';
+                    successMsg.style.opacity = '0';
+                    setTimeout(() => successMsg.remove(), 500);
+                }
+
+                if (errorMsg) {
+                    errorMsg.style.transition = 'opacity 0.5s';
+                    errorMsg.style.opacity = '0';
+                    setTimeout(() => errorMsg.remove(), 500);
+                }
+            }, 5000);
+        });
+
+        // Close modal when clicking outside
+        window.onclick = function (event) {
+            const modal = document.getElementById('profilePictureModal');
+            if (event.target == modal) {
+                closeProfilePictureModal();
+            }
+        }
+    </script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const searchInput = document.getElementById('userSearch');
