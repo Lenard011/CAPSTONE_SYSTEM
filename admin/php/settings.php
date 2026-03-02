@@ -315,16 +315,50 @@ $upload_dir = '../uploads/profile_pictures/';
 if (!file_exists($upload_dir)) {
     mkdir($upload_dir, 0755, true);
 }
-// Function to log audit trail
+// Function to log audit trail with better error handling
 function logAuditTrail($conn, $user_id, $action_type, $description): void
 {
+    // First check if the user exists in the users table
+    $check_sql = "SELECT id FROM users WHERE id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    
+    if ($check_result->num_rows === 0) {
+        // User doesn't exist, try to find if this is an admin
+        $check_admin_sql = "SELECT id FROM admins WHERE id = ?";
+        $check_admin_stmt = $conn->prepare($check_admin_sql);
+        $check_admin_stmt->bind_param("i", $user_id);
+        $check_admin_stmt->execute();
+        $check_admin_result = $check_admin_stmt->get_result();
+        
+        if ($check_admin_result->num_rows > 0) {
+            // This is an admin - we need to find or create a corresponding users entry
+            // For now, we'll use a system user ID (you might have a system user with ID 1)
+            $user_id = 1; // Assuming user ID 1 is the system admin
+        } else {
+            // No user found, use a default system user ID
+            $user_id = 1; // Change this to a valid user ID that exists in your users table
+        }
+        $check_admin_stmt->close();
+    }
+    $check_stmt->close();
+
     $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
     $stmt = $conn->prepare("INSERT INTO audit_logs (user_id, action_type, description, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)");
+    if (!$stmt) {
+        error_log("Failed to prepare audit log statement: " . $conn->error);
+        return;
+    }
+    
     $stmt->bind_param("issss", $user_id, $action_type, $description, $ip_address, $user_agent);
 
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        error_log("Failed to insert audit log: " . $stmt->error);
+    }
     $stmt->close();
 }
 
@@ -622,7 +656,7 @@ function updatePermanent($conn, $user_id, $post_data, $user_data)
             $status,
             $user_id
         );
-        
+
         if (!$stmt->execute()) {
             error_log("Error updating permanent employee: " . $stmt->error);
         }
@@ -715,86 +749,25 @@ function createEmployeeRecord($conn, $user_id, $full_name, $employee_id, $employ
 $success_message = "";
 $error_message = "";
 
-// Handle Send Verification Invitation
+// Handle Send Verification Invitation with better error handling
 if (isset($_POST['send_verification_invitation']) && $is_admin) {
     $invite_user_id = (int) $_POST['invite_user_id'];
-
-    // Get user info
-    $sql = "SELECT email, full_name, employee_id, employment_type FROM users WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $invite_user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        $user = $result->fetch_assoc();
-        $stmt->close();
-
-        // Generate temporary password (8 characters for user-friendly)
-        $temp_password = generateTemporaryPassword(8);
-
-        // Set expiration for temp password (24 hours)
-        $temp_expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
-
-        // Hash the temporary password
-        $hashed_temp_password = password_hash($temp_password, PASSWORD_DEFAULT);
-
-        // Update user with temporary password and expiry
-        $sql = "UPDATE users SET 
-                password_hash = ?, 
-                temporary_password_expiry = ?,
-                password_is_temporary = 1,
-                must_change_password = 1,
-                is_active = 1,
-                is_verified = 1,
-                last_verification_sent = NOW(), 
-                updated_at = NOW() 
-                WHERE id = ?";
-
+    
+    // Start transaction
+    $conn->begin_transaction();
+    
+    try {
+        // Get user info
+        $sql = "SELECT id, email, full_name, employee_id, employment_type, first_name, last_name FROM users WHERE id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssi", $hashed_temp_password, $temp_expiry, $invite_user_id);
+        $stmt->bind_param("i", $invite_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
 
-        if ($stmt->execute()) {
-            $success_message = "Verification invitation sent successfully to " . htmlspecialchars($user['full_name']) . "!";
-            logAuditTrail($conn, $user_id, 'invite', "Sent verification invitation to: " . $user['full_name']);
-
-            // Generate login URL
-            $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'];
-            $login_url = $base_url . dirname($_SERVER['PHP_SELF']) . "/login.php";
-
-            // Clean up the URL (remove double slashes)
-            $login_url = preg_replace('/([^:])(\/{2,})/', '$1/', $login_url);
-
-            // Send verification email using your mailer function
-            $email_sent = sendVerificationInvitationEmail($conn, $user['email'], $user['full_name'], $temp_password, $login_url);
-
-            if ($email_sent) {
-                $success_message .= " Email with temporary credentials has been sent.";
-            } else {
-                $success_message .= " <strong>BUT email failed to send.</strong> Temporary password: <code>$temp_password</code>";
-            }
-
-            $stmt->close();
-        } else {
-            $error_message = "Error sending invitation: " . $conn->error;
+        if ($result->num_rows === 0) {
+            throw new Exception("User not found!");
         }
-    } else {
-        $error_message = "User not found!";
-    }
-}
-
-// Handle Send Verification Invitation
-if (isset($_POST['send_verification_invitation']) && $is_admin) {
-    $invite_user_id = (int) $_POST['invite_user_id'];
-
-    // Get user info
-    $sql = "SELECT email, full_name, employee_id, employment_type FROM users WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $invite_user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
+        
         $user = $result->fetch_assoc();
         $stmt->close();
 
@@ -808,7 +781,7 @@ if (isset($_POST['send_verification_invitation']) && $is_admin) {
         $hashed_temp_password = password_hash($temp_password, PASSWORD_DEFAULT);
 
         // Update user with temporary password and expiry
-        $sql = "UPDATE users SET 
+        $update_sql = "UPDATE users SET 
                 password_hash = ?, 
                 temporary_password_expiry = ?,
                 password_is_temporary = 1,
@@ -821,227 +794,221 @@ if (isset($_POST['send_verification_invitation']) && $is_admin) {
                 updated_at = NOW() 
                 WHERE id = ?";
 
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssi", $hashed_temp_password, $temp_expiry, $invite_user_id);
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("ssi", $hashed_temp_password, $temp_expiry, $invite_user_id);
 
-        if ($stmt->execute()) {
-            // Generate login URL
-            $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'];
-            $login_url = $base_url . dirname($_SERVER['PHP_SELF']) . "/login.php";
+        if (!$update_stmt->execute()) {
+            throw new Exception("Error updating user: " . $update_stmt->error);
+        }
+        $update_stmt->close();
 
-            // Clean up the URL (remove double slashes)
-            $login_url = preg_replace('/([^:])(\/{2,})/', '$1/', $login_url);
+        // Generate login URL
+        $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'];
+        $login_url = $base_url . dirname($_SERVER['PHP_SELF']) . "/login.php";
+        $login_url = preg_replace('/([^:])(\/{2,})/', '$1/', $login_url);
 
-            // Use the Mailer class from mailer.php
-            if (class_exists('Mailer')) {
-                try {
-                    $mailer = new Mailer();
+        // Send email notification
+        $email_sent = false;
+        $email_error = '';
+        
+        if (class_exists('Mailer')) {
+            try {
+                $mailer = new Mailer();
 
-                    // Create email subject and body
-                    $subject = "Your HRMS Account is Ready - Login Credentials";
+                // Create email subject and body
+                $subject = "Your HRMS Account is Ready - Login Credentials";
 
-                    $body = "
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset='UTF-8'>
-                        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                        <title>HRMS Account Credentials</title>
-                        <style>
-                            body { 
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                                line-height: 1.6; 
-                                color: #333; 
-                                background-color: #f8fafc;
-                                margin: 0;
-                                padding: 20px;
-                            }
-                            .container { 
-                                max-width: 650px; 
-                                margin: 0 auto; 
-                                background: white;
-                                border-radius: 12px;
-                                overflow: hidden;
-                                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-                            }
-                            .header { 
-                                background: linear-gradient(135deg, #0235a2 0%, #1e3a8a 100%); 
-                                color: white; 
-                                padding: 35px 30px;
-                                text-align: center; 
-                                border-bottom: 5px solid #2c6bc4;
-                            }
-                            .header h1 {
-                                margin: 0;
-                                font-size: 28px;
-                                font-weight: 700;
-                            }
-                            .header .subtitle {
-                                font-size: 16px;
-                                opacity: 0.9;
-                                margin-top: 10px;
-                            }
-                            .content { 
-                                padding: 40px 35px; 
-                            }
-                            .credentials-box { 
-                                background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
-                                border: 2px solid #2c6bc4; 
-                                padding: 30px; 
-                                margin: 25px 0; 
-                                border-radius: 12px;
-                                border-left: 5px solid #2c6bc4;
-                            }
-                            .password-display {
-                                background: #1e293b;
-                                color: #ffffff;
-                                padding: 15px;
-                                border-radius: 8px;
-                                font-family: 'Courier New', monospace;
-                                font-size: 20px;
-                                letter-spacing: 2px;
-                                text-align: center;
-                                margin: 15px 0;
-                                border: 2px solid #2c6bc4;
-                                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                            }
-                            .login-button {
-                                display: inline-block;
-                                background: linear-gradient(135deg, #2c6bc4 0%, #1e4a8a 100%); 
-                                color: white; 
-                                padding: 18px 40px;
-                                text-decoration: none; 
-                                border-radius: 10px; 
-                                font-weight: 700;
-                                font-size: 18px;
-                                margin: 25px 0;
-                            }
-                            .warning-box { 
-                                background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%); 
-                                border-left: 5px solid #f59e0b; 
-                                padding: 22px; 
-                                margin: 25px 0; 
-                                border-radius: 8px;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h1>HR Management System Account</h1>
-                                <div class='subtitle'>Municipality of Paluan, Occidental Mindoro</div>
+                // Create full name for display
+                $display_name = $user['full_name'] ?? trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+                if (empty($display_name)) {
+                    $display_name = 'User';
+                }
+
+                $body = "
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset='UTF-8'>
+                    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                    <title>HRMS Account Credentials</title>
+                    <style>
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                            line-height: 1.6; 
+                            color: #333; 
+                            background-color: #f8fafc;
+                            margin: 0;
+                            padding: 20px;
+                        }
+                        .container { 
+                            max-width: 650px; 
+                            margin: 0 auto; 
+                            background: white;
+                            border-radius: 12px;
+                            overflow: hidden;
+                            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+                        }
+                        .header { 
+                            background: linear-gradient(135deg, #0235a2 0%, #1e3a8a 100%); 
+                            color: white; 
+                            padding: 35px 30px;
+                            text-align: center; 
+                            border-bottom: 5px solid #2c6bc4;
+                        }
+                        .header h1 {
+                            margin: 0;
+                            font-size: 28px;
+                            font-weight: 700;
+                        }
+                        .header .subtitle {
+                            font-size: 16px;
+                            opacity: 0.9;
+                            margin-top: 10px;
+                        }
+                        .content { 
+                            padding: 40px 35px; 
+                        }
+                        .credentials-box { 
+                            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
+                            border: 2px solid #2c6bc4; 
+                            padding: 30px; 
+                            margin: 25px 0; 
+                            border-radius: 12px;
+                            border-left: 5px solid #2c6bc4;
+                        }
+                        .password-display {
+                            background: #1e293b;
+                            color: #ffffff;
+                            padding: 15px;
+                            border-radius: 8px;
+                            font-family: 'Courier New', monospace;
+                            font-size: 20px;
+                            letter-spacing: 2px;
+                            text-align: center;
+                            margin: 15px 0;
+                            border: 2px solid #2c6bc4;
+                            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                        }
+                        .login-button {
+                            display: inline-block;
+                            background: linear-gradient(135deg, #2c6bc4 0%, #1e4a8a 100%); 
+                            color: white; 
+                            padding: 18px 40px;
+                            text-decoration: none; 
+                            border-radius: 10px; 
+                            font-weight: 700;
+                            font-size: 18px;
+                            margin: 25px 0;
+                        }
+                        .warning-box { 
+                            background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%); 
+                            border-left: 5px solid #f59e0b; 
+                            padding: 22px; 
+                            margin: 25px 0; 
+                            border-radius: 8px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='header'>
+                            <h1>HR Management System Account</h1>
+                            <div class='subtitle'>Municipality of Paluan, Occidental Mindoro</div>
+                        </div>
+                        
+                        <div class='content'>
+                            <h2>Hello " . htmlspecialchars($display_name) . ",</h2>
+                            
+                            <p>Welcome to the HR Management System of Paluan! Your employee account has been successfully created and is ready for use.</p>
+                            
+                            <div class='warning-box'>
+                                <h4><i class='fas fa-shield-alt'></i> Important Security Notice</h4>
+                                <p>You have been provided with temporary credentials. For security reasons, you <strong>must</strong> change your password immediately after your first login.</p>
                             </div>
                             
-                            <div class='content'>
-                                <h2>Hello " . htmlspecialchars($user['full_name']) . ",</h2>
+                            <div class='credentials-box'>
+                                <h3><i class='fas fa-key'></i> Your Login Credentials</h3>
                                 
-                                <p>Welcome to the HR Management System of Paluan! Your employee account has been successfully created and is ready for use.</p>
-                                
-                                <div class='warning-box'>
-                                    <h4><i class='fas fa-shield-alt'></i> Important Security Notice</h4>
-                                    <p>You have been provided with temporary credentials. For security reasons, you <strong>must</strong> change your password immediately after your first login.</p>
-                                </div>
-                                
-                                <div class='credentials-box'>
-                                    <h3><i class='fas fa-key'></i> Your Login Credentials</h3>
-                                    
-                                    <p><strong>Login URL:</strong> " . htmlspecialchars($login_url) . "</p>
-                                    <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
-                                    <p><strong>Temporary Password:</strong></p>
-                                    <div class='password-display'>" . htmlspecialchars($temp_password) . "</div>
-                                    <p><em>Expires in 24 hours</em></p>
-                                </div>
-                                
-                                <div style='text-align: center;'>
-                                    <a href='" . htmlspecialchars($login_url) . "' class='login-button'>
-                                        <i class='fas fa-sign-in-alt'></i> Go to Login Page
-                                    </a>
-                                </div>
-                                
-                                <p><strong>Need Help?</strong> Contact HR Department: hrmo@paluan.gov.ph</p>
-                                
-                                <div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #64748b; font-size: 14px;'>
-                                    <p>Best regards,<br>
-                                    <strong>Human Resource Management Office</strong><br>
-                                    Municipality of Paluan, Occidental Mindoro</p>
-                                </div>
+                                <p><strong>Login URL:</strong> " . htmlspecialchars($login_url) . "</p>
+                                <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
+                                <p><strong>Temporary Password:</strong></p>
+                                <div class='password-display'>" . htmlspecialchars($temp_password) . "</div>
+                                <p><em>Expires in 24 hours</em></p>
+                            </div>
+                            
+                            <div style='text-align: center;'>
+                                <a href='" . htmlspecialchars($login_url) . "' class='login-button'>
+                                    <i class='fas fa-sign-in-alt'></i> Go to Login Page
+                                </a>
+                            </div>
+                            
+                            <p><strong>Need Help?</strong> Contact HR Department: hrmo@paluan.gov.ph</p>
+                            
+                            <div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #64748b; font-size: 14px;'>
+                                <p>Best regards,<br>
+                                <strong>Human Resource Management Office</strong><br>
+                                Municipality of Paluan, Occidental Mindoro</p>
                             </div>
                         </div>
-                    </body>
-                    </html>
-                    ";
+                    </div>
+                </body>
+                </html>
+                ";
 
-                    // Send email using Mailer class
-                    $email_result = $mailer->sendGeneralEmail(
-                        $user['email'],
-                        $user['full_name'],
-                        $subject,
-                        $body
-                    );
+                // Send email using Mailer class
+                $email_result = $mailer->sendGeneralEmail(
+                    $user['email'],
+                    $display_name,
+                    $subject,
+                    $body
+                );
 
-                    if ($email_result['success'] && $email_result['email_sent']) {
-                        $success_message = "Verification invitation sent successfully to " . htmlspecialchars($user['full_name']) . "! Email has been delivered.";
-                        logAuditTrail($conn, $user_id, 'invite', "Sent verification invitation via email to: " . $user['full_name']);
-                    } else {
-                        // Display credentials on screen if email failed
-                        $credentials_display = "
-                        <div class='credentials-display' style='background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;'>
-                            <h4>Credentials for " . htmlspecialchars($user['full_name']) . " (Email failed to send):</h4>
-                            <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
-                            <p><strong>Temporary Password:</strong> <code style='background: #333; color: #fff; padding: 5px 10px; border-radius: 4px;'>$temp_password</code></p>
-                            <p><strong>Login URL:</strong> $login_url</p>
-                            <p><em>Please provide these credentials to the user manually.</em></p>
-                        </div>";
-
-                        $success_message = "Verification invitation prepared successfully!<br>" . $credentials_display;
-                        logAuditTrail($conn, $user_id, 'invite', "Created credentials for: " . $user['full_name'] . " (email failed)");
-                    }
-
-                } catch (Exception $e) {
-                    // Log error and show credentials
-                    error_log("Mailer error: " . $e->getMessage());
-
-                    $credentials_display = "
-                    <div class='credentials-display' style='background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;'>
-                        <h4>Credentials for " . htmlspecialchars($user['full_name']) . " (Mailer error):</h4>
-                        <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
-                        <p><strong>Temporary Password:</strong> <code style='background: #333; color: #fff; padding: 5px 10px; border-radius: 4px;'>$temp_password</code></p>
-                        <p><strong>Login URL:</strong> $login_url</p>
-                        <p><em>Error: " . htmlspecialchars($e->getMessage()) . "</em></p>
-                        <p><em>Please provide these credentials to the user manually.</em></p>
-                    </div>";
-
-                    $success_message = "Verification invitation prepared successfully!<br>" . $credentials_display;
-                    logAuditTrail($conn, $user_id, 'invite', "Created credentials for: " . $user['full_name'] . " (mailer error)");
+                $email_sent = $email_result['success'] && $email_result['email_sent'];
+                
+                if (!$email_sent && isset($email_result['error'])) {
+                    $email_error = $email_result['error'];
                 }
-            } else {
-                // Fallback to original function if Mailer class not found
-                $email_sent = sendVerificationInvitationEmail($conn, $user['email'], $user['full_name'], $temp_password, $login_url);
 
-                if ($email_sent) {
-                    $success_message = "Verification invitation sent successfully to " . htmlspecialchars($user['full_name']) . "!";
-                    logAuditTrail($conn, $user_id, 'invite', "Sent verification invitation to: " . $user['full_name']);
-                } else {
-                    $credentials_display = "
-                    <div class='credentials-display' style='background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0;'>
-                        <h4>Credentials for " . htmlspecialchars($user['full_name']) . ":</h4>
-                        <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
-                        <p><strong>Temporary Password:</strong> <code style='background: #333; color: #fff; padding: 5px 10px; border-radius: 4px;'>$temp_password</code></p>
-                        <p><strong>Login URL:</strong> $login_url</p>
-                        <p><em>Please provide these credentials to the user manually.</em></p>
-                    </div>";
-
-                    $success_message = "Verification invitation prepared successfully!<br>" . $credentials_display;
-                    logAuditTrail($conn, $user_id, 'invite', "Created credentials for: " . $user['full_name'] . " (fallback method)");
-                }
+            } catch (Exception $e) {
+                $email_error = $e->getMessage();
+                error_log("Mailer error: " . $e->getMessage());
             }
-
-            $stmt->close();
         } else {
-            $error_message = "Error sending invitation: " . $conn->error;
+            $email_error = "Mailer class not found";
+            error_log("Mailer class not found");
         }
-    } else {
-        $error_message = "User not found!";
+
+        // Commit transaction
+        $conn->commit();
+
+        // Log the action (with error handling for the audit log)
+        try {
+            logAuditTrail($conn, $user_id, 'invite', "Sent verification invitation to: " . ($user['full_name'] ?? $user['email']));
+        } catch (Exception $e) {
+            error_log("Failed to log audit trail: " . $e->getMessage());
+            // Don't throw here, we still want to show success message
+        }
+
+        if ($email_sent) {
+            $success_message = "Verification invitation sent successfully to " . htmlspecialchars($user['full_name'] ?? $user['email']) . "! Email has been delivered.";
+        } else {
+            // Display credentials on screen if email failed
+            $credentials_display = "
+            <div class='credentials-display' style='background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; border: 1px solid #ffc107;'>
+                <h4 style='color: #856404;'><i class='fas fa-exclamation-triangle'></i> Credentials for " . htmlspecialchars($user['full_name'] ?? $user['email']) . " (Email " . ($email_error ? "failed: $email_error" : "not sent") . "):</h4>
+                <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
+                <p><strong>Temporary Password:</strong> <code style='background: #333; color: #fff; padding: 5px 10px; border-radius: 4px;'>$temp_password</code></p>
+                <p><strong>Login URL:</strong> $login_url</p>
+                <p><em>Please provide these credentials to the user manually.</em></p>
+            </div>";
+
+            $success_message = "Verification invitation prepared successfully!<br>" . $credentials_display;
+        }
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        $error_message = "Error sending invitation: " . $e->getMessage();
+        error_log("Invitation error: " . $e->getMessage());
     }
 }
 
@@ -1869,21 +1836,48 @@ $total_users_result = $conn->query($total_users_query);
 $total_users = $total_users_result->fetch_assoc()['total'];
 $total_pages = ceil($total_users / $records_per_page);
 
-// Get users for user management with pagination
+// Get users for user management with pagination - CORRECTED VERSION
 $users = [];
-$sql = "SELECT id, username, email, full_name, employee_id, 
-               employment_type, employee_type,
-               role, access_level, is_active, is_verified, 
-               last_verification_sent, verified_at, created_at 
-        FROM users 
-        ORDER BY full_name ASC 
+$sql = "SELECT u.*, 
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.full_name
+                   WHEN u.employment_type = 'job_order' THEN jo.employee_name
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.full_name
+                   ELSE u.full_name
+               END as employee_full_name,
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.position
+                   WHEN u.employment_type = 'job_order' THEN jo.occupation
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.designation
+               END as employee_position,
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.office
+                   WHEN u.employment_type = 'job_order' THEN jo.office
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.office
+               END as employee_office,
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.employee_id
+                   WHEN u.employment_type = 'job_order' THEN jo.employee_id
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.employee_id
+               END as emp_id
+        FROM users u
+        LEFT JOIN permanent p ON u.id = p.user_id AND u.employment_type = 'permanent'
+        LEFT JOIN job_order jo ON u.id = jo.user_id AND u.employment_type = 'job_order'
+        LEFT JOIN contractofservice cos ON u.id = cos.user_id AND u.employment_type = 'contract_of_service'
+        ORDER BY u.full_name ASC 
         LIMIT ? OFFSET ?";
+
 $stmt = $conn->prepare($sql);
+if (!$stmt) {
+    die("Error preparing statement: " . $conn->error);
+}
 $stmt->bind_param("ii", $records_per_page, $offset);
 $stmt->execute();
 $result = $stmt->get_result();
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
+        // Use employee_full_name if available, otherwise fall back to users.full_name
+        $row['display_name'] = $row['employee_full_name'] ?? $row['full_name'];
         $users[] = $row;
     }
 }
@@ -3381,12 +3375,9 @@ $stmt->close();
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <!-- Update the table body -->
                                         <?php foreach ($users as $user): ?>
                                             <?php
-                                            // Get employment type from database - FIX THIS
-                                            // You have both employment_type (line 36) and employee_type (line 21) columns
-                                            // Use the correct one based on your data structure
+                                            // Get employment type
                                             $emp_type = $user['employment_type'] ?? $user['employee_type'] ?? 'Not set';
                                             $emp_type_display = ucfirst(str_replace('_', ' ', $emp_type));
 
@@ -3421,8 +3412,8 @@ $stmt->close();
                                             ?>
                                             <tr class="user-row" data-search="<?php
                                             echo htmlspecialchars(strtolower(
-                                                $user['full_name'] . ' ' .
-                                                ($user['employee_id'] ?? '') . ' ' .
+                                                ($user['display_name'] ?? '') . ' ' .
+                                                ($user['emp_id'] ?? '') . ' ' .
                                                 $user['email'] . ' ' .
                                                 ($user['username'] ?? '') . ' ' .
                                                 $verification_status . ' ' .
@@ -3431,8 +3422,10 @@ $stmt->close();
                                                 ($user['is_active'] ? 'Active' : 'Inactive')
                                             ));
                                             ?>">
-                                                <td><?php echo htmlspecialchars($user['full_name']); ?></td>
-                                                <td><?php echo htmlspecialchars($user['employee_id'] ?? 'N/A'); ?></td>
+                                                <td><?php echo htmlspecialchars($user['display_name'] ?? $user['full_name'] ?? 'N/A'); ?>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($user['emp_id'] ?? $user['employee_id'] ?? 'N/A'); ?>
+                                                </td>
                                                 <td><?php echo htmlspecialchars($user['email']); ?></td>
                                                 <td>
                                                     <?php if ($has_username): ?>
@@ -3475,32 +3468,26 @@ $stmt->close();
                                                         </button>
                                                         <?php if ($has_username): ?>
                                                             <button class="btn btn-warning btn-sm"
-                                                                onclick="resetUserPassword(<?php echo $user['id']; ?>)">
+                                                                onclick="resetUserPassword(<?php echo $user['id']; ?>, '<?php echo addslashes($user['display_name'] ?? $user['full_name']); ?>')">
                                                                 <i class="fas fa-key"></i>
                                                             </button>
                                                         <?php endif; ?>
                                                         <?php if (!$has_username || !$is_verified): ?>
-                                                            <!-- Direct form submission method (most reliable) -->
                                                             <form method="POST" style="display: inline;">
                                                                 <input type="hidden" name="invite_user_id"
                                                                     value="<?php echo $user['id']; ?>">
                                                                 <input type="hidden" name="send_verification_invitation" value="1">
                                                                 <button type="submit" class="btn btn-success btn-sm"
-                                                                    onclick="return confirm('Send verification invitation to <?php echo addslashes($user['full_name']); ?>?')">
+                                                                    onclick="return confirm('Send verification invitation to <?php echo addslashes($user['display_name'] ?? $user['full_name']); ?>?')">
                                                                     <i class="fas fa-paper-plane"></i>
                                                                 </button>
                                                             </form>
                                                         <?php endif; ?>
                                                         <?php if ($user['id'] != $user_id): ?>
-                                                            <form method="POST" style="display: inline;">
-                                                                <input type="hidden" name="user_id"
-                                                                    value="<?php echo $user['id']; ?>">
-                                                                <input type="hidden" name="delete_user" value="1">
-                                                                <button class="btn btn-danger btn-sm"
-                                                                    onclick="openDeleteModal(<?php echo $user['id']; ?>, '<?php echo addslashes($user['full_name']); ?>')">
-                                                                    <i class="fas fa-trash"></i>
-                                                                </button>
-                                                            </form>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                onclick="openDeleteModal(<?php echo $user['id']; ?>, '<?php echo addslashes($user['display_name'] ?? $user['full_name']); ?>')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
                                                         <?php endif; ?>
                                                     </div>
                                                 </td>

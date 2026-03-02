@@ -1,16 +1,42 @@
 <?php
 // change_password.php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Set the correct cookie path for your setup
+$cookiePath = '/CAPSTONE_SYSTEM/userside/php/';
+
+// Configure session - MUST MATCH login.php
+session_name('HRMS_SESSION');
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => $cookiePath,
+    'domain' => '',
+    'secure' => false,
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Add debug output
+echo "<!-- =========== CHANGE PASSWORD SESSION DEBUG =========== -->\n";
+echo "<!-- Session ID: " . session_id() . " -->\n";
+echo "<!-- Session Data: " . json_encode($_SESSION) . " -->\n";
+echo "<!-- ===================================================== -->\n";
 
 // Redirect to login if not logged in
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
+if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+    header('Location: login.php?error=not_logged_in');
     exit();
 }
 
 // Check if user needs to change password (temporary password login)
-if (!isset($_SESSION['must_change_password']) || !$_SESSION['must_change_password']) {
-    header('Location: dashboard.php'); // Redirect to dashboard if not required
+if (!isset($_SESSION['must_change_password']) || $_SESSION['must_change_password'] !== true) {
+    // If not required, redirect to homepage
+    header('Location: homepage.php');
     exit();
 }
 
@@ -57,8 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $error_message = 'Password must contain at least one lowercase letter';
                         } elseif (!preg_match('/[0-9]/', $new_password)) {
                             $error_message = 'Password must contain at least one number';
-                        } elseif (!preg_match('/[\W_]/', $new_password)) {
-                            $error_message = 'Password must contain at least one special character';
                         } else {
                             // Hash new password
                             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
@@ -82,10 +106,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     unset($_SESSION['must_change_password']);
                                     unset($_SESSION['temp_password_login']);
                                     
-                                    $success_message = 'Password changed successfully! Redirecting to dashboard...';
+                                    $success_message = 'Password changed successfully! Redirecting to homepage...';
                                     
                                     // Redirect after 3 seconds
-                                    header('refresh:3;url=dashboard.php');
+                                    header('refresh:3;url=homepage.php');
                                 } else {
                                     $error_message = 'Error updating password: ' . $conn->error;
                                 }
@@ -397,7 +421,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <li id="req-uppercase" class="unmet">At least one uppercase letter</li>
                         <li id="req-lowercase" class="unmet">At least one lowercase letter</li>
                         <li id="req-number" class="unmet">At least one number</li>
-                        <li id="req-special" class="unmet">At least one special character</li>
                         <li id="req-match" class="unmet">Passwords must match</li>
                     </ul>
                 </div>
@@ -453,16 +476,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 const hasNumber = /[0-9]/.test(password);
                 document.getElementById('req-number').className = hasNumber ? 'met' : 'unmet';
                 
-                // Check special character
-                const hasSpecial = /[\W_]/.test(password);
-                document.getElementById('req-special').className = hasSpecial ? 'met' : 'unmet';
-                
                 // Check match
                 const passwordsMatch = password === confirmPassword && password !== '';
                 document.getElementById('req-match').className = passwordsMatch ? 'met' : 'unmet';
                 
                 // Enable/disable submit button
-                const isValid = hasLength && hasUppercase && hasLowercase && hasNumber && hasSpecial && passwordsMatch;
+                const isValid = hasLength && hasUppercase && hasLowercase && hasNumber && passwordsMatch;
                 submitBtn.disabled = !isValid;
                 
                 return isValid;
