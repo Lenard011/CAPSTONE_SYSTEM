@@ -24,7 +24,7 @@ try {
 // Load personnel configuration from JSON
 function loadPayrollPersonnel()
 {
-    $config_file = __DIR__ . '/config/payroll_personnel.json';
+    $config_file = __DIR__ . '/config/payroll_personnel_permanent.json';
     $default_config = [
         'certifying_officers' => [
             'A' => ['name' => 'JOREL B. VICENTE', 'title' => 'Administrative Officer IV (HRMO II)', 'active' => true],
@@ -144,35 +144,32 @@ if (isset($_GET['logout'])) {
     exit();
 }
 
-// Helper function to get salary column name
-function getSalaryColumnName($pdo)
-{
-    try {
-        $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-        $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-        $possible_salary_columns = ['wages', 'monthly_salary', 'salary', 'basic_salary', 'rate_per_day', 'daily_rate'];
-        foreach ($possible_salary_columns as $col) {
-            if (in_array($col, $existing_columns)) {
-                return $col;
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error checking salary columns: " . $e->getMessage());
-    }
-    return null;
-}
-
-// Function to get employee's payroll data
+// Function to get employee's payroll data from permanent tables
 function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_salary = 0)
 {
     $data = [
         'other_comp' => 0,
         'withholding_tax' => 0,
-        'sss' => 0,
+        'pagibig_loan_mpl' => 0,
+        'corso_loan' => 0,
+        'policy_loan' => 0,
+        'philhealth_ps' => 0,
+        'uef_retirement' => 0,
+        'emergency_loan' => 0,
+        'gfal' => 0,
+        'lbp_loan' => 0,
+        'mpl' => 0,
+        'mpl_lite' => 0,
+        'sss_contribution' => 0,
+        'pagibig_cont' => 0,
+        'state_ins_gs' => 0,
         'total_deductions' => 0,
         'gross_amount' => $prorated_salary,
+        'amount_due' => $prorated_salary,
         'net_amount' => $prorated_salary,
+        'amount_accrued' => $prorated_salary,
         'days_present' => 0,
+        'signature_status' => '',
         'status' => 'draft',
         'payroll_id' => null,
         'exists' => false
@@ -184,14 +181,28 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
                 SELECT 
                     COALESCE(SUM(other_comp), 0) as other_comp,
                     COALESCE(SUM(withholding_tax), 0) as withholding_tax,
-                    COALESCE(SUM(sss), 0) as sss,
+                    COALESCE(SUM(pagibig_loan_mpl), 0) as pagibig_loan_mpl,
+                    COALESCE(SUM(corso_loan), 0) as corso_loan,
+                    COALESCE(SUM(policy_loan), 0) as policy_loan,
+                    COALESCE(SUM(philhealth_ps), 0) as philhealth_ps,
+                    COALESCE(SUM(uef_retirement), 0) as uef_retirement,
+                    COALESCE(SUM(emergency_loan), 0) as emergency_loan,
+                    COALESCE(SUM(gfal), 0) as gfal,
+                    COALESCE(SUM(lbp_loan), 0) as lbp_loan,
+                    COALESCE(SUM(mpl), 0) as mpl,
+                    COALESCE(SUM(mpl_lite), 0) as mpl_lite,
+                    COALESCE(SUM(sss_contribution), 0) as sss_contribution,
+                    COALESCE(SUM(pagibig_cont), 0) as pagibig_cont,
+                    COALESCE(SUM(state_ins_gs), 0) as state_ins_gs,
                     COALESCE(SUM(total_deductions), 0) as total_deductions,
                     COALESCE(SUM(gross_amount), 0) as gross_amount,
+                    COALESCE(SUM(amount_due), 0) as amount_due,
                     COALESCE(SUM(net_amount), 0) as net_amount,
+                    COALESCE(SUM(amount_accrued), 0) as amount_accrued,
                     COALESCE(SUM(days_present), 0) as days_present,
-                    COUNT(*) as record_count
-                FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
+                    COUNT(DISTINCT id) as record_count
+                FROM payroll_history_permanent 
+                WHERE employee_id = ? 
                     AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
             ");
             $stmt->execute([$employee_id, $period]);
@@ -200,19 +211,38 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
             if ($result && $result['record_count'] > 0) {
                 $data['other_comp'] = floatval($result['other_comp']);
                 $data['withholding_tax'] = floatval($result['withholding_tax']);
-                $data['sss'] = floatval($result['sss']);
+                $data['pagibig_loan_mpl'] = floatval($result['pagibig_loan_mpl']);
+                $data['corso_loan'] = floatval($result['corso_loan']);
+                $data['policy_loan'] = floatval($result['policy_loan']);
+                $data['philhealth_ps'] = floatval($result['philhealth_ps']);
+                $data['uef_retirement'] = floatval($result['uef_retirement']);
+                $data['emergency_loan'] = floatval($result['emergency_loan']);
+                $data['gfal'] = floatval($result['gfal']);
+                $data['lbp_loan'] = floatval($result['lbp_loan']);
+                $data['mpl'] = floatval($result['mpl']);
+                $data['mpl_lite'] = floatval($result['mpl_lite']);
+                $data['sss_contribution'] = floatval($result['sss_contribution']);
+                $data['pagibig_cont'] = floatval($result['pagibig_cont']);
+                $data['state_ins_gs'] = floatval($result['state_ins_gs']);
                 $data['total_deductions'] = floatval($result['total_deductions']);
                 $data['gross_amount'] = floatval($result['gross_amount']);
+                $data['amount_due'] = floatval($result['amount_due']);
                 $data['net_amount'] = floatval($result['net_amount']);
+                $data['amount_accrued'] = floatval($result['amount_accrued']);
                 $data['days_present'] = floatval($result['days_present']);
                 $data['exists'] = true;
             }
         } else {
             $stmt = $pdo->prepare("
-                SELECT id, other_comp, withholding_tax, sss, total_deductions, gross_amount, net_amount, days_present, status
-                FROM payroll_history 
-                WHERE employee_id = ? AND employee_type = 'contractual' 
+                SELECT id, other_comp, withholding_tax, pagibig_loan_mpl, corso_loan, policy_loan,
+                       philhealth_ps, uef_retirement, emergency_loan, gfal, lbp_loan, mpl,
+                       mpl_lite, sss_contribution, pagibig_cont, state_ins_gs,
+                       total_deductions, gross_amount, amount_due, net_amount, amount_accrued, days_present,
+                       signature_status, status
+                FROM payroll_history_permanent 
+                WHERE employee_id = ? 
                     AND payroll_period = ? AND payroll_cutoff = ?
+                LIMIT 1
             ");
             $stmt->execute([$employee_id, $period, $cutoff]);
             $result = $stmt->fetch();
@@ -220,11 +250,26 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
             if ($result) {
                 $data['other_comp'] = floatval($result['other_comp'] ?? 0);
                 $data['withholding_tax'] = floatval($result['withholding_tax'] ?? 0);
-                $data['sss'] = floatval($result['sss'] ?? 0);
+                $data['pagibig_loan_mpl'] = floatval($result['pagibig_loan_mpl'] ?? 0);
+                $data['corso_loan'] = floatval($result['corso_loan'] ?? 0);
+                $data['policy_loan'] = floatval($result['policy_loan'] ?? 0);
+                $data['philhealth_ps'] = floatval($result['philhealth_ps'] ?? 0);
+                $data['uef_retirement'] = floatval($result['uef_retirement'] ?? 0);
+                $data['emergency_loan'] = floatval($result['emergency_loan'] ?? 0);
+                $data['gfal'] = floatval($result['gfal'] ?? 0);
+                $data['lbp_loan'] = floatval($result['lbp_loan'] ?? 0);
+                $data['mpl'] = floatval($result['mpl'] ?? 0);
+                $data['mpl_lite'] = floatval($result['mpl_lite'] ?? 0);
+                $data['sss_contribution'] = floatval($result['sss_contribution'] ?? 0);
+                $data['pagibig_cont'] = floatval($result['pagibig_cont'] ?? 0);
+                $data['state_ins_gs'] = floatval($result['state_ins_gs'] ?? 0);
                 $data['total_deductions'] = floatval($result['total_deductions'] ?? 0);
                 $data['gross_amount'] = floatval($result['gross_amount'] ?? 0);
+                $data['amount_due'] = floatval($result['amount_due'] ?? 0);
                 $data['net_amount'] = floatval($result['net_amount'] ?? 0);
+                $data['amount_accrued'] = floatval($result['amount_accrued'] ?? 0);
                 $data['days_present'] = floatval($result['days_present'] ?? 0);
+                $data['signature_status'] = $result['signature_status'] ?? '';
                 $data['status'] = $result['status'] ?? 'draft';
                 $data['payroll_id'] = $result['id'] ?? null;
                 $data['exists'] = true;
@@ -238,29 +283,23 @@ function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $prorated_
 }
 
 // Helper function to get employee's community tax certificate
-function getCommunityTaxCertificate($pdo, $employee_id, $period)
+function getCommunityTaxCertificate($pdo, $employee_id)
 {
     try {
-        $table_check = $pdo->query("SHOW TABLES LIKE 'employee_cedula'");
-        if ($table_check->rowCount() == 0) {
-            return ['number' => '', 'date' => ''];
-        }
-
         $stmt = $pdo->prepare("
-            SELECT cedula_number, date_issued 
-            FROM employee_cedula 
-            WHERE employee_id = ? AND (year = ? OR year = YEAR(?))
-            ORDER BY date_issued DESC 
+            SELECT ctc_number, ctc_date 
+            FROM permanent 
+            WHERE employee_id = ? 
+            ORDER BY ctc_date DESC 
             LIMIT 1
         ");
-        $year = date('Y', strtotime($period . '-01'));
-        $stmt->execute([$employee_id, $year, $period]);
+        $stmt->execute([$employee_id]);
         $result = $stmt->fetch();
 
         if ($result) {
             return [
-                'number' => $result['cedula_number'] ?? '',
-                'date' => $result['date_issued'] ?? ''
+                'number' => $result['ctc_number'] ?? '',
+                'date' => $result['ctc_date'] ?? ''
             ];
         }
     } catch (Exception $e) {
@@ -272,7 +311,7 @@ function getCommunityTaxCertificate($pdo, $employee_id, $period)
 // Get total count of employees
 $total_employees = 0;
 try {
-    $count_sql = "SELECT COUNT(*) FROM contractofservice WHERE status = 'active'";
+    $count_sql = "SELECT COUNT(*) FROM permanent WHERE (status = 'Active' OR status IS NULL)";
     $count_stmt = $pdo->prepare($count_sql);
     $count_stmt->execute();
     $total_employees = $count_stmt->fetchColumn();
@@ -283,46 +322,51 @@ try {
 
 $total_pages = max(1, ceil($total_employees / $per_page));
 
-// Fetch contractual employees
-$contractual_employees = [];
+// Fetch permanent employees
+$permanent_employees = [];
 $totals = [
-    'monthly_salaries' => 0,
+    'monthly_salary' => 0,
+    'amount_accrued' => 0,
     'other_comp' => 0,
     'gross_amount' => 0,
     'withholding_tax' => 0,
-    'sss' => 0,
+    'pagibig_loan_mpl' => 0,
+    'corso_loan' => 0,
+    'policy_loan' => 0,
+    'philhealth_ps' => 0,
+    'uef_retirement' => 0,
+    'emergency_loan' => 0,
+    'gfal' => 0,
+    'lbp_loan' => 0,
+    'mpl' => 0,
+    'mpl_lite' => 0,
+    'sss_contribution' => 0,
+    'pagibig_cont' => 0,
+    'state_ins_gs' => 0,
     'total_deductions' => 0,
-    'net_amount' => 0
+    'amount_due' => 0
 ];
 
 try {
-    $columns_query = $pdo->query("SHOW COLUMNS FROM contractofservice");
-    $existing_columns = $columns_query->fetchAll(PDO::FETCH_COLUMN);
-
-    $select_fields = "id as user_id, employee_id, CONCAT(first_name, ' ', last_name) as full_name, first_name, last_name, designation as position, office as department, period_from, period_to, status";
-
-    if (in_array('address', $existing_columns)) {
-        $select_fields .= ", address";
-    } else {
-        $select_fields .= ", 'Paluan Occ. Mdo.' as address";
-    }
-
-    $salary_col = getSalaryColumnName($pdo);
-    if ($salary_col) {
-        if ($salary_col == 'rate_per_day' || $salary_col == 'daily_rate') {
-            $select_fields .= ", ($salary_col * 22) as monthly_salary";
-        } else {
-            $select_fields .= ", $salary_col as monthly_salary";
-        }
-    } else {
-        $select_fields .= ", 0 as monthly_salary";
-    }
-
     $sql = "
-        SELECT $select_fields
-        FROM contractofservice 
-        WHERE status = 'active'
-        ORDER BY last_name, first_name 
+        SELECT 
+            id as user_id, 
+            employee_id, 
+            CONCAT(
+                COALESCE(first_name, ''), 
+                ' ', 
+                COALESCE(middle, ''), 
+                ' ', 
+                COALESCE(last_name, '')
+            ) as full_name,
+            position, 
+            office as department,
+            monthly_salary,
+            ctc_number,
+            ctc_date
+        FROM permanent 
+        WHERE (status = 'Active' OR status IS NULL)
+        ORDER BY full_name 
         LIMIT :offset, :per_page
     ";
 
@@ -336,130 +380,133 @@ try {
         $attendance_days = 0;
         $total_hours = 0;
 
-        try {
-            $table_check = $pdo->query("SHOW TABLES LIKE 'attendance'");
-            if ($table_check->rowCount() > 0) {
-                $att_columns = $pdo->query("SHOW COLUMNS FROM attendance")->fetchAll(PDO::FETCH_COLUMN);
-
-                if (in_array('total_hours', $att_columns)) {
-                    $attendance_stmt = $pdo->prepare("
-                        SELECT 
-                            SUM(CASE 
-                                WHEN total_hours >= 8 THEN 1
-                                WHEN total_hours >= 4 THEN 0.5
-                                ELSE 0
-                            END) as attendance_days,
-                            SUM(total_hours) as total_hours_worked
-                        FROM attendance 
-                        WHERE employee_id = ? 
-                            AND date BETWEEN ? AND ?
-                            AND total_hours > 0
-                    ");
-                    $attendance_stmt->execute([
-                        $employee['employee_id'],
-                        $current_cutoff['start'],
-                        $current_cutoff['end']
-                    ]);
-                    $attendance = $attendance_stmt->fetch();
-
-                    $attendance_days = floatval($attendance['attendance_days'] ?? 0);
-                    $total_hours = floatval($attendance['total_hours_worked'] ?? 0);
-                }
-            }
-        } catch (Exception $e) {
-            error_log("Attendance fetch error: " . $e->getMessage());
-        }
+        // Attendance fetching logic would go here
+        // This is a placeholder - implement based on your attendance system
+        $attendance_days = $current_cutoff['working_days']; // Default to full working days
 
         $employee['days_present'] = $attendance_days;
         $employee['total_hours'] = $total_hours;
 
         $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-        $daily_rate = $monthly_salary / 22;
-        $prorated_salary = $daily_rate * $attendance_days;
+        $working_days_in_month = 22; // Standard working days
+        $prorated_salary = ($monthly_salary / $working_days_in_month) * $attendance_days;
+        $amount_accrued = $prorated_salary;
 
-        $payroll_data = getEmployeePayrollData($pdo, $employee['user_id'], $selected_period, $selected_cutoff, $prorated_salary);
-        $cedula = getCommunityTaxCertificate($pdo, $employee['user_id'], $selected_period);
+        $payroll_data = getEmployeePayrollData($pdo, $employee['employee_id'], $selected_period, $selected_cutoff, $prorated_salary);
+        $cedula = getCommunityTaxCertificate($pdo, $employee['employee_id']);
 
-        $employee['other_comp'] = $payroll_data['other_comp'];
-        $employee['withholding_tax'] = $payroll_data['withholding_tax'];
-        $employee['sss'] = $payroll_data['sss'];
-        $employee['total_deductions'] = $payroll_data['total_deductions'];
-        $employee['net_amount'] = $payroll_data['net_amount'];
-        $employee['gross_amount'] = $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : $prorated_salary + $payroll_data['other_comp'];
+        // Calculate total deductions
+        $total_deductions =
+            ($payroll_data['withholding_tax'] ?? 0) +
+            ($payroll_data['pagibig_loan_mpl'] ?? 0) +
+            ($payroll_data['corso_loan'] ?? 0) +
+            ($payroll_data['policy_loan'] ?? 0) +
+            ($payroll_data['philhealth_ps'] ?? 0) +
+            ($payroll_data['uef_retirement'] ?? 0) +
+            ($payroll_data['emergency_loan'] ?? 0) +
+            ($payroll_data['gfal'] ?? 0) +
+            ($payroll_data['lbp_loan'] ?? 0) +
+            ($payroll_data['mpl'] ?? 0) +
+            ($payroll_data['mpl_lite'] ?? 0) +
+            ($payroll_data['sss_contribution'] ?? 0) +
+            ($payroll_data['pagibig_cont'] ?? 0) +
+            ($payroll_data['state_ins_gs'] ?? 0);
+
+        // Assign all payroll data to employee
+        $employee['other_comp'] = $payroll_data['other_comp'] ?? 0;
+        $employee['withholding_tax'] = $payroll_data['withholding_tax'] ?? 0;
+        $employee['pagibig_loan_mpl'] = $payroll_data['pagibig_loan_mpl'] ?? 0;
+        $employee['corso_loan'] = $payroll_data['corso_loan'] ?? 0;
+        $employee['policy_loan'] = $payroll_data['policy_loan'] ?? 0;
+        $employee['philhealth_ps'] = $payroll_data['philhealth_ps'] ?? 0;
+        $employee['uef_retirement'] = $payroll_data['uef_retirement'] ?? 0;
+        $employee['emergency_loan'] = $payroll_data['emergency_loan'] ?? 0;
+        $employee['gfal'] = $payroll_data['gfal'] ?? 0;
+        $employee['lbp_loan'] = $payroll_data['lbp_loan'] ?? 0;
+        $employee['mpl'] = $payroll_data['mpl'] ?? 0;
+        $employee['mpl_lite'] = $payroll_data['mpl_lite'] ?? 0;
+        $employee['sss_contribution'] = $payroll_data['sss_contribution'] ?? 0;
+        $employee['pagibig_cont'] = $payroll_data['pagibig_cont'] ?? 0;
+        $employee['state_ins_gs'] = $payroll_data['state_ins_gs'] ?? 0;
+        $employee['total_deductions'] = $total_deductions;
+
+        // Calculate amount due
+        $employee['amount_due'] = ($payroll_data['amount_due'] ?? 0) > 0 ? $payroll_data['amount_due'] : ($amount_accrued + ($payroll_data['other_comp'] ?? 0) - $total_deductions);
+        $employee['amount_accrued'] = ($payroll_data['amount_accrued'] ?? 0) > 0 ? $payroll_data['amount_accrued'] : $amount_accrued;
+        $employee['gross_amount'] = ($payroll_data['gross_amount'] ?? 0) > 0 ? $payroll_data['gross_amount'] : $amount_accrued + ($payroll_data['other_comp'] ?? 0);
         $employee['monthly_salary'] = $monthly_salary;
-        $employee['daily_rate'] = $daily_rate;
         $employee['prorated_salary'] = $prorated_salary;
-        $employee['payroll_status'] = $payroll_data['status'];
-        $employee['payroll_id'] = $payroll_data['payroll_id'];
-        $employee['payroll_exists'] = $payroll_data['exists'];
-        $employee['community_tax_number'] = $cedula['number'];
-        $employee['community_tax_date'] = $cedula['date'];
+        $employee['payroll_status'] = $payroll_data['status'] ?? 'draft';
+        $employee['payroll_id'] = $payroll_data['payroll_id'] ?? null;
+        $employee['payroll_exists'] = $payroll_data['exists'] ?? false;
+        $employee['signature_status'] = $payroll_data['signature_status'] ?? '';
+        $employee['community_tax_number'] = $cedula['number'] ?? '';
+        $employee['community_tax_date'] = $cedula['date'] ?? '';
 
-        $totals['monthly_salaries'] += $prorated_salary;
-        $totals['other_comp'] += $payroll_data['other_comp'];
-        $totals['gross_amount'] += $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : $prorated_salary + $payroll_data['other_comp'];
-        $totals['withholding_tax'] += $payroll_data['withholding_tax'];
-        $totals['sss'] += $payroll_data['sss'];
-        $totals['total_deductions'] += $payroll_data['total_deductions'];
-        $totals['net_amount'] += $payroll_data['net_amount'];
+        // Add to totals
+        $totals['monthly_salary'] += $monthly_salary;
+        $totals['amount_accrued'] += $employee['amount_accrued'];
+        $totals['other_comp'] += $payroll_data['other_comp'] ?? 0;
+        $totals['gross_amount'] += $employee['gross_amount'];
+        $totals['withholding_tax'] += $payroll_data['withholding_tax'] ?? 0;
+        $totals['pagibig_loan_mpl'] += $payroll_data['pagibig_loan_mpl'] ?? 0;
+        $totals['corso_loan'] += $payroll_data['corso_loan'] ?? 0;
+        $totals['policy_loan'] += $payroll_data['policy_loan'] ?? 0;
+        $totals['philhealth_ps'] += $payroll_data['philhealth_ps'] ?? 0;
+        $totals['uef_retirement'] += $payroll_data['uef_retirement'] ?? 0;
+        $totals['emergency_loan'] += $payroll_data['emergency_loan'] ?? 0;
+        $totals['gfal'] += $payroll_data['gfal'] ?? 0;
+        $totals['lbp_loan'] += $payroll_data['lbp_loan'] ?? 0;
+        $totals['mpl'] += $payroll_data['mpl'] ?? 0;
+        $totals['mpl_lite'] += $payroll_data['mpl_lite'] ?? 0;
+        $totals['sss_contribution'] += $payroll_data['sss_contribution'] ?? 0;
+        $totals['pagibig_cont'] += $payroll_data['pagibig_cont'] ?? 0;
+        $totals['state_ins_gs'] += $payroll_data['state_ins_gs'] ?? 0;
+        $totals['total_deductions'] += $total_deductions;
+        $totals['amount_due'] += $employee['amount_due'];
     }
 
-    $contractual_employees = $employees;
+    $permanent_employees = $employees;
 } catch (Exception $e) {
     error_log("Error fetching employees: " . $e->getMessage());
-    $contractual_employees = [];
+    $permanent_employees = [];
 }
 
 // Get entity information
-$payroll_number = "CON-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
+$payroll_number = "PERM-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
 $period_display = date('F d, Y', strtotime($current_cutoff['start'])) . ' - ' . date('F d, Y', strtotime($current_cutoff['end']));
 
-// OBLIGATION REQUEST SECTION - EXACT MATCH TO PROVIDED STRUCTURE
+// OBLIGATION REQUEST SECTION
 $start_month = date('F', strtotime($current_cutoff['start']));
 $start_day = date('d', strtotime($current_cutoff['start']));
 $end_day = date('d', strtotime($current_cutoff['end']));
 $end_year = date('Y', strtotime($current_cutoff['end']));
 $wages_period_display = "WAGES " . $start_month . " " . $start_day . " - " . $end_day . ", " . $end_year;
 
-$ors_number = "CON-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
+$ors_number = "PERM-" . date('Ymd', strtotime($selected_period . '-01')) . "-" . strtoupper(substr($selected_cutoff, 0, 1));
 
-// IMPORTANT FIX: Calculate page total instead of full total
-$page_total_amount = 0;
-foreach ($contractual_employees as $employee) {
-    $page_total_amount += $employee['net_amount'];
-}
+// Calculate page total amount
+$page_total_amount = $totals['amount_due'];
 
-// If page total is 0 but we have employees with data, use their net_amount
-if ($page_total_amount == 0 && !empty($contractual_employees)) {
-    // Check if any employee has non-zero values
-    $has_values = false;
-    foreach ($contractual_employees as $employee) {
-        if ($employee['net_amount'] > 0 || $employee['gross_amount'] > 0 || $employee['monthly_salary'] > 0) {
-            $has_values = true;
-            break;
-        }
-    }
-
-    // If no values found, keep as 0 (which matches the example where all are 0.00)
-    // Otherwise use the calculated total
-    if (!$has_values) {
-        $page_total_amount = 0;
-    }
-}
-
-// Get the first employee from the CURRENT PAGE (Row #1)
+// Get the first employee from the CURRENT PAGE
 $first_employee_on_page = '';
 $employee_office_on_page = '';
 
 try {
     $sql = "
         SELECT 
-            CONCAT(first_name, ' ', last_name) as full_name,
-            COALESCE(office, department, '') as office_name,
-            designation as position
-        FROM contractofservice 
-        WHERE status = 'active'
-        ORDER BY last_name, first_name 
+            CONCAT(
+                COALESCE(first_name, ''), 
+                ' ', 
+                COALESCE(middle, ''), 
+                ' ', 
+                COALESCE(last_name, '')
+            ) as full_name,
+            office as office_name,
+            position
+        FROM permanent 
+        WHERE (status = 'Active' OR status IS NULL)
+        ORDER BY full_name 
         LIMIT :offset, 1
     ";
 
@@ -473,7 +520,7 @@ try {
         $employee_position = $first_employee_data['position'] ?? '';
         $employee_office_on_page = !empty($first_employee_data['office_name'])
             ? $first_employee_data['office_name']
-            : ($employee_position ? "Office of the Nurse I" : 'Office of the Municipal Mayor');
+            : ($employee_position ? "Office of the " . $employee_position : 'Office of the Municipal Mayor');
     } else {
         $first_employee_on_page = 'No employees on this page';
         $employee_office_on_page = 'Office of the Municipal Mayor';
@@ -491,7 +538,7 @@ $save_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
     try {
         $pdo->exec("
-            CREATE TABLE IF NOT EXISTS obligation_requests (
+            CREATE TABLE IF NOT EXISTS obligation_requests_permanent (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 ors_serial VARCHAR(50) NOT NULL,
                 ors_date DATE NOT NULL,
@@ -526,7 +573,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
         $amount = floatval($_POST['amount'] ?? $page_total_amount);
 
         $check_stmt = $pdo->prepare("
-            SELECT id FROM obligation_requests 
+            SELECT id FROM obligation_requests_permanent 
             WHERE payroll_period = ? AND payroll_cutoff = ? AND page_number = ?
         ");
         $check_stmt->execute([$selected_period, $selected_cutoff, $page]);
@@ -534,7 +581,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
 
         if ($existing) {
             $update_stmt = $pdo->prepare("
-                UPDATE obligation_requests SET
+                UPDATE obligation_requests_permanent SET
                     ors_serial = ?,
                     ors_date = ?,
                     fund_cluster = ?,
@@ -565,7 +612,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
             $save_message = "Obligation request updated successfully!";
         } else {
             $insert_stmt = $pdo->prepare("
-                INSERT INTO obligation_requests (
+                INSERT INTO obligation_requests_permanent (
                     ors_serial, ors_date, fund_cluster, payee, office, address,
                     responsibility_center, particulars, mfo_pap, uacs_object_code,
                     amount, payroll_period, payroll_cutoff, page_number
@@ -599,7 +646,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_obligation'])) {
 $existing_obligation = null;
 try {
     $load_stmt = $pdo->prepare("
-        SELECT * FROM obligation_requests 
+        SELECT * FROM obligation_requests_permanent 
         WHERE payroll_period = ? AND payroll_cutoff = ? AND page_number = ?
         ORDER BY created_at DESC LIMIT 1
     ");
@@ -622,8 +669,8 @@ $default_mfo_pap = $existing_obligation['mfo_pap'] ?? '';
 $default_uacs_object_code = $existing_obligation['uacs_object_code'] ?? '';
 $default_amount = $existing_obligation['amount'] ?? $page_total_amount;
 
-// Create save_personnel_config.php handler
-if (!file_exists('save_personnel_config.php')) {
+// Create save_personnel_config.php handler for permanent
+if (!file_exists('save_personnel_config_permanent.php')) {
     $save_config_content = '<?php
 session_start();
 header("Content-Type: application/json");
@@ -639,7 +686,7 @@ if (!$data) {
     exit();
 }
 
-$config_file = __DIR__ . "/config/payroll_personnel.json";
+$config_file = __DIR__ . "/config/payroll_personnel_permanent.json";
 $config_dir = dirname($config_file);
 
 if (!is_dir($config_dir)) {
@@ -653,7 +700,7 @@ try {
     echo json_encode(["success" => false, "error" => $e->getMessage()]);
 }
 ';
-    file_put_contents('save_personnel_config.php', $save_config_content);
+    file_put_contents('save_personnel_config_permanent.php', $save_config_content);
 }
 ?>
 <!DOCTYPE html>
@@ -662,8 +709,8 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contractual Payroll & Obligation Request</title>
-    <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
+    <title>Permanent Payroll & Obligation Request</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -709,9 +756,9 @@ try {
         }
 
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
 
         body {
@@ -722,7 +769,7 @@ try {
             overflow-x: hidden;
         }
 
-        /* Navbar Styling - Matching contractualpayrolltable1.php */
+        /* Navbar Styling - UPDATED to match other payroll pages */
         .navbar {
             background: var(--gradient-primary);
             position: fixed;
@@ -857,7 +904,62 @@ try {
             color: white;
         }
 
-        /* Sidebar - Matching contractualpayrolltable1.php */
+        /* Logout Button - New */
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(239, 68, 68, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            padding: 0.5rem 1rem;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .logout-btn:hover {
+            background: rgba(220, 38, 38, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Mobile Menu Toggle */
+        .mobile-toggle {
+            display: flex;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            outline: none;
+        }
+
+        .mobile-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+
+        .mobile-toggle i {
+            font-size: 1.25rem;
+            color: white;
+        }
+
+        @media (min-width: 1024px) {
+            .mobile-toggle {
+                display: none;
+            }
+        }
+
+        /* Sidebar Styles - UPDATED to match other payroll pages */
         .sidebar-container {
             position: fixed;
             left: 0;
@@ -1084,8 +1186,84 @@ try {
                 display: none;
             }
 
+            .logout-btn span {
+                display: none;
+            }
+
+            .logout-btn {
+                padding: 0.5rem;
+                width: 40px;
+                height: 40px;
+                justify-content: center;
+            }
+
             .main-content {
                 padding: 0.75rem;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .navbar {
+                height: 65px;
+            }
+
+            .sidebar-container {
+                top: 65px;
+                height: calc(100vh - 65px);
+            }
+
+            .main-content {
+                margin-top: 65px;
+            }
+
+            .mobile-toggle {
+                width: 36px;
+                height: 36px;
+            }
+
+            .brand-logo {
+                width: 40px;
+                height: 40px;
+            }
+
+            .logout-btn {
+                width: 36px;
+                height: 36px;
+            }
+        }
+
+        /* Mobile Brand Styling */
+        .mobile-brand {
+            display: flex;
+            align-items: center;
+        }
+
+        .mobile-brand-text {
+            display: flex;
+            flex-direction: column;
+            margin-left: 0.5rem;
+        }
+
+        .mobile-brand-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: white;
+            line-height: 1.2;
+        }
+
+        .mobile-brand-subtitle {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        @media (min-width: 769px) {
+            .mobile-brand {
+                display: none;
+            }
+
+            .brand-text {
+                display: flex;
             }
         }
 
@@ -1109,13 +1287,14 @@ try {
             background: #a1a1a1;
         }
 
-        /* Payroll Table Styles - Optimized for 100% Print Fit */
+        /* ========== EXISTING STYLES BELOW - UNCHANGED ========== */
+        /* Payroll Table Styles */
         .payroll-section {
             width: 100%;
             max-width: 100%;
             margin: 0 auto 30px auto;
             background: white;
-            padding: 15px;
+            padding: 20px 15px;
             border: 1px solid #ddd;
             font-family: 'Inter', sans-serif;
         }
@@ -1272,7 +1451,7 @@ try {
 
         .payroll-table-container {
             width: 100%;
-            overflow-x: visible;
+            overflow-x: auto;
             margin-bottom: 15px;
         }
 
@@ -1280,80 +1459,8 @@ try {
             width: 100%;
             border-collapse: collapse;
             font-size: 9px;
-            table-layout: fixed;
+            min-width: 2200px;
         }
-
-        /* Define exact column widths for 100% fit on landscape */
-        .payroll-table th:nth-child(1) {
-            width: 3%;
-        }
-
-        /* # */
-        .payroll-table th:nth-child(2) {
-            width: 12%;
-        }
-
-        /* Name */
-        .payroll-table th:nth-child(3) {
-            width: 10%;
-        }
-
-        /* Position */
-        .payroll-table th:nth-child(4) {
-            width: 10%;
-        }
-
-        /* Address */
-        .payroll-table th:nth-child(5) {
-            width: 6%;
-        }
-
-        /* Monthly Salary */
-        .payroll-table th:nth-child(6) {
-            width: 5%;
-        }
-
-        /* Other Comp */
-        .payroll-table th:nth-child(7) {
-            width: 6%;
-        }
-
-        /* Gross Amount */
-        .payroll-table th:nth-child(8) {
-            width: 5%;
-        }
-
-        /* Withholding Tax */
-        .payroll-table th:nth-child(9) {
-            width: 5%;
-        }
-
-        /* SSS */
-        .payroll-table th:nth-child(10) {
-            width: 5%;
-        }
-
-        /* Total Deductions */
-        .payroll-table th:nth-child(11) {
-            width: 6%;
-        }
-
-        /* Community Tax Number */
-        .payroll-table th:nth-child(12) {
-            width: 6%;
-        }
-
-        /* Community Tax Date */
-        .payroll-table th:nth-child(13) {
-            width: 6%;
-        }
-
-        /* Net Amount Due */
-        .payroll-table th:nth-child(14) {
-            width: 15%;
-        }
-
-        /* Signature */
 
         .payroll-table th,
         .payroll-table td {
@@ -1462,7 +1569,7 @@ try {
             padding-bottom: 1px;
         }
 
-        /* OBLIGATION REQUEST STYLES - EXACT MATCH TO PROVIDED STRUCTURE */
+        /* OBLIGATION REQUEST STYLES */
         .obligation-container {
             max-width: 900px;
             margin: 40px auto;
@@ -1686,12 +1793,27 @@ try {
                 display: none;
             }
 
+            .logout-btn span {
+                display: none;
+            }
+
+            .logout-btn {
+                padding: 0.5rem;
+                width: 40px;
+                height: 40px;
+                justify-content: center;
+            }
+
             .navbar-container {
                 padding: 0 1rem;
             }
 
             .brand-text {
                 display: none;
+            }
+
+            .mobile-brand {
+                display: flex;
             }
 
             .action-buttons {
@@ -1720,6 +1842,10 @@ try {
         }
 
         @media (min-width: 769px) {
+            .mobile-brand {
+                display: none;
+            }
+
             .brand-text {
                 display: flex;
             }
@@ -1735,7 +1861,7 @@ try {
                 height: calc(100vh - 65px);
             }
 
-            .main-content {
+            main {
                 margin-top: 65px;
             }
 
@@ -1747,6 +1873,11 @@ try {
             .brand-logo {
                 width: 40px;
                 height: 40px;
+            }
+
+            .logout-btn {
+                width: 36px;
+                height: 36px;
             }
         }
 
@@ -1803,33 +1934,50 @@ try {
             cursor: not-allowed;
         }
 
-        /* Print Styles - Optimized for 100% fit */
+        /* PRINT STYLES - ONLY AFFECTS PRINT PREVIEW */
         @media print {
+
+            /* Hide all non-payroll elements when printing */
             .print-hide {
                 display: none !important;
             }
 
-            /* Payroll Print - 100% Fit with exact column widths */
+            body {
+                background: white;
+                margin: 0;
+                padding: 0;
+                width: 100%;
+            }
+
+            /* Payroll Section Print Styles - Long Bond Paper Landscape */
             #payroll-section {
-                page: landscape !important;
+                page-break-after: always;
                 max-width: 100% !important;
                 margin: 0 !important;
-                padding: 0.15in !important;
+                padding: 0.2in !important;
                 border: 1px solid #000 !important;
                 box-sizing: border-box !important;
+                background: white !important;
+                font-family: 'Inter', sans-serif !important;
+            }
+
+            /* Long Bond Paper dimensions: 8.5 x 13 inches landscape */
+            @page {
+                size: 8.5in 13in landscape;
+                margin: 0.2in;
             }
 
             .payroll-table {
                 width: 100% !important;
-                font-size: 7.5px !important;
-                table-layout: fixed !important;
                 border-collapse: collapse !important;
+                font-size: 8px !important;
+                page-break-inside: auto !important;
             }
 
             .payroll-table th,
             .payroll-table td {
                 border: 0.5px solid #000 !important;
-                padding: 2px 1px !important;
+                padding: 3px 2px !important;
                 font-size: 7.5px !important;
                 word-wrap: break-word !important;
                 overflow: hidden !important;
@@ -1840,71 +1988,30 @@ try {
                 background-color: #f0f0f0 !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
-                font-size: 7px !important;
-                padding: 2px 1px !important;
+                font-weight: bold !important;
             }
 
-            /* Keep exact column widths */
-            .payroll-table th:nth-child(1) {
-                width: 3% !important;
+            /* Prevent row splitting across pages */
+            .payroll-table tbody tr {
+                page-break-inside: avoid !important;
+                page-break-after: auto !important;
             }
 
-            .payroll-table th:nth-child(2) {
-                width: 12% !important;
+            .payroll-table thead {
+                display: table-header-group !important;
             }
 
-            .payroll-table th:nth-child(3) {
-                width: 10% !important;
+            .payroll-table tfoot {
+                display: table-footer-group !important;
             }
 
-            .payroll-table th:nth-child(4) {
-                width: 10% !important;
-            }
-
-            .payroll-table th:nth-child(5) {
-                width: 6% !important;
-            }
-
-            .payroll-table th:nth-child(6) {
-                width: 5% !important;
-            }
-
-            .payroll-table th:nth-child(7) {
-                width: 6% !important;
-            }
-
-            .payroll-table th:nth-child(8) {
-                width: 5% !important;
-            }
-
-            .payroll-table th:nth-child(9) {
-                width: 5% !important;
-            }
-
-            .payroll-table th:nth-child(10) {
-                width: 5% !important;
-            }
-
-            .payroll-table th:nth-child(11) {
-                width: 6% !important;
-            }
-
-            .payroll-table th:nth-child(12) {
-                width: 6% !important;
-            }
-
-            .payroll-table th:nth-child(13) {
-                width: 6% !important;
-            }
-
-            .payroll-table th:nth-child(14) {
-                width: 15% !important;
-            }
-
+            /* Certification grid styling for print - only on first page */
             .certification-grid {
                 font-size: 8px !important;
                 gap: 5px !important;
                 margin-top: 10px !important;
+                page-break-inside: avoid !important;
+                display: grid !important;
             }
 
             .certification-box {
@@ -1918,75 +2025,66 @@ try {
                 font-size: 8px !important;
             }
 
-            .date-line,
-            .amount-line {
-                border-bottom: 0.5px solid #000 !important;
-                width: 40px !important;
+            /* Page indicator */
+            .page-indicator {
+                text-align: right !important;
+                font-size: 8px !important;
+                margin-top: 5px !important;
+                font-style: italic !important;
             }
 
-            /* Obligation Print - 100% Fit */
+            /* Obligation Print - Portrait */
             #obligation-section {
-                page: portrait !important;
+                page: portrait;
+                page-break-before: always !important;
                 max-width: 100% !important;
                 margin: 0 !important;
-                padding: 0 !important;
-                page-break-before: always !important;
+                padding: 0.2in !important;
+                border: 2px solid #000 !important;
+                box-sizing: border-box !important;
+                background: white !important;
             }
 
             .obligation-container {
                 max-width: 100% !important;
                 margin: 0 !important;
-                padding: 0.2in !important;
-                border: 2px solid #000 !important;
-                box-shadow: none !important;
-                box-sizing: border-box !important;
+                padding: 0 !important;
+                border: none !important;
             }
 
             .obligation-table th,
             .obligation-table td {
                 border: 2px solid #000 !important;
-                padding: 6px 8px !important;
-                font-size: 11px !important;
-            }
-
-            .obligation-table input {
-                font-size: 11px !important;
-                padding: 2px !important;
+                padding: 4px 6px !important;
+                font-size: 10px !important;
             }
 
             .certification-box-ob {
                 border: 2px solid #000 !important;
-                font-size: 11px !important;
-                padding: 8px !important;
+                font-size: 10px !important;
+                padding: 6px !important;
             }
 
             .status-table th,
             .status-table td {
                 border: 2px solid #000 !important;
-                font-size: 11px !important;
-                padding: 4px !important;
+                font-size: 10px !important;
+                padding: 3px !important;
             }
 
-            /* Ensure all elements fit within page */
             * {
                 box-sizing: border-box !important;
                 max-width: 100% !important;
+            }
+
+            .payroll-table-container {
+                overflow: visible !important;
+                width: 100% !important;
             }
         }
 
         #editPersonnelModal {
             z-index: 99999;
-        }
-
-        /* Mobile hide class */
-        .mobile-hide {
-            display: table-cell;
-        }
-
-        @media (max-width: 640px) {
-            .mobile-hide {
-                display: none;
-            }
         }
 
         .sidebar-item.logout {
@@ -2004,13 +2102,13 @@ try {
 </head>
 
 <body class="bg-gray-50">
-    <!-- Navigation Header - Exact match from contractualpayrolltable1.php -->
+    <!-- Navigation Header - UPDATED to match other payroll pages -->
     <nav class="navbar">
         <div class="navbar-container">
             <!-- Left Section -->
             <div class="navbar-left">
                 <!-- Mobile Menu Toggle -->
-                <button class="mobile-toggle" id="mobile-menu-toggle">
+                <button class="mobile-toggle" id="sidebar-toggle">
                     <i class="fas fa-bars"></i>
                 </button>
 
@@ -2024,6 +2122,15 @@ try {
                         <span class="brand-subtitle">Paluan Occidental Mindoro</span>
                     </div>
                 </a>
+
+                <!-- Mobile Brand -->
+                <div class="mobile-brand lg:hidden">
+                    <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
+                    <div class="mobile-brand-text">
+                        <span class="mobile-brand-title">HRMS</span>
+                        <span class="mobile-brand-subtitle">Permanent</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Right Section -->
@@ -2048,7 +2155,7 @@ try {
                 </div>
 
                 <!-- Logout Button -->
-                <a href="?logout=true" class="logout-btn" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(239, 68, 68, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 50px; padding: 0.5rem 1rem; color: white; text-decoration: none; transition: all 0.3s ease; font-weight: 500; font-size: 0.9rem;">
+                <a href="?logout=true" class="logout-btn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
                 </a>
@@ -2059,7 +2166,7 @@ try {
     <!-- Mobile Overlay -->
     <div class="overlay" id="overlay"></div>
 
-    <!-- Sidebar - Exact match from contractualpayrolltable1.php with Contractual active and dropdown open -->
+    <!-- Sidebar - UPDATED to match other payroll pages with Permanent active -->
     <div class="sidebar-container" id="sidebar-container">
         <div class="sidebar">
             <div class="sidebar-content">
@@ -2088,7 +2195,7 @@ try {
                     <i class="fas fa-chevron-down chevron rotated ml-auto"></i>
                 </a>
                 <div class="sidebar-dropdown-menu open" id="payroll-dropdown">
-                    <a href="contractualpayrolltable1.php" class="sidebar-dropdown-item active">
+                    <a href="contractualpayrolltable1.php" class="sidebar-dropdown-item">
                         <i class="fas fa-circle text-xs"></i>
                         Contractual
                     </a>
@@ -2096,7 +2203,7 @@ try {
                         <i class="fas fa-circle text-xs"></i>
                         Job Order
                     </a>
-                    <a href="permanentpayrolltable1.php" class="sidebar-dropdown-item">
+                    <a href="permanentpayrolltable1.php" class="sidebar-dropdown-item active">
                         <i class="fas fa-circle text-xs"></i>
                         Permanent
                     </a>
@@ -2129,8 +2236,8 @@ try {
             <nav class="mt-4 flex" aria-label="Breadcrumb">
                 <ol class="inline-flex items-center space-x-1 md:space-x-2">
                     <li class="inline-flex items-center">
-                        <a href="contractualpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
-                            <i class="fas fa-home mr-2"></i> Contractual Payroll
+                        <a href="permanentpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
+                            <i class="fas fa-home mr-2"></i> Permanent Payroll
                         </a>
                     </li>
                     <li>
@@ -2149,8 +2256,8 @@ try {
                     <i class="fas fa-file-invoice text-primary-600 text-lg"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-gray-900">Contractual Payroll & Obligation Request</h1>
-                    <p class="text-xs text-gray-500">Generate and manage payroll with obligation request</p>
+                    <h1 class="text-xl font-bold text-gray-900">Permanent Payroll & Obligation Request</h1>
+                    <p class="text-xs text-gray-500">Generate and manage permanent employee payroll with obligation request</p>
                 </div>
             </div>
 
@@ -2183,7 +2290,7 @@ try {
             </div>
         </div>
 
-        <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-4 flex flex-wrap items-center justify-between print-hide">
+        <div class="bg-primary-50 border-l-4 border-primary-400 p-3 mb-4 flex flex-wrap items-center justify-between print-hide">
             <div class="flex items-center gap-3">
                 <span class="period-badge"><i class="fas fa-calendar-alt mr-1"></i> <?php echo date('F Y', strtotime($selected_period . '-01')); ?></span>
                 <span class="period-badge"><i class="fas fa-cut mr-1"></i> <?php echo $current_cutoff['label']; ?></span>
@@ -2201,8 +2308,8 @@ try {
 
         <!-- PAYROLL SECTION -->
         <div id="payroll-section" class="payroll-section">
-            <div class="appendix">Appendix 33</div>
-            <div class="payroll-title">PAYROLL</div>
+            <div class="appendix">Appendix 33-B</div>
+            <div class="payroll-title">PAYROLL (PERMANENT)</div>
 
             <div class="period-container">
                 <span class="period-label">For the period:</span>
@@ -2242,69 +2349,124 @@ try {
             </div>
 
             <div class="payroll-table-container">
-                <table class="payroll-table">
+                <table class="payroll-table" id="print-payroll-table">
                     <thead>
                         <tr>
                             <th rowspan="2">#</th>
+                            <th rowspan="2">Employee ID</th>
                             <th rowspan="2">Name</th>
                             <th rowspan="2">Position</th>
-                            <th rowspan="2">Address</th>
-                            <th colspan="3">Compensation</th>
-                            <th colspan="3">Deductions</th>
-                            <th colspan="2">Community Tax Certificate</th>
-                            <th rowspan="2">Net Amount Due</th>
+                            <th rowspan="2">Department</th>
+                            <th rowspan="2">Days Present</th>
+                            <th rowspan="2">Monthly Salary</th>
+                            <th rowspan="2">Amount Accrued</th>
+                            <th colspan="14" class="text-center">DEDUCTIONS</th>
+                            <th colspan="3" class="text-center">ADDITIONAL</th>
                             <th rowspan="2">Signature</th>
                         </tr>
                         <tr>
-                            <th>Monthly Salaries and Wages</th>
-                            <th>Other Compensation</th>
-                            <th>Gross Amount Earned</th>
                             <th>Withholding Tax</th>
+                            <th>PAG-IBIG LOAN - MPL</th>
+                            <th>Corso Loan</th>
+                            <th>Policy Loan</th>
+                            <th>PhilHealth P.S.</th>
+                            <th>UEF/Retirement</th>
+                            <th>Emergency Loan</th>
+                            <th>GFAL</th>
+                            <th>LBP Loan</th>
+                            <th>MPL</th>
+                            <th>MPL Lite</th>
                             <th>SSS Contribution</th>
+                            <th>PAG-IBIG CONT.</th>
+                            <th>STATE INS. G.S.</th>
                             <th>Total Deductions</th>
-                            <th>Number</th>
-                            <th>Date</th>
+                            <th>Amount Due</th>
+                            <th>No.</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($contractual_employees)): ?>
+                        <?php if (empty($permanent_employees)): ?>
                             <tr>
-                                <td colspan="14" class="text-center py-4 text-gray-500">No employees found for this period.</td>
+                                <td colspan="29" class="text-center py-8 text-gray-500">
+                                    No permanent employees found for this period.
+                                </td>
                             </tr>
                         <?php else: ?>
                             <?php $counter = $offset + 1; ?>
-                            <?php foreach ($contractual_employees as $employee): ?>
+                            <?php foreach ($permanent_employees as $employee): ?>
+                                <?php
+                                // Calculate total deductions
+                                $total_deductions =
+                                    ($employee['withholding_tax'] ?? 0) +
+                                    ($employee['pagibig_loan_mpl'] ?? 0) +
+                                    ($employee['corso_loan'] ?? 0) +
+                                    ($employee['policy_loan'] ?? 0) +
+                                    ($employee['philhealth_ps'] ?? 0) +
+                                    ($employee['uef_retirement'] ?? 0) +
+                                    ($employee['emergency_loan'] ?? 0) +
+                                    ($employee['gfal'] ?? 0) +
+                                    ($employee['lbp_loan'] ?? 0) +
+                                    ($employee['mpl'] ?? 0) +
+                                    ($employee['mpl_lite'] ?? 0) +
+                                    ($employee['sss_contribution'] ?? 0) +
+                                    ($employee['pagibig_cont'] ?? 0) +
+                                    ($employee['state_ins_gs'] ?? 0);
+
+                                $amount_due = ($employee['amount_due'] ?? 0) > 0 ? $employee['amount_due'] : (($employee['amount_accrued'] ?? 0) + ($employee['other_comp'] ?? 0) - $total_deductions);
+                                ?>
                                 <tr>
-                                    <td class="text-center"><?php echo $counter++; ?></td>
-                                    <td><?php echo htmlspecialchars($employee['full_name']); ?></td>
-                                    <td><?php echo htmlspecialchars($employee['position']); ?></td>
-                                    <td><?php echo htmlspecialchars($employee['address'] ?? 'Paluan Occ. Mdo.'); ?></td>
-                                    <td class="text-right"><?php echo number_format($employee['prorated_salary'], 2); ?></td>
-                                    <td class="text-right"><?php echo $employee['other_comp'] > 0 ? number_format($employee['other_comp'], 2) : ''; ?></td>
-                                    <td class="text-right"><?php echo number_format($employee['gross_amount'], 2); ?></td>
-                                    <td class="text-right"><?php echo $employee['withholding_tax'] > 0 ? number_format($employee['withholding_tax'], 2) : ''; ?></td>
-                                    <td class="text-right"><?php echo $employee['sss'] > 0 ? number_format($employee['sss'], 2) : ''; ?></td>
-                                    <td class="text-right"><?php echo number_format($employee['total_deductions'], 2); ?></td>
-                                    <td class="text-center"><?php echo htmlspecialchars($employee['community_tax_number']); ?></td>
-                                    <td class="text-center"><?php echo $employee['community_tax_date'] ? date('m/d/Y', strtotime($employee['community_tax_date'])) : ''; ?></td>
-                                    <td class="text-right font-bold"><?php echo number_format($employee['net_amount'], 2); ?></td>
-                                    <td></td>
+                                    <td class="text-center"><?php echo $counter; ?></td>
+                                    <td class="font-medium"><?php echo htmlspecialchars($employee['employee_id'] ?? ''); ?></td>
+                                    <td class="font-medium"><?php echo htmlspecialchars($employee['full_name'] ?? ''); ?></td>
+                                    <td><?php echo htmlspecialchars($employee['position'] ?? ''); ?></td>
+                                    <td><?php echo htmlspecialchars($employee['department'] ?? ''); ?></td>
+                                    <td class="text-center"><?php echo number_format($employee['days_present'] ?? 0, 1); ?></td>
+                                    <td class="text-right"><?php echo number_format($employee['monthly_salary'] ?? 0, 2); ?></td>
+                                    <td class="text-right"><?php echo number_format($employee['amount_accrued'] ?? 0, 2); ?></td>
+                                    <td class="text-right"><?php echo ($employee['withholding_tax'] ?? 0) > 0 ? number_format($employee['withholding_tax'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['pagibig_loan_mpl'] ?? 0) > 0 ? number_format($employee['pagibig_loan_mpl'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['corso_loan'] ?? 0) > 0 ? number_format($employee['corso_loan'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['policy_loan'] ?? 0) > 0 ? number_format($employee['policy_loan'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['philhealth_ps'] ?? 0) > 0 ? number_format($employee['philhealth_ps'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['uef_retirement'] ?? 0) > 0 ? number_format($employee['uef_retirement'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['emergency_loan'] ?? 0) > 0 ? number_format($employee['emergency_loan'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['gfal'] ?? 0) > 0 ? number_format($employee['gfal'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['lbp_loan'] ?? 0) > 0 ? number_format($employee['lbp_loan'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['mpl'] ?? 0) > 0 ? number_format($employee['mpl'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['mpl_lite'] ?? 0) > 0 ? number_format($employee['mpl_lite'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['sss_contribution'] ?? 0) > 0 ? number_format($employee['sss_contribution'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['pagibig_cont'] ?? 0) > 0 ? number_format($employee['pagibig_cont'], 2) : ''; ?></td>
+                                    <td class="text-right"><?php echo ($employee['state_ins_gs'] ?? 0) > 0 ? number_format($employee['state_ins_gs'], 2) : ''; ?></td>
+                                    <td class="text-right font-bold"><?php echo number_format($total_deductions, 2); ?></td>
+                                    <td class="text-right font-bold"><?php echo number_format($amount_due, 2); ?></td>
+                                    <td class="text-center"><?php echo $counter; ?></td>
+                                    <td class="text-center"><?php echo htmlspecialchars($employee['signature_status'] ?? ''); ?></td>
                                 </tr>
+                                <?php $counter++; ?>
                             <?php endforeach; ?>
                         <?php endif; ?>
 
+                        <!-- Totals Row -->
                         <tr class="total-row">
-                            <td colspan="4" class="text-right">TOTAL AMOUNT</td>
-                            <td class="text-right"><?php echo number_format($totals['monthly_salaries'], 2); ?></td>
-                            <td class="text-right"><?php echo number_format($totals['other_comp'], 2); ?></td>
-                            <td class="text-right"><?php echo number_format($totals['gross_amount'], 2); ?></td>
-                            <td class="text-right"><?php echo number_format($totals['withholding_tax'], 2); ?></td>
-                            <td class="text-right"><?php echo number_format($totals['sss'], 2); ?></td>
-                            <td class="text-right"><?php echo number_format($totals['total_deductions'], 2); ?></td>
-                            <td></td>
-                            <td></td>
-                            <td class="text-right"><?php echo number_format($totals['net_amount'], 2); ?></td>
-                            <td></td>
+                            <td colspan="7" class="text-right font-bold">TOTAL AMOUNT</td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['amount_accrued'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['withholding_tax'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['pagibig_loan_mpl'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['corso_loan'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['policy_loan'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['philhealth_ps'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['uef_retirement'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['emergency_loan'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['gfal'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['lbp_loan'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['mpl'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['mpl_lite'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['sss_contribution'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['pagibig_cont'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['state_ins_gs'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['total_deductions'] ?? 0, 2); ?></td>
+                            <td class="text-right font-bold"><?php echo number_format($totals['amount_due'] ?? 0, 2); ?></td>
+                            <td colspan="2"></td>
                         </tr>
                     </tbody>
                 </table>
@@ -2345,7 +2507,7 @@ try {
                         <p class="font-bold">C. CERTIFIED: Cash available in the amount of</p>
                         <div class="amount-field">
                             <span>₱</span>
-                            <div class="amount-line"><?php echo number_format($totals['net_amount'], 2); ?></div>
+                            <div class="amount-line"><?php echo number_format($totals['amount_due'] ?? 0, 2); ?></div>
                         </div>
                     </div>
                     <div class="officer-signature" style="margin-top: 15px;">
@@ -2409,7 +2571,7 @@ try {
             </div>
         </div>
 
-        <!-- OBLIGATION REQUEST SECTION - EXACT MATCH TO PROVIDED STRUCTURE -->
+        <!-- OBLIGATION REQUEST SECTION -->
         <div id="obligation-section" class="obligation-container">
             <form method="POST" action="" id="obligation-form">
                 <input type="hidden" name="save_obligation" value="1">
@@ -2498,7 +2660,7 @@ try {
 
                 <!-- CERTIFICATION SECTION A & B -->
                 <div class="flex flex-row w-full border-t-0 border border-black">
-                    <!-- Set A  -->
+                    <!-- Set A -->
                     <div class="certification-box w-[740px]">
                         <p class="mb-4 font-medium"><span class="font-bold">A. Certified:</span> Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal</p>
 
@@ -2510,7 +2672,7 @@ try {
                         <div class="mt-3 text-center">Head, Requesting Office/Authorized Representative</div>
                         <div class="w-full font-semibold mt-2 mb-2">Date<span class="ml-[40px] mr-3">:</span><span class="border-b border-black w-[350px] inline-block"></span></div>
                     </div>
-                    <!-- Set B  -->
+                    <!-- Set B -->
                     <div class="certification-box w-[685px]">
                         <p class="mb-4 font-medium"><span class="font-bold">B. Certified:</span> Allotment available and obligated for the purpose/adjustment necessary as indicated above</p>
 
@@ -2581,16 +2743,10 @@ try {
             <button onclick="printObligationOnly()" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5">
                 <i class="fas fa-print mr-2"></i> Print Obligation
             </button>
-            <!-- <button type="submit" form="obligation-form" class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5">
-                <i class="fas fa-save mr-2"></i> Save Obligation Data
-            </button> -->
-        </div>
-
-        <!-- <div class="flex justify-center mb-4 print-hide">
-            <button onclick="syncPayeeWithFirstEmployee()" class="text-sm text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors duration-200">
-                <i class="fas fa-sync-alt mr-2"></i> Sync Payee with First Employee on Current Page
+            <button onclick="document.getElementById('obligation-form').submit()" class="text-white bg-purple-700 hover:bg-purple-800 focus:ring-4 focus:ring-purple-300 font-medium rounded-lg text-sm px-5 py-2.5">
+                <i class="fas fa-save mr-2"></i> Save Obligation
             </button>
-        </div> -->
+        </div>
 
         <div class="fixed bottom-4 right-4 z-50 print-hide">
             <button onclick="toggleEditModal()" class="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center" style="width: 50px; height: 50px;">
@@ -2602,7 +2758,7 @@ try {
         <div id="editPersonnelModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center" style="z-index: 99999;">
             <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold">Edit Certifying Officers</h3>
+                    <h3 class="text-xl font-bold">Edit Certifying Officers (Permanent)</h3>
                     <button onclick="toggleEditModal()" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
                 </div>
 
@@ -2655,6 +2811,65 @@ try {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // ============================================
+            // SIDEBAR FUNCTIONALITY - UPDATED to match other payroll pages
+            // ============================================
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebarContainer = document.getElementById('sidebar-container');
+            const overlay = document.getElementById('overlay');
+            const payrollToggle = document.getElementById('payroll-toggle');
+            const payrollDropdown = document.getElementById('payroll-dropdown');
+
+            // Ensure payroll dropdown is open by default on this page
+            if (payrollToggle && payrollDropdown) {
+                // Make sure dropdown is open and chevron is rotated
+                payrollDropdown.classList.add('open');
+                const chevron = payrollToggle.querySelector('.chevron');
+                if (chevron) {
+                    chevron.classList.add('rotated');
+                }
+
+                // Keep the toggle functionality but preserve open state
+                payrollToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Toggle the dropdown
+                    payrollDropdown.classList.toggle('open');
+
+                    // Toggle chevron rotation
+                    if (chevron) {
+                        chevron.classList.toggle('rotated');
+                    }
+                });
+            }
+
+            // Toggle sidebar
+            if (sidebarToggle && sidebarContainer && overlay) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebarContainer.classList.toggle('active');
+                    overlay.classList.toggle('active');
+                    document.body.style.overflow = sidebarContainer.classList.contains('active') ? 'hidden' : '';
+                });
+
+                overlay.addEventListener('click', function() {
+                    sidebarContainer.classList.remove('active');
+                    overlay.classList.remove('active');
+                    document.body.style.overflow = '';
+                });
+            }
+
+            // Close sidebar on window resize if open
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024 && sidebarContainer.classList.contains('active')) {
+                    sidebarContainer.classList.remove('active');
+                    overlay.classList.remove('active');
+                }
+            });
+
+            // ============================================
+            // DATE/TIME FUNCTIONS (preserved)
+            // ============================================
             function updateDateTime() {
                 const now = new Date();
                 const dateOptions = {
@@ -2690,51 +2905,6 @@ try {
                 });
             }
 
-            // Sidebar functionality
-            const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-            const sidebarContainer = document.getElementById('sidebar-container');
-            const overlay = document.getElementById('overlay');
-            const payrollToggle = document.getElementById('payroll-toggle');
-            const payrollDropdown = document.getElementById('payroll-dropdown');
-
-            // Ensure payroll dropdown is open by default on this page
-            if (payrollToggle && payrollDropdown) {
-                // Make sure dropdown is open and chevron is rotated
-                payrollDropdown.classList.add('open');
-                const chevron = payrollToggle.querySelector('.chevron');
-                if (chevron) {
-                    chevron.classList.add('rotated');
-                }
-
-                // Keep the toggle functionality but preserve open state
-                payrollToggle.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    // Toggle the dropdown
-                    payrollDropdown.classList.toggle('open');
-
-                    // Toggle chevron rotation
-                    if (chevron) {
-                        chevron.classList.toggle('rotated');
-                    }
-                });
-            }
-
-            if (mobileMenuToggle && sidebarContainer && overlay) {
-                mobileMenuToggle.addEventListener('click', function() {
-                    sidebarContainer.classList.toggle('active');
-                    overlay.classList.toggle('active');
-                    document.body.style.overflow = sidebarContainer.classList.contains('active') ? 'hidden' : '';
-                });
-
-                overlay.addEventListener('click', function() {
-                    sidebarContainer.classList.remove('active');
-                    overlay.classList.remove('active');
-                    document.body.style.overflow = '';
-                });
-            }
-
             const amountInput = document.getElementById('amount-input');
             const totalDisplay = document.getElementById('total-display');
 
@@ -2755,8 +2925,8 @@ try {
         }
 
         function syncPayeeWithFirstEmployee() {
-            const firstRowName = document.querySelector('.payroll-table tbody tr:first-child td:nth-child(2)');
-            const firstRowPosition = document.querySelector('.payroll-table tbody tr:first-child td:nth-child(3)');
+            const firstRowName = document.querySelector('.payroll-table tbody tr:first-child td:nth-child(3)');
+            const firstRowPosition = document.querySelector('.payroll-table tbody tr:first-child td:nth-child(4)');
 
             if (firstRowName) {
                 const employeeName = firstRowName.textContent.trim();
@@ -2778,54 +2948,257 @@ try {
         }
 
         function printPayrollOnly() {
-            const printContainer = document.createElement('div');
-            printContainer.id = 'print-payroll-container';
-            printContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:white;padding:0;margin:0;overflow:visible;';
+            // Create a new window for printing
+            const printWindow = window.open('', '_blank');
 
+            // Get the payroll section
             const payrollSection = document.getElementById('payroll-section');
             if (!payrollSection) {
                 alert('Could not find payroll section');
                 return;
             }
 
+            // Clone the payroll section
             const payrollClone = payrollSection.cloneNode(true);
+
+            // Remove all print-hide elements from the clone
             payrollClone.querySelectorAll('.print-hide, .fixed, .pagination, button, a[href*="logout"]').forEach(el => el.remove());
 
-            // Ensure 100% fit for printing
-            payrollClone.style.cssText = 'max-width:100%;margin:0;padding:0.15in;background:white;border:1px solid #000;box-sizing:border-box;';
+            // Generate HTML for both pages
+            let html = `
+            <html>
+            <head>
+                <title>Permanent Payroll - <?php echo $period_display; ?></title>
+                <style>
+                    body { margin: 0; padding: 0; background: white; font-family: 'Inter', sans-serif; }
+                    @page { size: 8.5in 13in landscape; margin: 0.2in; }
+                    .payroll-section { max-width: 100%; margin: 0; padding: 0.2in; border: 1px solid #000; background: white; page-break-after: always; }
+                    .payroll-header { position: relative; margin-bottom: 15px; }
+                    .appendix { position: absolute; right: 0; top: 0; font-size: 10px; }
+                    .payroll-title { text-align: center; font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+                    .period-container { display: flex; justify-content: center; font-weight: bold; margin-bottom: 15px; font-size: 11px; }
+                    .period-value { position: relative; margin-left: 5px; border-bottom: 1px solid #000; }
+                    .entity-info { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px; }
+                    .entity-row { display: flex; align-items: center; margin-bottom: 3px; }
+                    .entity-label { font-weight: bold; margin-right: 8px; }
+                    .entity-value { border-bottom: 1px solid #000; min-width: 180px; }
+                    .acknowledgment { font-size: 11px; font-style: italic; margin-bottom: 10px; }
+                    .payroll-table { width: 100%; border-collapse: collapse; font-size: 8px; }
+                    .payroll-table th, .payroll-table td { border: 0.5px solid #000; padding: 3px 2px; vertical-align: middle; }
+                    .payroll-table thead th { background-color: #f0f0f0; font-weight: bold; text-align: center; }
+                    .text-right { text-align: right; }
+                    .text-center { text-align: center; }
+                    .font-bold { font-weight: bold; }
+                    .total-row { background-color: #f0f0f0; font-weight: bold; }
+                    .certification-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 9px; margin-top: 15px; }
+                    .certification-box { border: 0.5px solid #000; padding: 6px; }
+                    .officer-signature { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 8px; }
+                    .officer-info { text-align: center; }
+                    .officer-name { font-weight: bold; font-size: 9px; }
+                    .officer-title { font-style: italic; font-size: 8px; }
+                    .date-field { display: flex; align-items: center; }
+                    .date-line { border-bottom: 1px solid #000; width: 50px; }
+                    .amount-field { display: flex; align-items: center; justify-content: flex-end; }
+                    .amount-line { border-bottom: 1px solid #000; min-width: 50px; text-align: right; margin-left: 3px; }
+                    .page-break { page-break-before: always; }
+                </style>
+                <script>
+                    // Auto-close the window when print is canceled or completed
+                    window.onafterprint = function() {
+                        window.close();
+                    };
+                    
+                    // Also close if the user navigates away from the print dialog
+                    setTimeout(function() {
+                        if (document.hasFocus()) {
+                            window.close();
+                        }
+                    }, 1000);
+                <\/script>
+            </head>
+            <body onload="window.print();">
+            `;
 
-            printContainer.appendChild(payrollClone);
-            document.body.appendChild(printContainer);
+            // PAGE 1: Show columns 1-17
+            html += `<div class="payroll-section">`;
+            html += payrollClone.querySelector('.appendix').outerHTML;
+            html += `<div class="payroll-title">PAYROLL (PERMANENT)</div>`;
+            html += `<div class="period-container"><span class="period-label">For the period:</span><div class="period-value"><?php echo $period_display; ?></div></div>`;
+            html += `<div class="entity-info">${payrollClone.querySelector('.entity-info').innerHTML}</div>`;
+            html += `<div class="acknowledgment">We acknowledge receipt of cash shown opposite our names as full compensation for services rendered for the period covered.</div>`;
 
-            const allElements = document.body.children;
-            for (let element of allElements) {
-                if (element.id !== 'print-payroll-container') {
-                    element.style.visibility = 'hidden';
-                    element.style.display = 'none';
-                }
-            }
+            // Create table for page 1 (columns 1-17)
+            html += `<table class="payroll-table">`;
 
-            const style = document.createElement('style');
-            style.innerHTML = '@page { size: landscape; margin: 0.15in; } @media print { body { background:white; } }';
-            document.head.appendChild(style);
+            // Headers for page 1
+            html += `<thead>`;
+            html += `<tr>`;
+            html += `<th rowspan="2">#</th>`;
+            html += `<th rowspan="2">Employee ID</th>`;
+            html += `<th rowspan="2">Name</th>`;
+            html += `<th rowspan="2">Position</th>`;
+            html += `<th rowspan="2">Department</th>`;
+            html += `<th rowspan="2">Days Present</th>`;
+            html += `<th rowspan="2">Monthly Salary</th>`;
+            html += `<th rowspan="2">Amount Accrued</th>`;
+            html += `<th colspan="9" class="text-center">DEDUCTIONS (Part 1)</th>`;
+            html += `</tr>`;
+            html += `<tr>`;
+            html += `<th>Withholding Tax</th>`;
+            html += `<th>PAG-IBIG LOAN - MPL</th>`;
+            html += `<th>Corso Loan</th>`;
+            html += `<th>Policy Loan</th>`;
+            html += `<th>PhilHealth P.S.</th>`;
+            html += `<th>UEF/Retirement</th>`;
+            html += `<th>Emergency Loan</th>`;
+            html += `<th>GFAL</th>`;
+            html += `<th>LBP Loan</th>`;
+            html += `</tr>`;
+            html += `</thead>`;
+            html += `<tbody>`;
 
-            setTimeout(() => {
-                window.print();
-                setTimeout(() => {
-                    document.body.removeChild(printContainer);
-                    style.remove();
-                    for (let element of allElements) {
-                        element.style.visibility = '';
-                        element.style.display = '';
-                    }
-                }, 500);
-            }, 100);
+            // Data rows for page 1 (columns 1-17)
+            <?php $counter = $offset + 1; ?>
+            <?php foreach ($permanent_employees as $employee): ?>
+                <?php
+                $total_deductions_part1 = ($employee['withholding_tax'] ?? 0) + ($employee['pagibig_loan_mpl'] ?? 0) + ($employee['corso_loan'] ?? 0) + ($employee['policy_loan'] ?? 0) + ($employee['philhealth_ps'] ?? 0) + ($employee['uef_retirement'] ?? 0) + ($employee['emergency_loan'] ?? 0) + ($employee['gfal'] ?? 0) + ($employee['lbp_loan'] ?? 0);
+                $amount_due = ($employee['amount_due'] ?? 0) > 0 ? $employee['amount_due'] : (($employee['amount_accrued'] ?? 0) - $total_deductions_part1);
+                ?>
+                html += `<tr>`;
+                html += `<td class="text-center"><?php echo $counter; ?></td>`;
+                html += `<td><?php echo htmlspecialchars($employee['employee_id'] ?? ''); ?></td>`;
+                html += `<td><?php echo htmlspecialchars($employee['full_name'] ?? ''); ?></td>`;
+                html += `<td><?php echo htmlspecialchars($employee['position'] ?? ''); ?></td>`;
+                html += `<td><?php echo htmlspecialchars($employee['department'] ?? ''); ?></td>`;
+                html += `<td class="text-center"><?php echo number_format($employee['days_present'] ?? 0, 1); ?></td>`;
+                html += `<td class="text-right"><?php echo number_format($employee['monthly_salary'] ?? 0, 2); ?></td>`;
+                html += `<td class="text-right"><?php echo number_format($employee['amount_accrued'] ?? 0, 2); ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['withholding_tax'] ?? 0) ? number_format($employee['withholding_tax'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['pagibig_loan_mpl'] ?? 0) ? number_format($employee['pagibig_loan_mpl'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['corso_loan'] ?? 0) ? number_format($employee['corso_loan'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['policy_loan'] ?? 0) ? number_format($employee['policy_loan'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['philhealth_ps'] ?? 0) ? number_format($employee['philhealth_ps'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['uef_retirement'] ?? 0) ? number_format($employee['uef_retirement'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['emergency_loan'] ?? 0) ? number_format($employee['emergency_loan'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['gfal'] ?? 0) ? number_format($employee['gfal'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['lbp_loan'] ?? 0) ? number_format($employee['lbp_loan'], 2) : ''; ?></td>`;
+                html += `</tr>`;
+                <?php $counter++; ?>
+            <?php endforeach; ?>
+
+            // Totals for page 1
+            html += `<tr class="total-row">`;
+            html += `<td colspan="7" class="text-right font-bold">TOTAL AMOUNT</td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['amount_accrued'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['withholding_tax'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['pagibig_loan_mpl'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['corso_loan'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['policy_loan'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['philhealth_ps'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['uef_retirement'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['emergency_loan'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['gfal'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['lbp_loan'] ?? 0, 2); ?></td>`;
+            html += `</tr>`;
+            html += `</tbody>`;
+            html += `</table>`;
+
+            // Add certification grid on first page
+            html += payrollClone.querySelector('.certification-grid').outerHTML;
+
+            // Add page indicator
+            html += `<div style="text-align: right; font-size: 8px; margin-top: 5px; font-style: italic;">Page 1 of 2 (Columns 1-17: # through LBP Loan)</div>`;
+            html += `</div>`; // Close first page
+
+            // PAGE 2: Show columns 18-29
+            html += `<div class="payroll-section page-break">`;
+            html += payrollClone.querySelector('.appendix').outerHTML;
+            html += `<div class="payroll-title">PAYROLL (PERMANENT) - CONTINUATION</div>`;
+            html += `<div class="period-container"><span class="period-label">For the period:</span><div class="period-value"><?php echo $period_display; ?></div></div>`;
+            html += `<div class="entity-info">${payrollClone.querySelector('.entity-info').innerHTML}</div>`;
+            html += `<div class="acknowledgment">We acknowledge receipt of cash shown opposite our names as full compensation for services rendered for the period covered. (Continued)</div>`;
+
+            // Create table for page 2 (columns 18-29)
+            html += `<table class="payroll-table">`;
+
+            // Headers for page 2
+            html += `<thead>`;
+            html += `<tr>`;
+            html += `<th rowspan="2">#</th>`;
+            html += `<th rowspan="2">Employee ID</th>`;
+            html += `<th rowspan="2">Name</th>`;
+            html += `<th colspan="8" class="text-center">DEDUCTIONS (Part 2)</th>`;
+            html += `<th colspan="3" class="text-center">ADDITIONAL</th>`;
+            html += `<th rowspan="2">Signature</th>`;
+            html += `</tr>`;
+            html += `<tr>`;
+            html += `<th>MPL</th>`;
+            html += `<th>MPL Lite</th>`;
+            html += `<th>SSS Contribution</th>`;
+            html += `<th>PAG-IBIG CONT.</th>`;
+            html += `<th>STATE INS. G.S.</th>`;
+            html += `<th>Total Deductions</th>`;
+            html += `<th>Amount Due</th>`;
+            html += `<th>No.</th>`;
+            html += `</tr>`;
+            html += `</thead>`;
+            html += `<tbody>`;
+
+            // Data rows for page 2 (columns 18-29)
+            <?php $counter = $offset + 1; ?>
+            <?php foreach ($permanent_employees as $employee): ?>
+                <?php
+                $total_deductions_part2 = ($employee['mpl'] ?? 0) + ($employee['mpl_lite'] ?? 0) + ($employee['sss_contribution'] ?? 0) + ($employee['pagibig_cont'] ?? 0) + ($employee['state_ins_gs'] ?? 0);
+                $total_deductions_all = ($employee['total_deductions'] ?? 0);
+                $amount_due = ($employee['amount_due'] ?? 0);
+                ?>
+                html += `<tr>`;
+                html += `<td class="text-center"><?php echo $counter; ?></td>`;
+                html += `<td><?php echo htmlspecialchars($employee['employee_id'] ?? ''); ?></td>`;
+                html += `<td><?php echo htmlspecialchars($employee['full_name'] ?? ''); ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['mpl'] ?? 0) ? number_format($employee['mpl'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['mpl_lite'] ?? 0) ? number_format($employee['mpl_lite'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['sss_contribution'] ?? 0) ? number_format($employee['sss_contribution'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['pagibig_cont'] ?? 0) ? number_format($employee['pagibig_cont'], 2) : ''; ?></td>`;
+                html += `<td class="text-right"><?php echo ($employee['state_ins_gs'] ?? 0) ? number_format($employee['state_ins_gs'], 2) : ''; ?></td>`;
+                html += `<td class="text-right font-bold"><?php echo number_format($total_deductions_all, 2); ?></td>`;
+                html += `<td class="text-right font-bold"><?php echo number_format($amount_due, 2); ?></td>`;
+                html += `<td class="text-center"><?php echo $counter; ?></td>`;
+                html += `<td class="text-center"><?php echo htmlspecialchars($employee['signature_status'] ?? ''); ?></td>`;
+                html += `</tr>`;
+                <?php $counter++; ?>
+            <?php endforeach; ?>
+
+            // Totals for page 2
+            html += `<tr class="total-row">`;
+            html += `<td colspan="3" class="text-right font-bold">TOTAL AMOUNT</td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['mpl'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['mpl_lite'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['sss_contribution'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['pagibig_cont'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['state_ins_gs'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['total_deductions'] ?? 0, 2); ?></td>`;
+            html += `<td class="text-right font-bold"><?php echo number_format($totals['amount_due'] ?? 0, 2); ?></td>`;
+            html += `<td colspan="2"></td>`;
+            html += `</tr>`;
+            html += `</tbody>`;
+            html += `</table>`;
+
+            // Add page indicator
+            html += `<div style="text-align: right; font-size: 8px; margin-top: 5px; font-style: italic;">Page 2 of 2 (Columns 18-29: MPL through Signature)</div>`;
+            html += `</div>`; // Close second page
+
+            html += `</body></html>`;
+
+            // Write to print window and print
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
         }
 
         function printObligationOnly() {
-            const printContainer = document.createElement('div');
-            printContainer.id = 'print-obligation-container';
-            printContainer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:white;padding:0;margin:0;overflow:visible;';
+            // Create a new window for printing
+            const printWindow = window.open('', '_blank');
 
             const obligationSection = document.getElementById('obligation-section');
             if (!obligationSection) {
@@ -2833,38 +3206,55 @@ try {
                 return;
             }
 
+            // Clone the obligation section
             const obligationClone = obligationSection.cloneNode(true);
+
+            // Remove all print-hide elements from the clone
             obligationClone.querySelectorAll('.print-hide, .fixed, button:not([type="submit"]), a[href*="logout"]').forEach(el => el.remove());
 
-            // Ensure 100% fit for printing
-            obligationClone.style.cssText = 'max-width:100%;margin:0;padding:0.2in;background:white;border:2px solid #000;box-sizing:border-box;';
+            // Generate HTML
+            let html = `
+            <html>
+            <head>
+                <title>Obligation Request - Permanent Payroll</title>
+                <style>
+                    body { margin: 0; padding: 0; background: white; font-family: 'Inter', sans-serif; }
+                    @page { size: portrait; margin: 0.2in; }
+                    .obligation-container { max-width: 100%; margin: 0; padding: 0.2in; background: white; border: 2px solid #000; box-sizing: border-box; }
+                    .obligation-header { display: flex; border-bottom: 2px solid #000; }
+                    .obligation-title { width: 600px; text-align: center; font-weight: bold; font-size: 14px; padding: 8px 0; }
+                    .obligation-meta { width: 300px; border-left: 2px solid #000; font-weight: 600; font-size: 11px; padding: 8px; }
+                    .obligation-table { width: 100%; border-collapse: collapse; }
+                    .obligation-table th, .obligation-table td { border: 2px solid #000; border-top: 0; padding: 8px 10px; vertical-align: middle; }
+                    .certification-box-ob { border: 2px solid #000; padding: 10px; font-size: 12px; }
+                    .status-section { border: 1px solid #000; border-top: 0; }
+                    .status-table { width: 100%; border-collapse: collapse; }
+                    .status-table th, .status-table td { border: 1px solid #000; padding: 8px 4px; text-align: center; }
+                </style>
+                <script>
+                    // Auto-close the window when print is canceled or completed
+                    window.onafterprint = function() {
+                        window.close();
+                    };
+                    
+                    // Also close if the user navigates away from the print dialog
+                    setTimeout(function() {
+                        if (document.hasFocus()) {
+                            window.close();
+                        }
+                    }, 1000);
+                <\/script>
+            </head>
+            <body onload="window.print();">
+                ${obligationClone.outerHTML}
+            </body>
+            </html>
+            `;
 
-            printContainer.appendChild(obligationClone);
-            document.body.appendChild(printContainer);
-
-            const allElements = document.body.children;
-            for (let element of allElements) {
-                if (element.id !== 'print-obligation-container') {
-                    element.style.visibility = 'hidden';
-                    element.style.display = 'none';
-                }
-            }
-
-            const style = document.createElement('style');
-            style.innerHTML = '@page { size: portrait; margin: 0.2in; } @media print { body { background:white; } }';
-            document.head.appendChild(style);
-
-            setTimeout(() => {
-                window.print();
-                setTimeout(() => {
-                    document.body.removeChild(printContainer);
-                    style.remove();
-                    for (let element of allElements) {
-                        element.style.visibility = '';
-                        element.style.display = '';
-                    }
-                }, 500);
-            }, 100);
+            // Write to print window
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
         }
 
         function toggleEditModal() {
@@ -2917,7 +3307,7 @@ try {
             submitBtn.innerHTML = 'Saving...';
             submitBtn.disabled = true;
 
-            fetch('save_personnel_config.php', {
+            fetch('save_personnel_config_permanent.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

@@ -209,7 +209,6 @@ function handleAddEmployee($conn)
         } else {
             throw new Exception("Error creating user account: " . $conn->error);
         }
-
     } catch (Exception $e) {
         $conn->rollback();
         $form_submit_error = $e->getMessage();
@@ -353,7 +352,6 @@ function handleEditEmployee($conn)
         } else {
             throw new Exception("Error updating employee: " . $conn->error);
         }
-
     } catch (Exception $e) {
         $conn->rollback();
         $form_submit_error = $e->getMessage();
@@ -1904,6 +1902,18 @@ if (!empty($search_term)) {
             border-color: #3b82f6;
             ring-color: #3b82f6;
         }
+
+        .sidebar-item.logout {
+            color: #fecaca;
+            margin-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1rem;
+        }
+
+        .sidebar-item.logout:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fecaca;
+        }
     </style>
 </head>
 
@@ -2379,10 +2389,10 @@ if (!empty($search_term)) {
                                 <!-- First Page Button -->
                                 <?php if ($current_page > 1): ?>
                                     <a href="permanent.php?page=1<?php
-                                    echo ($show_inactive ? '&show_inactive=1' : '');
-                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
-                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
-                                    ?>" class="pagination-btn" title="First Page">
+                                                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                                                    ?>" class="pagination-btn" title="First Page">
                                         <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
@@ -2394,10 +2404,10 @@ if (!empty($search_term)) {
                                 <!-- First Page Button -->
                                 <?php if ($current_page > 1): ?>
                                     <a href="permanent.php?page=1<?php
-                                    echo ($show_inactive ? '&show_inactive=1' : '');
-                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
-                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
-                                    ?>" class="pagination-btn" title="First Page">
+                                                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                                                    ?>" class="pagination-btn" title="First Page">
                                         <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
@@ -2422,7 +2432,7 @@ if (!empty($search_term)) {
 
                                 // Show page numbers
                                 for ($i = $start_page; $i <= $end_page; $i++):
-                                    ?>
+                                ?>
                                     <a href="permanent.php?page=<?php echo $i; ?><?php echo ($show_inactive ? '&show_inactive=1' : '') . (!empty($filter_office) ? '&office=' . urlencode($filter_office) : ''); ?>"
                                         class="pagination-btn <?php echo ($i == $current_page) ? 'active' : ''; ?>">
                                         <?php echo $i; ?>
@@ -2440,10 +2450,10 @@ if (!empty($search_term)) {
                                 <!-- First Page Button -->
                                 <?php if ($current_page > 1): ?>
                                     <a href="permanent.php?page=1<?php
-                                    echo ($show_inactive ? '&show_inactive=1' : '');
-                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
-                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
-                                    ?>" class="pagination-btn" title="First Page">
+                                                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                                                    ?>" class="pagination-btn" title="First Page">
                                         <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
@@ -2455,10 +2465,10 @@ if (!empty($search_term)) {
                                 <!-- First Page Button -->
                                 <?php if ($current_page > 1): ?>
                                     <a href="permanent.php?page=1<?php
-                                    echo ($show_inactive ? '&show_inactive=1' : '');
-                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
-                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
-                                    ?>" class="pagination-btn" title="First Page">
+                                                                    echo ($show_inactive ? '&show_inactive=1' : '');
+                                                                    echo (!empty($filter_office) && $filter_office !== 'all' ? '&office=' . urlencode($filter_office) : '');
+                                                                    echo (!empty($search_term) ? '&search=' . urlencode($search_term) : '');
+                                                                    ?>" class="pagination-btn" title="First Page">
                                         <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 <?php else: ?>
@@ -2970,7 +2980,7 @@ if (!empty($search_term)) {
         const searchForm = document.getElementById('searchForm');
 
         if (searchInput && searchForm) {
-            searchInput.addEventListener('input', function () {
+            searchInput.addEventListener('input', function() {
                 clearTimeout(searchTimeout);
                 searchTimeout = setTimeout(() => {
                     searchForm.submit();
@@ -2978,7 +2988,7 @@ if (!empty($search_term)) {
             });
 
             // Optional: Allow Enter key to submit immediately
-            searchInput.addEventListener('keypress', function (e) {
+            searchInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     clearTimeout(searchTimeout);
@@ -3255,7 +3265,7 @@ if (!empty($search_term)) {
                     // Add form validation for edit form
                     const editForm = document.getElementById('editEmployeeForm');
                     if (editForm) {
-                        editForm.addEventListener('submit', function (e) {
+                        editForm.addEventListener('submit', function(e) {
                             const submitBtn = editForm.querySelector('button[type="submit"]');
                             if (submitBtn) {
                                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
@@ -3346,7 +3356,7 @@ if (!empty($search_term)) {
         }
 
         // Close modal when clicking on backdrop
-        document.getElementById('modalBackdrop').addEventListener('click', function () {
+        document.getElementById('modalBackdrop').addEventListener('click', function() {
             closeModal();
             closeEditModal();
             closeViewModal();
@@ -3541,12 +3551,13 @@ if (!empty($search_term)) {
             const container = document.getElementById('editProfileImageContainer');
             if (this.files && this.files[0] && container) {
                 const reader = new FileReader();
-                reader.onload = function (e) {
+                reader.onload = function(e) {
                     container.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
                 };
                 reader.readAsDataURL(this.files[0]);
             }
         }
+
         function validateStep(stepIndex) {
             const currentStepElement = document.getElementById(`step${stepIndex}`);
             if (!currentStepElement) return true;
@@ -3639,7 +3650,7 @@ if (!empty($search_term)) {
 
             // Add loading indicator for pagination clicks
             document.querySelectorAll('.pagination-btn[href]').forEach(link => {
-                link.addEventListener('click', function (e) {
+                link.addEventListener('click', function(e) {
                     // Only show loading for page changes, not first/last/prev/next icons
                     if (!this.querySelector('i')) {
                         this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -3650,11 +3661,11 @@ if (!empty($search_term)) {
         }
 
         // Initialize pagination UI on load
-        document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function() {
             updatePaginationUI();
 
             // Keyboard navigation for pagination
-            document.addEventListener('keydown', function (e) {
+            document.addEventListener('keydown', function(e) {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
                     return; // Don't interfere with form inputs
                 }
@@ -3682,7 +3693,7 @@ if (!empty($search_term)) {
         // Records per page selector
         const recordsPerPageSelect = document.getElementById('recordsPerPage');
         if (recordsPerPageSelect) {
-            recordsPerPageSelect.addEventListener('change', function () {
+            recordsPerPageSelect.addEventListener('change', function() {
                 const recordsPerPage = this.value;
                 const url = new URL(window.location.href);
                 url.searchParams.set('per_page', recordsPerPage);
@@ -3694,15 +3705,15 @@ if (!empty($search_term)) {
         // ===============================================
         // EVENT LISTENERS
         // ===============================================
-        document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function() {
             // Real-time validation for Employee ID
             const employeeIdInput = document.getElementById('employee_id');
             if (employeeIdInput) {
-                employeeIdInput.addEventListener('input', function () {
+                employeeIdInput.addEventListener('input', function() {
                     validateEmployeeId(this);
                 });
 
-                employeeIdInput.addEventListener('blur', function () {
+                employeeIdInput.addEventListener('blur', function() {
                     validateEmployeeId(this);
                 });
             }
@@ -3710,11 +3721,11 @@ if (!empty($search_term)) {
             // Real-time validation for full name
             const fullNameInput = document.getElementById('full_name');
             if (fullNameInput) {
-                fullNameInput.addEventListener('input', function () {
+                fullNameInput.addEventListener('input', function() {
                     validateFullName(this);
                 });
 
-                fullNameInput.addEventListener('blur', function () {
+                fullNameInput.addEventListener('blur', function() {
                     validateFullName(this);
                 });
             }
@@ -3723,12 +3734,12 @@ if (!empty($search_term)) {
             const mobileInput = document.getElementById('mobile_number');
             if (mobileInput) {
                 // Prevent non-numeric input
-                mobileInput.addEventListener('input', function () {
+                mobileInput.addEventListener('input', function() {
                     this.value = this.value.replace(/\D/g, '').slice(0, 11);
                     validateMobileNumber(this);
                 });
 
-                mobileInput.addEventListener('blur', function () {
+                mobileInput.addEventListener('blur', function() {
                     validateMobileNumber(this);
                 });
             }
@@ -3736,29 +3747,29 @@ if (!empty($search_term)) {
             // Real-time validation for salary fields
             const monthlySalaryInput = document.getElementById('monthly_salary');
             if (monthlySalaryInput) {
-                monthlySalaryInput.addEventListener('input', function () {
+                monthlySalaryInput.addEventListener('input', function() {
                     validateSalary(this);
                 });
 
-                monthlySalaryInput.addEventListener('blur', function () {
+                monthlySalaryInput.addEventListener('blur', function() {
                     validateSalary(this);
                 });
             }
 
             const amountAccruedInput = document.getElementById('amount_accrued');
             if (amountAccruedInput) {
-                amountAccruedInput.addEventListener('input', function () {
+                amountAccruedInput.addEventListener('input', function() {
                     validateSalary(this);
                 });
 
-                amountAccruedInput.addEventListener('blur', function () {
+                amountAccruedInput.addEventListener('blur', function() {
                     validateSalary(this);
                 });
             }
 
             // Step navigation click
             document.querySelectorAll('.step-nav').forEach(nav => {
-                nav.addEventListener('click', function () {
+                nav.addEventListener('click', function() {
                     const step = parseInt(this.getAttribute('data-step'));
                     if (validateStep(currentStep)) {
                         currentStep = step;
@@ -3770,7 +3781,7 @@ if (!empty($search_term)) {
 
             // Next button click
             document.querySelectorAll('.next-step').forEach(button => {
-                button.addEventListener('click', function () {
+                button.addEventListener('click', function() {
                     const nextStep = parseInt(this.getAttribute('data-next'));
                     if (validateStep(currentStep)) {
                         currentStep = nextStep;
@@ -3782,7 +3793,7 @@ if (!empty($search_term)) {
 
             // Previous button click
             document.querySelectorAll('.prev-step').forEach(button => {
-                button.addEventListener('click', function () {
+                button.addEventListener('click', function() {
                     currentStep--;
                     showStep(currentStep);
                     updateStepNavigation();
@@ -3795,13 +3806,13 @@ if (!empty($search_term)) {
                 const fileStatus = zone.querySelector('.file-status');
 
                 if (fileInput && fileStatus) {
-                    zone.addEventListener('click', function (e) {
+                    zone.addEventListener('click', function(e) {
                         if (e.target !== fileInput) {
                             fileInput.click();
                         }
                     });
 
-                    fileInput.addEventListener('change', function () {
+                    fileInput.addEventListener('change', function() {
                         if (this.files.length > 0) {
                             const fileName = this.files[0].name;
                             fileStatus.textContent = `Selected: ${fileName}`;
@@ -3813,16 +3824,16 @@ if (!empty($search_term)) {
                     });
 
                     // Drag and drop
-                    zone.addEventListener('dragover', function (e) {
+                    zone.addEventListener('dragover', function(e) {
                         e.preventDefault();
                         zone.classList.add('border-blue-500');
                     });
 
-                    zone.addEventListener('dragleave', function () {
+                    zone.addEventListener('dragleave', function() {
                         zone.classList.remove('border-blue-500');
                     });
 
-                    zone.addEventListener('drop', function (e) {
+                    zone.addEventListener('drop', function(e) {
                         e.preventDefault();
                         zone.classList.remove('border-blue-500');
 
@@ -3841,10 +3852,10 @@ if (!empty($search_term)) {
             const profileImageContainer = document.getElementById('profileImageContainer');
 
             if (profileImageInput && profileImageContainer) {
-                profileImageInput.addEventListener('change', function () {
+                profileImageInput.addEventListener('change', function() {
                     if (this.files && this.files[0]) {
                         const reader = new FileReader();
-                        reader.onload = function (e) {
+                        reader.onload = function(e) {
                             profileImageContainer.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-full" alt="Profile Image">`;
                         };
                         reader.readAsDataURL(this.files[0]);
@@ -3855,7 +3866,7 @@ if (!empty($search_term)) {
             // Form submission
             const form = document.getElementById('employeeForm');
             if (form) {
-                form.addEventListener('submit', function (e) {
+                form.addEventListener('submit', function(e) {
                     // Validate all steps before submission
                     let allValid = true;
                     for (let i = 1; i <= 3; i++) {
@@ -3885,7 +3896,7 @@ if (!empty($search_term)) {
             // Search functionality
             const searchInput = document.getElementById('simple-search');
             if (searchInput) {
-                searchInput.addEventListener('input', function () {
+                searchInput.addEventListener('input', function() {
                     const searchTerm = this.value.toLowerCase();
                     const rows = document.querySelectorAll('tbody tr');
 
@@ -3917,12 +3928,12 @@ if (!empty($search_term)) {
             const overlay = document.getElementById('overlay');
 
             if (sidebarToggle && sidebarContainer && overlay) {
-                sidebarToggle.addEventListener('click', function () {
+                sidebarToggle.addEventListener('click', function() {
                     sidebarContainer.classList.toggle('active');
                     overlay.classList.toggle('active');
                 });
 
-                overlay.addEventListener('click', function () {
+                overlay.addEventListener('click', function() {
                     sidebarContainer.classList.remove('active');
                     overlay.classList.remove('active');
                 });
@@ -3933,7 +3944,7 @@ if (!empty($search_term)) {
             const payrollDropdown = document.getElementById('payroll-dropdown');
 
             if (payrollToggle && payrollDropdown) {
-                payrollToggle.addEventListener('click', function (e) {
+                payrollToggle.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
 
@@ -3954,13 +3965,13 @@ if (!empty($search_term)) {
 
             if (filterDropdownButton && filterDropdown) {
                 // Toggle dropdown when button is clicked
-                filterDropdownButton.addEventListener('click', function (e) {
+                filterDropdownButton.addEventListener('click', function(e) {
                     e.stopPropagation();
                     filterDropdown.classList.toggle('hidden');
                 });
 
                 // Close dropdown when clicking outside
-                document.addEventListener('click', function (e) {
+                document.addEventListener('click', function(e) {
                     if (!filterDropdownButton.contains(e.target) && !filterDropdown.contains(e.target)) {
                         filterDropdown.classList.add('hidden');
                     }

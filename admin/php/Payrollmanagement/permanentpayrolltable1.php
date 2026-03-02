@@ -691,7 +691,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
           data-payroll-exists="<?php echo $payroll_exists ? '1' : '0'; ?>">
 
           <td class="text-center">
-            <input type="checkbox" class="employee-checkbox" value="<?php echo htmlspecialchars($employee['employee_id']); ?>"
+            <input type="checkbox" class="employee-checkbox border border-gray-500 bg-transparent rounded-sm" value="<?php echo htmlspecialchars($employee['employee_id']); ?>"
               data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>"
               data-user-id="<?php echo $employee['user_id']; ?>">
           </td>
@@ -901,16 +901,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
               <button type="button" class="action-btn view-btn" onclick="viewEmployeeData(<?php echo $employee['user_id']; ?>, '<?php echo $selected_period; ?>', '<?php echo $selected_cutoff; ?>')">
                 <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
               </button>
-              <?php if (!$is_full_month_ajax && ($payroll_status == 'pending' || $payroll_status == 'draft')): ?>
-                <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
-                  <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
-                </button>
-              <?php endif; ?>
-              <?php if ($payroll_id): ?>
-                <button type="button" class="action-btn bg-purple-500 text-white hover:bg-purple-600" onclick="viewDeductions(<?php echo $payroll_id; ?>)">
-                  <i class="fas fa-chart-pie"></i> <span class="hidden md:inline">Deductions</span>
-                </button>
-              <?php endif; ?>
             </div>
           </td>
         </tr>
@@ -976,7 +966,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
     }
 
     // Save Deductions (Handles ALL fields at once - called by auto-save)
-    // FIXED: Corrected the number of bound variables to match the query
     if ($_POST['ajax_action'] === 'save_deductions') {
       $user_id = intval($_POST['employee_id']);
 
@@ -1183,28 +1172,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
         } else {
           // INSERT new record - FIXED: Corrected number of placeholders to match execute array
           $insert_sql = "INSERT INTO payroll_history_permanent 
-    (employee_id, user_id, employee_type, full_name, position, office, 
-     payroll_period, payroll_cutoff,
-     monthly_salary, amount_accrued, other_comp, gross_amount,
-     withholding_tax, pagibig_loan_mpl, corso_loan, policy_loan,
-     philhealth_ps, uef_retirement, emergency_loan, gfal,
-     lbp_loan, mpl, mpl_lite, sss_contribution,
-     pagibig_cont, state_ins_gs, total_deductions, amount_due, net_amount, 
-     days_present, working_days, status, processed_date,
-     obligation_status, signature_status) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+              (employee_id, user_id, employee_type, full_name, position, office, 
+               payroll_period, payroll_cutoff,
+               monthly_salary, amount_accrued, other_comp, gross_amount,
+               withholding_tax, pagibig_loan_mpl, corso_loan, policy_loan,
+               philhealth_ps, uef_retirement, emergency_loan, gfal,
+               lbp_loan, mpl, mpl_lite, sss_contribution,
+               pagibig_cont, state_ins_gs, total_deductions, amount_due, net_amount, 
+               days_present, working_days, status, processed_date,
+               obligation_status, signature_status, created_at, updated_at) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
 
-          // Count: 36 fields, 36 placeholders
           $insert_stmt = $pdo->prepare($insert_sql);
           $insert_stmt->execute([
             $employee_id,           // 1
             $user_id,               // 2
-            'permanent',            // 3 - employee_type
+            'permanent',            // 3
             $full_name,             // 4
             $position,              // 5
             $office,                // 6
-            $period,                // 7 - payroll_period
-            $cutoff,                // 8 - payroll_cutoff
+            $period,                // 7
+            $cutoff,                // 8
             $monthly_salary,        // 9
             $amount_accrued,        // 10
             $other_comp,            // 11
@@ -1225,16 +1213,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
             $state_ins_gs,          // 26
             $total_deductions,      // 27
             $amount_due,            // 28
-            $amount_due,            // 29 - net_amount
+            $amount_due,            // 29
             $days_present,          // 30
-            22,                     // 31 - working_days
-            'pending',              // 32 - status
-            date('Y-m-d H:i:s'),    // 33 - processed_date
-            'pending',              // 34 - obligation_status
-            '(Not signed)'          // 35 - signature_status
-            // NOT included: created_at, updated_at (auto-generated)
-            // NOT included: approved_by, approved_date (null by default)
-            // NOT included: obligation_id (null by default)
+            22,                     // 31
+            'pending',              // 32
+            date('Y-m-d H:i:s'),    // 33
+            'pending',              // 34
+            '(Not signed)'          // 35
           ]);
 
           $new_id = $pdo->lastInsertId();
@@ -1715,18 +1700,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payroll'])) {
 
         $processed_count++;
       } else {
-        // INSERT new record
+        // INSERT new record - FIXED: Corrected number of placeholders to match execute array
         $insert_sql = "INSERT INTO payroll_history_permanent 
-    (employee_id, user_id, employee_type, full_name, position, office, 
-     payroll_period, payroll_cutoff,
-     monthly_salary, amount_accrued, other_comp, gross_amount,
-     withholding_tax, pagibig_loan_mpl, corso_loan, policy_loan,
-     philhealth_ps, uef_retirement, emergency_loan, gfal,
-     lbp_loan, mpl, mpl_lite, sss_contribution,
-     pagibig_cont, state_ins_gs, total_deductions, amount_due, net_amount, 
-     days_present, working_days, status, processed_date,
-     obligation_status, signature_status) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            (employee_id, user_id, employee_type, full_name, position, office, 
+             payroll_period, payroll_cutoff,
+             monthly_salary, amount_accrued, other_comp, gross_amount,
+             withholding_tax, pagibig_loan_mpl, corso_loan, policy_loan,
+             philhealth_ps, uef_retirement, emergency_loan, gfal,
+             lbp_loan, mpl, mpl_lite, sss_contribution,
+             pagibig_cont, state_ins_gs, total_deductions, amount_due, net_amount, 
+             days_present, working_days, status, processed_date,
+             obligation_status, signature_status, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
 
         $insert_stmt = $pdo->prepare($insert_sql);
         $insert_stmt->execute([
@@ -2373,36 +2358,42 @@ ob_end_flush();
   <style>
     :root {
       --primary: #1e40af;
-      --secondary: #1e3a8a;
-      --accent: #3b82f6;
-      --gradient-nav: linear-gradient(90deg, #1e3a8a 0%, #1e40af 100%);
+      --primary-dark: #1e3a8a;
+      --primary-light: #3b82f6;
+      --secondary: #6366f1;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --info: #3b82f6;
+      --dark: #1f2937;
+      --light: #f8fafc;
+      --gradient-primary: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
     }
 
     * {
-      box-sizing: border-box;
       margin: 0;
       padding: 0;
+      box-sizing: border-box;
     }
 
     body {
       font-family: 'Inter', sans-serif;
       background: #f8fafc;
+      color: var(--dark);
       min-height: 100vh;
       overflow-x: hidden;
-      color: #1f2937;
     }
 
-    /* NAVBAR - FIXED RESPONSIVE STYLES */
+    /* Navbar Styling - Updated to match other payroll pages */
     .navbar {
-      background: var(--gradient-nav);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      background: var(--gradient-primary);
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      z-index: 1000;
       height: 70px;
-      backdrop-filter: blur(10px);
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
@@ -2419,16 +2410,33 @@ ob_end_flush();
       display: flex;
       align-items: center;
       gap: 1rem;
-      flex: 1;
     }
 
     .navbar-right {
       display: flex;
       align-items: center;
-      gap: 1.5rem;
+      gap: 1rem;
     }
 
-    /* Logo and Brand */
+    .mobile-toggle {
+      display: none;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      width: 40px;
+      height: 40px;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      color: white;
+    }
+
+    .mobile-toggle:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: scale(1.05);
+    }
+
     .navbar-brand {
       display: flex;
       align-items: center;
@@ -2438,12 +2446,12 @@ ob_end_flush();
     }
 
     .navbar-brand:hover {
-      transform: scale(1.02);
+      transform: translateY(-2px);
     }
 
     .brand-logo {
-      width: 45px;
-      height: 45px;
+      width: 40px;
+      height: 40px;
       object-fit: contain;
       filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
     }
@@ -2454,51 +2462,44 @@ ob_end_flush();
     }
 
     .brand-title {
-      font-size: 1.4rem;
-      font-weight: 700;
+      font-size: 1.1rem;
+      font-weight: 800;
       color: white;
       line-height: 1.2;
-      letter-spacing: 0.5px;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      letter-spacing: -0.5px;
     }
 
     .brand-subtitle {
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       color: rgba(255, 255, 255, 0.9);
       font-weight: 500;
-      letter-spacing: 0.3px;
     }
 
-    /* Date & Time Display */
     .datetime-container {
       display: flex;
-      align-items: center;
-      gap: 1.5rem;
+      gap: 1rem;
     }
 
     .datetime-box {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.5rem;
       background: rgba(255, 255, 255, 0.15);
       backdrop-filter: blur(10px);
       border-radius: 12px;
-      padding: 0.6rem 1rem;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0.5rem 1rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
       transition: all 0.3s ease;
-      min-width: 180px;
     }
 
     .datetime-box:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.25);
       transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     }
 
     .datetime-icon {
-      font-size: 1.1rem;
       color: white;
-      opacity: 0.9;
+      font-size: 1rem;
     }
 
     .datetime-text {
@@ -2507,21 +2508,18 @@ ob_end_flush();
     }
 
     .datetime-label {
-      font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.8);
       font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
     }
 
     .datetime-value {
-      font-size: 0.95rem;
+      font-size: 0.85rem;
+      font-weight: 700;
       color: white;
-      font-weight: 600;
-      line-height: 1.3;
     }
 
-    /* Logout Button */
+    /* Logout Button - New */
     .logout-btn {
       display: flex;
       align-items: center;
@@ -2544,190 +2542,277 @@ ob_end_flush();
       box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     }
 
-    /* Mobile Menu Toggle */
-    .mobile-toggle {
-      display: flex;
-      background: rgba(255, 255, 255, 0.15);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      width: 40px;
-      height: 40px;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      border: none;
-      outline: none;
-    }
-
-    .mobile-toggle:hover {
-      background: rgba(255, 255, 255, 0.25);
-      transform: scale(1.05);
-    }
-
-    .mobile-toggle i {
-      font-size: 1.25rem;
-      color: white;
-    }
-
-    @media (min-width: 1024px) {
-      .mobile-toggle {
-        display: none;
-      }
-    }
-
-    /* Sidebar Styles */
-    .sidebar-overlay {
+    /* Sidebar - Updated to match other payroll pages */
+    .sidebar-container {
       position: fixed;
-      top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(4px);
+      top: 70px;
+      width: 260px;
+      height: calc(100vh - 70px);
+      background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
       z-index: 999;
-      opacity: 0;
-      visibility: hidden;
-      transition: all 0.3s ease;
-    }
-
-    .sidebar-overlay.active {
-      opacity: 1;
-      visibility: visible;
+      transition: transform 0.3s ease;
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+      overflow-y: auto;
     }
 
     .sidebar {
-      position: fixed;
-      top: 70px;
-      left: -300px;
-      width: 250px;
-      height: calc(100vh - 70px);
-      background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
-      z-index: 1000;
-      transition: left 0.3s ease;
+      height: 100%;
+      padding: 1.5rem 0;
       display: flex;
       flex-direction: column;
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-
-    .sidebar.active {
-      left: 0;
-    }
-
-    @media (min-width: 1024px) {
-      .sidebar {
-        left: 0;
-        top: 70px;
-        height: calc(100vh - 70px);
-      }
-
-      .sidebar-overlay {
-        display: none !important;
-      }
-
-      main {
-        margin-left: 250px;
-      }
     }
 
     .sidebar-content {
       flex: 1;
-      padding: 1.5rem 1rem;
-      overflow-y: auto;
+      padding: 0 1rem;
     }
 
-    .sidebar-footer {
-      padding: 1rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      text-align: center;
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 0.8rem;
-    }
-
-    /* Sidebar Menu Items */
     .sidebar-item {
       display: flex;
       align-items: center;
-      padding: 0.875rem 1rem;
-      color: white;
+      gap: 1rem;
+      padding: 0.9rem 1.25rem;
+      color: rgba(255, 255, 255, 0.85);
       text-decoration: none;
-      border-radius: 12px;
-      margin-bottom: 0.5rem;
       transition: all 0.3s ease;
-      cursor: pointer;
+      border-radius: 12px;
+      margin-bottom: 0.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sidebar-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 4px;
+      background: white;
+      transform: scaleY(0);
+      transition: transform 0.3s ease;
+      border-radius: 0 4px 4px 0;
     }
 
     .sidebar-item:hover {
-      background: rgba(255, 255, 255, 0.15);
-      transform: translateX(5px);
+      background: rgba(255, 255, 255, 0.12);
+      color: white;
+      transform: translateX(4px);
+    }
+
+    .sidebar-item:hover::before {
+      transform: scaleY(1);
     }
 
     .sidebar-item.active {
-      background: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      background: rgba(255, 255, 255, 0.18);
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .sidebar-item.active::before {
+      transform: scaleY(1);
     }
 
     .sidebar-item i {
-      width: 1.5rem;
+      font-size: 1.2rem;
+      width: 24px;
       text-align: center;
-      margin-right: 0.75rem;
-      font-size: 1.1rem;
     }
 
     .sidebar-item span {
+      font-size: 0.95rem;
+      font-weight: 600;
       flex: 1;
-      font-weight: 500;
-      font-size: 0.9rem;
     }
 
-    .sidebar-item .chevron {
-      transition: transform 0.3s ease;
-      font-size: 0.7rem;
-    }
-
-    .sidebar-item .chevron.rotated {
-      transform: rotate(180deg);
-    }
-
-    /* Dropdown Menu in Sidebar */
-    .submenu {
+    .sidebar-dropdown-menu {
       max-height: 0;
       overflow: hidden;
       transition: max-height 0.3s ease;
       margin-left: 2.5rem;
     }
 
-    .submenu.open {
+    .sidebar-dropdown-menu.open {
       max-height: 500px;
     }
 
-    .submenu-item {
+    .sidebar-dropdown-item {
       display: flex;
       align-items: center;
-      padding: 0.5rem 1rem;
+      padding: 0.7rem 1rem;
       color: rgba(255, 255, 255, 0.8);
       text-decoration: none;
       border-radius: 8px;
       margin-bottom: 0.25rem;
       transition: all 0.3s ease;
-      font-size: 0.85rem;
+      font-size: 0.9rem;
     }
 
-    .submenu-item:hover {
-      background: rgba(255, 255, 255, 0.1);
+    .sidebar-dropdown-item:hover {
+      background: rgba(255, 255, 255, 0.15);
       color: white;
       transform: translateX(5px);
     }
 
-    .submenu-item.active {
-      background: rgba(255, 255, 255, 0.2);
+    .sidebar-dropdown-item.active {
+      background: rgba(255, 255, 255, 0.25);
+      color: white;
+      font-weight: 600;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sidebar-dropdown-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 3px;
+      background: white;
+      border-radius: 0 3px 3px 0;
+    }
+
+    .sidebar-dropdown-item i {
+      font-size: 0.7rem;
+      margin-right: 0.75rem;
+      color: rgba(255, 255, 255, 0.7);
+      transition: color 0.3s ease;
+    }
+
+    .sidebar-dropdown-item:hover i,
+    .sidebar-dropdown-item.active i {
       color: white;
     }
 
-    .submenu-item i {
+    .chevron {
+      transition: transform 0.3s ease;
+    }
+
+    .chevron.rotated {
+      transform: rotate(180deg);
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      text-align: center;
+      color: white;
       font-size: 0.75rem;
-      margin-right: 0.5rem;
+    }
+
+    /* Overlay for mobile */
+    .overlay {
+      position: fixed;
+      top: 70px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 998;
+      display: none;
+    }
+
+    .overlay.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    /* Main Content - Adjusted margin */
+    main {
+      margin-left: 260px;
+      margin-top: 70px;
+      padding: 1.5rem;
+      min-height: calc(100vh - 70px);
+      transition: margin-left 0.3s ease;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        margin-left: 0;
+        padding: 1rem;
+      }
+
+      .sidebar-container {
+        transform: translateX(-100%);
+      }
+
+      .sidebar-container.active {
+        transform: translateX(0);
+      }
+
+      .mobile-toggle {
+        display: flex;
+      }
+
+      .datetime-container {
+        display: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .brand-text {
+        display: none;
+      }
+
+      .logout-btn span {
+        display: none;
+      }
+
+      .logout-btn {
+        padding: 0.5rem;
+        width: 40px;
+        height: 40px;
+        justify-content: center;
+      }
+
+      main {
+        padding: 0.75rem;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .navbar {
+        height: 65px;
+      }
+
+      .sidebar-container {
+        top: 65px;
+        height: calc(100vh - 65px);
+      }
+
+      main {
+        margin-top: 65px;
+      }
+
+      .mobile-toggle {
+        width: 36px;
+        height: 36px;
+      }
+
+      .brand-logo {
+        width: 40px;
+        height: 40px;
+      }
+
+      .logout-btn {
+        width: 36px;
+        height: 36px;
+      }
     }
 
     /* Mobile Brand Styling */
@@ -2755,33 +2840,54 @@ ob_end_flush();
       font-weight: 500;
     }
 
-    /* Main Content */
-    main {
-      margin-top: 70px;
-      padding: 1.5rem;
-      min-height: calc(100vh - 70px);
-      width: 100%;
-      transition: margin-left 0.3s ease;
-    }
+    @media (min-width: 769px) {
+      .mobile-brand {
+        display: none;
+      }
 
-    @media (min-width: 1024px) {
-      main {
-        margin-left: 250px;
-        width: calc(100% - 250px);
+      .brand-text {
+        display: flex;
       }
     }
 
-    @media (max-width: 768px) {
-      main {
-        padding: 1rem;
-      }
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
     }
 
-    /* Table responsive design */
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a1a1a1;
+    }
+
+    /* ========== EXISTING STYLES BELOW - UNCHANGED ========== */
+    /* Card Styles */
+    .card {
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Table Styles */
     .table-container {
       overflow-x: auto;
-      border-radius: 0.5rem;
-      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
       -webkit-overflow-scrolling: touch;
     }
 
@@ -2791,25 +2897,26 @@ ob_end_flush();
       border-collapse: collapse;
     }
 
-    .payroll-table th,
+    .payroll-table th {
+      background: #f8fafc;
+      padding: 0.75rem;
+      font-weight: 600;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
     .payroll-table td {
       padding: 0.75rem;
       border: 1px solid #e5e7eb;
       white-space: nowrap;
-      text-align: left;
-    }
-
-    .payroll-table th {
-      background-color: #f8fafc;
-      font-weight: 600;
-      color: #374151;
     }
 
     .payroll-table tbody tr:hover {
-      background-color: #f9fafb;
+      background: #f9fafb;
     }
 
-    /* Checkbox styling */
+    /* Checkbox Styling */
     .employee-checkbox {
       width: 18px;
       height: 18px;
@@ -2824,14 +2931,14 @@ ob_end_flush();
       accent-color: var(--primary);
     }
 
-    /* Print actions bar */
+    /* Print Actions Bar */
     .print-actions {
       display: flex;
       align-items: center;
       gap: 0.5rem;
       margin-bottom: 0.5rem;
       padding: 0.5rem;
-      background-color: #f9fafb;
+      background: #f9fafb;
       border-radius: 0.5rem;
       border: 1px solid #e5e7eb;
     }
@@ -2840,207 +2947,145 @@ ob_end_flush();
       font-size: 0.875rem;
       font-weight: 500;
       color: var(--primary);
-      background-color: #eff6ff;
+      background: #eff6ff;
       padding: 0.25rem 0.75rem;
       border-radius: 9999px;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
     }
 
-    /* Highlight rows with no attendance */
-    .payroll-row.no-attendance {
-      background-color: #fff3f3;
+    /* Search Container */
+    .search-container {
+      position: relative;
+      max-width: 300px;
     }
 
-    .payroll-row.no-attendance .gross-amount,
-    .payroll-row.no-attendance .net-amount {
-      color: #999;
-      font-style: italic;
-    }
-
-    /* Info badge for attendance rules */
-    .attendance-info-badge {
-      display: inline-block;
-      padding: 0.25rem 0.75rem;
-      border-radius: 9999px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      background-color: #f3f4f6;
-      color: #4b5563;
-    }
-
-    .attendance-info-badge.warning {
-      background-color: #fee2e2;
-      color: #b91c1c;
-    }
-
-    .attendance-info-badge.success {
-      background-color: #d1fae5;
-      color: #065f46;
-    }
-
-    /* Action buttons */
-    .action-buttons {
-      display: flex;
-      gap: 0.25rem;
-      flex-wrap: wrap;
-    }
-
-    .action-btn {
-      padding: 0.375rem 0.5rem;
+    .search-input {
+      width: 100%;
+      padding: 0.5rem 1rem 0.5rem 2.5rem;
+      border: 1px solid #d1d5db;
       border-radius: 0.375rem;
-      font-size: 0.75rem;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      border: none;
-      cursor: pointer;
+      font-size: 0.875rem;
       transition: all 0.2s ease;
     }
 
-    .action-btn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
+    .search-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
-    .action-btn.paid-btn {
-      background-color: #10b981;
-      color: white;
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #9ca3af;
     }
 
-    .action-btn.paid-btn:hover {
-      background-color: #059669;
-    }
-
-    .action-btn.view-btn {
-      background-color: #3b82f6;
-      color: white;
-    }
-
-    .action-btn.view-btn:hover {
-      background-color: #2563eb;
-    }
-
-    /* Card design */
-    .card {
+    /* Pagination */
+    .pagination-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.5rem;
+      height: 2.5rem;
+      padding: 0 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #4b5563;
       background: white;
-      border-radius: 0.5rem;
-      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-      transition: all 0.3s ease;
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
     }
 
-    .card:hover {
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    .pagination-btn:hover:not(:disabled):not(.active) {
+      background: #f3f4f6;
+      border-color: #9ca3af;
+      color: #374151;
     }
 
-    /* Breadcrumb styling */
-    .breadcrumb {
-      font-size: 0.8rem;
-      overflow-x: auto;
-      white-space: nowrap;
-      padding: 0.5rem 0;
-      -webkit-overflow-scrolling: touch;
+    .pagination-btn.active {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: white;
     }
 
-    .breadcrumb ol {
+    .pagination-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Per Page Selector */
+    .per-page-selector {
       display: flex;
       align-items: center;
+      gap: 0.5rem;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 0.375rem;
+      padding: 0.25rem 0.75rem;
     }
 
-    /* Responsive utilities - NAVBAR SPECIFIC */
-    @media (max-width: 768px) {
-      .datetime-container {
-        display: none;
-      }
-
-      .logout-btn span {
-        display: none;
-      }
-
-      .logout-btn {
-        padding: 0.5rem;
-        width: 40px;
-        height: 40px;
-        justify-content: center;
-      }
-
-      .navbar-container {
-        padding: 0 1rem;
-      }
-
-      .brand-text {
-        display: none;
-      }
-
-      .mobile-brand {
-        display: flex;
-      }
+    .per-page-selector select {
+      border: none;
+      background: transparent;
+      font-size: 0.875rem;
+      color: #374151;
+      outline: none;
+      cursor: pointer;
+      padding: 0.25rem 0;
     }
 
-    @media (min-width: 769px) {
-      .mobile-brand {
-        display: none;
-      }
-
-      .brand-text {
-        display: flex;
-      }
+    /* Alert Messages */
+    .alert {
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
     }
 
-    @media (max-width: 640px) {
-      .navbar {
-        height: 65px;
-      }
-
-      .sidebar {
-        top: 65px;
-        height: calc(100vh - 65px);
-      }
-
-      main {
-        margin-top: 65px;
-      }
-
-      .mobile-toggle {
-        width: 36px;
-        height: 36px;
-      }
-
-      .brand-logo {
-        width: 40px;
-        height: 40px;
-      }
-
-      .logout-btn {
-        width: 36px;
-        height: 36px;
-      }
+    .alert-success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
     }
 
-    /* Scrollbar Styling */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+    .alert-error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
     }
 
-    ::-webkit-scrollbar-track {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
+    .alert-info {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
     }
 
-    ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 10px;
+    /* Status Badges */
+    .status-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
     }
 
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.4);
+    .status-pending {
+      background: #fef3c7;
+      color: #92400e;
     }
 
-    /* Input field styling */
+    .status-approved {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status-paid {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    /* Input Fields */
     .payroll-input {
       width: 100%;
       padding: 0.25rem 0.5rem;
@@ -3072,19 +3117,78 @@ ob_end_flush();
       border-color: #3b82f6;
     }
 
-    .payroll-input.editable:focus {
-      border-color: #3b82f6;
+    /* Days Present Badge */
+    .days-present-badge {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-left: 0.25rem;
     }
 
-    .payroll-input.error {
-      border-color: #ef4444;
-      background-color: #fef2f2;
+    .days-present-badge.warning {
+      background: #fee2e2;
+      color: #b91c1c;
     }
 
-    /* Zero amount styling */
-    .zero-amount {
-      color: #9ca3af;
-      font-style: italic;
+    .days-present-badge.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .action-btn {
+      padding: 0.375rem 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: #3b82f6;
+      color: white;
+    }
+
+    .action-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    /* Print button styles */
+    .print-btn {
+      background-color: #10b981;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .print-btn:hover {
+      background-color: #059669;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .print-btn:disabled {
+      background-color: #9ca3af;
+      cursor: not-allowed;
+      transform: none;
     }
 
     /* Full month disabled field styling */
@@ -3095,27 +3199,131 @@ ob_end_flush();
       border-color: #e0e0e0 !important;
     }
 
-    .full-month-disabled:hover {
-      border-color: #e0e0e0 !important;
+    /* Zero amount styling */
+    .zero-amount {
+      color: #9ca3af;
+      font-style: italic;
     }
 
-    .full-month-disabled:focus {
-      outline: none !important;
-      box-shadow: none !important;
-      border-color: #e0e0e0 !important;
-    }
-
-    /* Alert messages */
-    .alert {
+    /* Table footer */
+    .table-footer {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
       padding: 1rem;
-      border-radius: 0.5rem;
-      margin-bottom: 1rem;
-      animation: slideDown 0.3s ease;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
     }
 
-    @keyframes slideDown {
+    @media (min-width: 768px) {
+      .table-footer {
+        flex-direction: row;
+      }
+    }
+
+    /* Stats Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 14px;
+      padding: 1.25rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e5e7eb;
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+    }
+
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-icon.blue {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .stat-icon.green {
+      background: #d1fae5;
+      color: #059669;
+    }
+
+    .stat-icon.purple {
+      background: #ede9fe;
+      color: #7c3aed;
+    }
+
+    .stat-icon.orange {
+      background: #ffedd5;
+      color: #ea580c;
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: #6b7280;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #1f2937;
+      line-height: 1;
+    }
+
+    /* Auto-save Indicator */
+    .auto-save-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1e40af;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 50px;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      z-index: 9999;
+      animation: slideUp 0.3s ease;
+    }
+
+    .auto-save-indicator.saving {
+      background: #f59e0b;
+    }
+
+    .auto-save-indicator.saved {
+      background: #10b981;
+    }
+
+    .auto-save-indicator.error {
+      background: #ef4444;
+    }
+
+    @keyframes slideUp {
       from {
-        transform: translateY(-100%);
+        transform: translateY(100%);
         opacity: 0;
       }
 
@@ -3125,274 +3333,54 @@ ob_end_flush();
       }
     }
 
-    .alert-success {
-      background-color: #d1fae5;
-      color: #065f46;
-      border: 1px solid #a7f3d0;
-    }
-
-    .alert-error {
-      background-color: #fee2e2;
-      color: #991b1b;
-      border: 1px solid #fecaca;
-    }
-
-    .alert-info {
-      background-color: #dbeafe;
-      color: #1e40af;
-      border: 1px solid #bfdbfe;
-    }
-
-    /* Notification */
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 9999;
-      padding: 1rem;
-      border-radius: 0.5rem;
-      color: white;
-      font-weight: 500;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      animation: slideIn 0.3s ease;
-    }
-
-    @keyframes slideIn {
-      from {
-        transform: translateX(100%);
-        opacity: 0;
-      }
-
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-
-    /* Payroll period selector */
-    .period-selector {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .status-badge {
-      padding: 0.25rem 0.75rem;
-      border-radius: 9999px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      display: inline-block;
-    }
-
-    .status-pending {
-      background-color: #fef3c7;
-      color: #92400e;
-    }
-
-    .status-approved {
-      background-color: #d1fae5;
-      color: #065f46;
-    }
-
-    .status-paid {
-      background-color: #dbeafe;
-      color: #1e40af;
-    }
-
-    .status-cancelled {
-      background-color: #fee2e2;
-      color: #991b1b;
-    }
-
-    .status-draft {
-      background-color: #e5e7eb;
-      color: #374151;
-    }
-
-    /* Modal styles */
-    .modal {
-      display: none;
+    /* Loading Overlay */
+    .loading-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0, 0, 0, 0.5);
-      z-index: 9999;
+      background: rgba(255, 255, 255, 0.8);
+      z-index: 10000;
+      display: none;
       align-items: center;
       justify-content: center;
     }
 
-    .modal.active {
+    .loading-overlay.active {
       display: flex;
     }
 
-    .modal-content {
-      background: white;
-      border-radius: 0.5rem;
-      max-width: 600px;
-      width: 90%;
-      max-height: 80vh;
-      overflow-y: auto;
-      animation: modalSlideIn 0.3s ease;
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
     }
 
-    .modal-content.large {
-      max-width: 800px;
-    }
-
-    @keyframes modalSlideIn {
-      from {
-        transform: translateY(-50px);
-        opacity: 0;
-      }
-
+    @keyframes spin {
       to {
-        transform: translateY(0);
-        opacity: 1;
+        transform: rotate(360deg);
       }
     }
 
-    .modal-header {
-      padding: 1rem;
-      border-bottom: 1px solid #e5e7eb;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border-radius: 0.5rem 0.5rem 0 0;
-    }
-
-    .modal-header h3 {
-      font-size: 1.1rem;
-      font-weight: 600;
-    }
-
-    .modal-header button {
-      color: white;
-      opacity: 0.8;
-      transition: opacity 0.2s;
-    }
-
-    .modal-header button:hover {
-      opacity: 1;
-    }
-
-    .modal-body {
-      padding: 1.5rem;
-    }
-
-    .modal-footer {
-      padding: 1rem;
-      border-top: 1px solid #e5e7eb;
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.5rem;
-    }
-
-    /* Employee details styles */
-    .detail-section {
-      margin-bottom: 1.5rem;
-    }
-
-    .detail-section h4 {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #374151;
-      margin-bottom: 0.75rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    .detail-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-    }
-
-    .detail-item {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .detail-item.full-width {
-      grid-column: span 2;
-    }
-
-    .detail-label {
-      font-size: 0.75rem;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .detail-value {
-      font-size: 0.9rem;
-      font-weight: 500;
-      color: #1f2937;
-    }
-
-    .detail-value.highlight {
-      color: #059669;
-      font-weight: 600;
-    }
-
-    .attendance-summary {
-      display: flex;
-      gap: 1rem;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .attendance-card {
-      flex: 1;
-      min-width: 120px;
-      padding: 1rem;
-      background: #f9fafb;
-      border-radius: 0.5rem;
-      text-align: center;
-    }
-
-    .attendance-card .value {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--primary);
-    }
-
-    .attendance-card .label {
+    /* Breadcrumb styling */
+    .breadcrumb {
       font-size: 0.8rem;
-      color: #6b7280;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 0.5rem 0;
+      -webkit-overflow-scrolling: touch;
     }
 
-    .history-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.85rem;
+    .breadcrumb ol {
+      display: flex;
+      align-items: center;
     }
 
-    .history-table th {
-      background: #f9fafb;
-      padding: 0.5rem;
-      text-align: left;
-      font-weight: 600;
-      color: #374151;
-    }
-
-    .history-table td {
-      padding: 0.5rem;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    /* Chart container */
-    .chart-container {
-      position: relative;
-      height: 300px;
-      width: 100%;
-    }
-
-    /* Tab navigation */
+    /* Tabs */
     .tabs {
       display: flex;
       border-bottom: 1px solid #e5e7eb;
@@ -3424,527 +3412,139 @@ ob_end_flush();
       display: block;
     }
 
-    /* Loading spinner */
-    .spinner {
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid var(--primary);
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      0% {
-        transform: rotate(0deg);
-      }
-
-      100% {
-        transform: rotate(360deg);
-      }
-    }
-
-    /* Tooltip */
-    .tooltip {
-      position: relative;
-      display: inline-block;
-    }
-
-    .tooltip .tooltip-text {
-      visibility: hidden;
-      width: 120px;
-      background-color: #333;
-      color: #fff;
-      text-align: center;
-      border-radius: 6px;
-      padding: 5px;
-      position: absolute;
-      z-index: 1;
-      bottom: 125%;
-      left: 50%;
-      margin-left: -60px;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .tooltip:hover .tooltip-text {
-      visibility: visible;
-      opacity: 1;
-    }
-
-    /* Print button styles */
-    .print-btn {
-      background-color: #10b981;
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .print-btn:hover {
-      background-color: #059669;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-
-    .print-btn:disabled {
-      background-color: #9ca3af;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .print-btn i {
-      font-size: 1rem;
-    }
-
-    /* Loading overlay */
-    .loading-overlay {
+    /* Modal Styles */
+    .modal {
+      display: none;
       position: fixed;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(255, 255, 255, 0.8);
-      z-index: 10000;
-      display: none;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .loading-overlay.active {
-      display: flex;
-    }
-
-    /* Cutoff selector styles */
-    .cutoff-selector {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-    }
-
-    .cutoff-btn {
-      padding: 0.5rem 1rem;
-      border: 1px solid #e5e7eb;
-      background: white;
-      border-radius: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: #4b5563;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .cutoff-btn:hover {
-      background: #f3f4f6;
-      border-color: #d1d5db;
-    }
-
-    .cutoff-btn.active {
-      background: var(--primary);
-      color: white;
-      border-color: var(--primary);
-    }
-
-    .cutoff-btn i {
-      margin-right: 0.25rem;
-    }
-
-    .cutoff-info {
-      font-size: 0.8rem;
-      color: #6b7280;
-      margin-top: 0.25rem;
-    }
-
-    /* Disabled field styling */
-    .disabled-field {
-      background-color: #f3f4f6;
-      color: #374151;
-      font-weight: 500;
-    }
-
-    /* Days present indicator */
-    .days-present-badge {
-      background-color: #e0f2fe;
-      color: #0369a1;
-      padding: 0.125rem 0.5rem;
-      border-radius: 9999px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      display: inline-block;
-      margin-top: 0.25rem;
-    }
-
-    .days-present-badge.warning {
-      background-color: #fee2e2;
-      color: #b91c1c;
-    }
-
-    .days-present-badge.success {
-      background-color: #d1fae5;
-      color: #065f46;
-    }
-
-    .days-present-badge.info {
-      background-color: #e0f2fe;
-      color: #0369a1;
-    }
-
-    /* Stats cards for attendance summary */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .stat-card {
-      background: white;
-      border-radius: 0.5rem;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 1100;
       padding: 1rem;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      transition: all 0.3s ease;
-    }
-
-    .stat-card:hover {
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-      transform: translateY(-2px);
-    }
-
-    .stat-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.25rem;
     }
 
-    .stat-icon.blue {
-      background: #dbeafe;
-      color: #1e40af;
-    }
-
-    .stat-icon.green {
-      background: #d1fae5;
-      color: #059669;
-    }
-
-    .stat-icon.purple {
-      background: #ede9fe;
-      color: #7c3aed;
-    }
-
-    .stat-icon.orange {
-      background: #ffedd5;
-      color: #ea580c;
-    }
-
-    .stat-content {
-      flex: 1;
-    }
-
-    .stat-label {
-      font-size: 0.75rem;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
-    }
-
-    .stat-value {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #1f2937;
-      line-height: 1.2;
-    }
-
-    .stat-desc {
-      font-size: 0.7rem;
-      color: #9ca3af;
-      margin-top: 0.25rem;
-    }
-
-    @media (max-width: 768px) {
-      .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.75rem;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .stats-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* Auto-save indicator */
-    .auto-save-indicator {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: #1e40af;
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 50px;
-      font-size: 0.875rem;
+    .modal.active {
       display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      z-index: 9999;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 18px;
+      max-width: 800px;
+      width: 90%;
+      max-height: 90vh;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
       animation: slideUp 0.3s ease;
+    }
+
+    .modal-content.large {
+      max-width: 1000px;
     }
 
     @keyframes slideUp {
       from {
-        transform: translateY(100%);
         opacity: 0;
+        transform: translateY(20px);
       }
 
       to {
-        transform: translateY(0);
         opacity: 1;
+        transform: translateY(0);
       }
     }
 
-    .auto-save-indicator.saving {
-      background: #f59e0b;
-    }
-
-    .auto-save-indicator.saved {
-      background: #10b981;
-    }
-
-    .auto-save-indicator.error {
-      background: #ef4444;
-    }
-
-    /* Header action bar */
-    .header-action-bar {
+    .modal-header {
+      background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+      padding: 1.25rem 1.5rem;
+      color: white;
       display: flex;
-      flex-direction: column;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    @media (min-width: 1024px) {
-      .header-action-bar {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-      }
-    }
-
-    .page-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #111827;
-      line-height: 1.2;
-    }
-
-    .page-subtitle {
-      font-size: 0.875rem;
-      color: #6b7280;
-      margin-top: 0.25rem;
-    }
-
-    .controls-wrapper {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      width: 100%;
-    }
-
-    @media (min-width: 1024px) {
-      .controls-wrapper {
-        width: auto;
-        min-width: 400px;
-      }
-    }
-
-    .period-cutoff-wrapper {
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 0.5rem;
-      padding: 0.75rem;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    }
-
-    .action-buttons-wrapper {
-      display: flex;
-      gap: 0.5rem;
-      justify-content: flex-end;
-    }
-
-    /* PAGINATION STYLES */
-    .pagination-container {
-      display: flex;
-      flex-direction: column;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      background: white;
-      border-top: 1px solid #e5e7eb;
     }
 
-    @media (min-width: 640px) {
-      .pagination-container {
-        flex-direction: row;
-      }
+    .modal-header h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
     }
 
-    .pagination-info {
-      font-size: 0.875rem;
-      color: #6b7280;
-    }
-
-    .pagination-controls {
+    .close-button {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0.5rem;
+      border-radius: 8px;
+      transition: background-color 0.2s;
       display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .pagination-btn {
-      display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 2.5rem;
-      height: 2.5rem;
-      padding: 0 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: #4b5563;
-      background-color: white;
-      border: 1px solid #d1d5db;
-      border-radius: 0.375rem;
-      transition: all 0.2s ease;
-      cursor: pointer;
-      text-decoration: none;
+      width: 36px;
+      height: 36px;
     }
 
-    .pagination-btn:hover:not(:disabled):not(.active) {
-      background-color: #f3f4f6;
-      border-color: #9ca3af;
-      color: #374151;
+    .close-button:hover {
+      background: rgba(255, 255, 255, 0.2);
     }
 
-    .pagination-btn.active {
-      background-color: #3b82f6;
-      border-color: #3b82f6;
-      color: white;
+    .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+      max-height: calc(90vh - 80px);
     }
 
-    .pagination-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .pagination-ellipsis {
-      border: none;
-      background: none;
-      cursor: default;
-      min-width: auto;
-      padding: 0 0.25rem;
-    }
-
-    .pagination-ellipsis:hover {
-      background: none;
-      transform: none;
-    }
-
-    /* Records per page selector */
-    .per-page-selector {
+    .modal-footer {
+      padding: 1rem;
+      border-top: 1px solid #e5e7eb;
       display: flex;
-      align-items: center;
+      justify-content: flex-end;
       gap: 0.5rem;
-      background-color: white;
-      border: 1px solid #d1d5db;
-      border-radius: 0.375rem;
-      padding: 0.25rem 0.75rem;
     }
 
-    .per-page-selector select {
-      border: none;
-      background: transparent;
-      font-size: 0.875rem;
-      color: #374151;
-      outline: none;
-      cursor: pointer;
-      padding: 0.25rem 0;
-    }
-
-    .per-page-selector select:focus {
-      ring: none;
-    }
-
-    /* Search container */
-    .search-container {
-      position: relative;
-      width: 100%;
-      max-width: 300px;
-    }
-
-    .search-input {
-      width: 100%;
-      padding: 0.5rem 1rem 0.5rem 2.5rem;
-      border: 1px solid #d1d5db;
-      border-radius: 0.375rem;
-      font-size: 0.875rem;
-      transition: all 0.2s ease;
-    }
-
-    .search-input:focus {
-      outline: none;
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    }
-
-    .search-icon {
-      position: absolute;
-      left: 0.75rem;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #9ca3af;
-      pointer-events: none;
-    }
-
-    /* Table footer */
-    .table-footer {
+    /* Attendance summary */
+    .attendance-summary {
       display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      align-items: center;
       gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .attendance-card {
+      flex: 1;
+      min-width: 120px;
       padding: 1rem;
       background: #f9fafb;
-      border-top: 1px solid #e5e7eb;
+      border-radius: 0.5rem;
+      text-align: center;
     }
 
-    @media (min-width: 768px) {
-      .table-footer {
-        flex-direction: row;
-      }
+    .attendance-card .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
     }
 
-    /* Permanent specific colors */
-    .bg-permanent {
-      background-color: #e6f0fa;
+    .attendance-card .label {
+      font-size: 0.8rem;
+      color: #6b7280;
     }
 
-    .text-permanent {
-      color: #1e3a8a;
+    .sidebar-item.logout {
+      color: #fecaca;
+      margin-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 1rem;
+    }
+
+    .sidebar-item.logout:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fecaca;
     }
   </style>
 </head>
@@ -3961,26 +3561,28 @@ ob_end_flush();
     <span>Saving...</span>
   </div>
 
-  <!-- Navigation Header -->
+  <!-- Navigation Header - UPDATED to match other payroll pages -->
   <nav class="navbar">
     <div class="navbar-container">
       <!-- Left Section -->
       <div class="navbar-left">
         <!-- Mobile Menu Toggle -->
-        <button class="mobile-toggle" id="mobile-menu-toggle">
+        <button class="mobile-toggle" id="sidebar-toggle">
           <i class="fas fa-bars"></i>
         </button>
 
-        <!-- Logo and Brand (Desktop) -->
-        <a href="../dashboard.php" class="navbar-brand hidden lg:flex">
-          <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
+        <!-- Logo and Brand -->
+        <a href="../dashboard.php" class="navbar-brand">
+          <img class="brand-logo"
+            src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+            alt="Logo" />
           <div class="brand-text">
             <span class="brand-title">HR Management System</span>
             <span class="brand-subtitle">Paluan Occidental Mindoro</span>
           </div>
         </a>
 
-        <!-- Logo and Brand (Mobile) -->
+        <!-- Mobile Brand -->
         <div class="mobile-brand lg:hidden">
           <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
           <div class="mobile-brand-text">
@@ -3993,7 +3595,7 @@ ob_end_flush();
       <!-- Right Section -->
       <div class="navbar-right">
         <!-- Date & Time -->
-        <div class="datetime-container hidden md:flex">
+        <div class="datetime-container">
           <div class="datetime-box">
             <i class="datetime-icon fas fa-calendar-alt"></i>
             <div class="datetime-text">
@@ -4020,88 +3622,75 @@ ob_end_flush();
     </div>
   </nav>
 
-  <!-- Sidebar Overlay for Mobile -->
-  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <!-- Mobile Overlay -->
+  <div class="overlay" id="overlay"></div>
 
-  <!-- Sidebar -->
-  <div class="sidebar" id="sidebar">
-    <div class="sidebar-content">
-      <ul class="space-y-1">
+  <!-- Sidebar - UPDATED to match other payroll pages with Permanent active -->
+  <div class="sidebar-container" id="sidebar-container">
+    <div class="sidebar">
+      <div class="sidebar-content">
         <!-- Dashboard -->
-        <li>
-          <a href="../dashboard.php" class="sidebar-item">
-            <i class="fas fa-chart-line"></i>
-            <span>Dashboard Analytics</span>
-          </a>
-        </li>
+        <a href="../dashboard.php" class="sidebar-item">
+          <i class="fas fa-chart-line"></i>
+          <span>Dashboard Analytics</span>
+        </a>
 
         <!-- Employees -->
-        <li>
-          <a href="../employees/Employee.php" class="sidebar-item">
-            <i class="fas fa-users"></i>
-            <span>Employees</span>
-          </a>
-        </li>
+        <a href="../employees/Employee.php" class="sidebar-item">
+          <i class="fas fa-users"></i>
+          <span>Employees</span>
+        </a>
 
         <!-- Attendance -->
-        <li>
-          <a href="../attendance.php" class="sidebar-item">
-            <i class="fas fa-calendar-check"></i>
-            <span>Attendance</span>
-          </a>
-        </li>
+        <a href="../attendance.php" class="sidebar-item">
+          <i class="fas fa-calendar-check"></i>
+          <span>Attendance</span>
+        </a>
 
-        <!-- Payroll Dropdown -->
-        <li>
-          <a href="#" class="sidebar-item" id="payroll-toggle">
-            <i class="fas fa-money-bill-wave"></i>
-            <span>Payroll</span>
-            <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
+        <!-- Payroll - Active and Open -->
+        <a href="#" class="sidebar-item active" id="payroll-toggle">
+          <i class="fas fa-money-bill-wave"></i>
+          <span>Payroll</span>
+          <i class="fas fa-chevron-down chevron rotated ml-auto"></i>
+        </a>
+        <div class="sidebar-dropdown-menu open" id="payroll-dropdown">
+          <a href="contractualpayrolltable1.php" class="sidebar-dropdown-item">
+            <i class="fas fa-circle text-xs"></i>
+            Contractual
           </a>
-          <div class="submenu" id="payroll-submenu">
-            <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item">
-              <i class="fas fa-circle text-xs"></i>
-              Contractual
-            </a>
-            <a href="../Payrollmanagement/joborderpayrolltable1.php" class="submenu-item">
-              <i class="fas fa-circle text-xs"></i>
-              Job Order
-            </a>
-            <a href="permanentpayrolltable1.php" class="submenu-item active">
-              <i class="fas fa-circle text-xs"></i>
-              Permanent
-            </a>
-          </div>
-        </li>
-
-        <!-- Salary -->
-        <li>
-          <a href="../sallarypayheads.php" class="sidebar-item">
-            <i class="fas fa-hand-holding-usd"></i>
-            <span>Salary Structure</span>
+          <a href="joboerderpayrolltable1.php" class="sidebar-dropdown-item">
+            <i class="fas fa-circle text-xs"></i>
+            Job Order
           </a>
-        </li>
+          <a href="permanentpayrolltable1.php" class="sidebar-dropdown-item active">
+            <i class="fas fa-circle text-xs"></i>
+            Permanent
+          </a>
+        </div>
 
         <!-- Settings -->
-        <li>
-          <a href="../settings.php" class="sidebar-item">
-            <i class="fas fa-sliders-h"></i>
-            <span>Settings</span>
-          </a>
-        </li>
-      </ul>
-    </div>
+        <a href="../settings.php" class="sidebar-item">
+          <i class="fas fa-sliders-h"></i>
+          <span>Settings</span>
+        </a>
 
-    <!-- Sidebar Footer -->
-    <div class="sidebar-footer">
-      <div class="text-center text-white/60 text-sm">
-        <p>HRMS v2.0</p>
-        <p class="text-xs mt-1">© 2024 Paluan LGU</p>
+        <!-- Logout -->
+        <a href="?logout=true" class="sidebar-item logout">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Logout</span>
+        </a>
+      </div>
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <div class="text-center text-white/60 text-sm">
+          <p>HRMS v2.0</p>
+          <p class="text-xs mt-1">© 2024 Paluan LGU</p>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Main Content -->
+  <!-- Main Content - UNCHANGED -->
   <main>
     <!-- Alert Messages -->
     <?php if ($success_message): ?>
@@ -4224,21 +3813,10 @@ ob_end_flush();
           <button id="print-selected-btn" class="print-btn" onclick="printSelectedPayslips()" disabled>
             <i class="fas fa-print"></i>
             <span class="hidden sm:inline">Print Payslips</span>
-            <span id="selected-count-badge" class="ml-1 px-1.5 py-0.5 bg-white text-blue-700 rounded-full text-xs font-bold hidden">0</span>
+            <span id="selected-count-badge" class="ml-1 px-1.5 py-0.5 bg-white text-green-700 rounded-full text-xs font-bold hidden">0</span>
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- Print Actions Bar (Shows when items are selected) -->
-    <div id="print-actions-bar" class="print-actions hidden">
-      <span class="selected-count">
-        <i class="fas fa-check-circle"></i>
-        <span id="selected-count-text">0</span> employee(s) selected
-      </span>
-      <button onclick="clearSelections()" class="text-xs text-gray-600 hover:text-gray-800">
-        <i class="fas fa-times"></i> Clear
-      </button>
     </div>
 
     <!-- Mobile Info Bar (shows only on small screens) -->
@@ -4262,647 +3840,512 @@ ob_end_flush();
         <div class="stat-icon blue">
           <i class="fas fa-users"></i>
         </div>
-        <div class="stat-content">
-          <div class="stat-label">Total Employees</div>
-          <div class="stat-value"><?php echo $total_employees; ?></div>
-          <div class="stat-desc">Active permanent</div>
-        </div>
+        <div class="stat-label">Total Employees</div>
+        <div class="stat-value"><?php echo $total_employees; ?></div>
       </div>
 
       <div class="stat-card">
         <div class="stat-icon green">
           <i class="fas fa-calendar-check"></i>
         </div>
-        <div class="stat-content">
-          <div class="stat-label">With Attendance</div>
-          <div class="stat-value"><?php echo $employees_with_attendance; ?></div>
-          <div class="stat-desc"><?php echo $total_employees - $employees_with_attendance; ?> without</div>
-        </div>
+        <div class="stat-label">With Attendance</div>
+        <div class="stat-value"><?php echo $employees_with_attendance; ?></div>
       </div>
 
       <div class="stat-card">
         <div class="stat-icon purple">
           <i class="fas fa-hand-holding-usd"></i>
         </div>
-        <div class="stat-content">
-          <div class="stat-label">Total Deductions</div>
-          <div class="stat-value" id="total-deductions-display">₱<?php echo number_format($total_deductions, 2); ?></div>
-          <div class="stat-desc">All deduction types</div>
-        </div>
+        <div class="stat-label">Total Deductions</div>
+        <div class="stat-value" id="total-deductions-display">₱<?php echo number_format($total_deductions, 2); ?></div>
       </div>
 
       <div class="stat-card">
         <div class="stat-icon orange">
           <i class="fas fa-wallet"></i>
         </div>
-        <div class="stat-content">
-          <div class="stat-label">Amount Due</div>
-          <div class="stat-value" id="amount-due-display">₱<?php echo number_format($total_amount_due, 2); ?></div>
-          <div class="stat-desc">Total net pay</div>
-        </div>
+        <div class="stat-label">Amount Due</div>
+        <div class="stat-value" id="amount-due-display">₱<?php echo number_format($total_amount_due, 2); ?></div>
       </div>
     </div>
 
-    <!-- Tabs Navigation -->
-    <div class="tabs">
-      <div class="tab active" data-tab="payroll">Payroll Details</div>
-      <div class="tab" data-tab="summary">Payroll Summary</div>
+    <!-- Print Actions Bar (Shows when items are selected) -->
+    <div id="print-actions-bar" class="print-actions hidden">
+      <span class="selected-count">
+        <i class="fas fa-check-circle"></i>
+        <span id="selected-count-text">0</span> employee(s) selected
+      </span>
+      <button onclick="clearSelections()" class="text-xs text-gray-600 hover:text-gray-800">
+        <i class="fas fa-times"></i> Clear
+      </button>
     </div>
 
-    <!-- Payroll Details Tab -->
-    <div class="tab-content active" id="tab-payroll">
-      <!-- Search Bar -->
-      <div class="mb-4 flex justify-between items-center">
-        <div class="search-container">
-          <i class="fas fa-search search-icon"></i>
-          <input type="text" id="search-employees" class="search-input" placeholder="Search employees..." value="<?php echo htmlspecialchars($search_term); ?>">
-        </div>
-        <div class="per-page-selector">
-          <label for="per-page" class="text-sm text-gray-600">Show:</label>
-          <select id="per-page" onchange="changePerPage(this.value)">
-            <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
-            <option value="25" <?php echo $records_per_page == 25 ? 'selected' : ''; ?>>25</option>
-            <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
-            <option value="100" <?php echo $records_per_page == 100 ? 'selected' : ''; ?>>100</option>
-          </select>
-        </div>
+    <!-- Search Bar and Per Page Selector -->
+    <div class="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div class="search-container">
+        <i class="fas fa-search search-icon"></i>
+        <input type="text" id="search-employees" class="search-input" placeholder="Search employees..." value="<?php echo htmlspecialchars($search_term); ?>">
       </div>
+      <div class="per-page-selector">
+        <label for="per-page" class="text-sm text-gray-600">Show:</label>
+        <select id="per-page" onchange="changePerPage(this.value)">
+          <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
+          <option value="25" <?php echo $records_per_page == 25 ? 'selected' : ''; ?>>25</option>
+          <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
+          <option value="100" <?php echo $records_per_page == 100 ? 'selected' : ''; ?>>100</option>
+        </select>
+      </div>
+    </div>
 
-      <!-- Payroll Table -->
-      <form method="POST" action="" id="payroll-form">
-        <input type="hidden" name="save_payroll" value="1">
-        <input type="hidden" name="payroll_period" id="hidden-payroll-period" value="<?php echo $selected_period; ?>">
-        <input type="hidden" name="payroll_cutoff" id="hidden-payroll-cutoff" value="<?php echo $selected_cutoff; ?>">
-        <input type="hidden" name="working_days" value="<?php echo $current_cutoff['working_days']; ?>">
-        <input type="hidden" name="current_page" id="current-page-input" value="<?php echo $current_page; ?>">
-        <input type="hidden" name="records_per_page" id="records-per-page-input" value="<?php echo $records_per_page; ?>">
+    <!-- Payroll Table -->
+    <form method="POST" action="" id="payroll-form">
+      <input type="hidden" name="save_payroll" value="1">
+      <input type="hidden" name="payroll_period" id="hidden-payroll-period" value="<?php echo $selected_period; ?>">
+      <input type="hidden" name="payroll_cutoff" id="hidden-payroll-cutoff" value="<?php echo $selected_cutoff; ?>">
+      <input type="hidden" name="working_days" value="<?php echo $current_cutoff['working_days']; ?>">
+      <input type="hidden" name="current_page" id="current-page-input" value="<?php echo $current_page; ?>">
+      <input type="hidden" name="records_per_page" id="records-per-page-input" value="<?php echo $records_per_page; ?>">
 
-        <div class="card">
-          <div class="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <h2 class="text-lg font-semibold text-gray-900">
-              Permanent Payroll Details for <?php echo date('F Y', strtotime($selected_period . '-01')); ?>
-              (<?php echo $current_cutoff['label']; ?>)
-            </h2>
-            <?php if ($is_full_month): ?>
-              <div class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-medium">
-                <i class="fas fa-lock mr-1"></i> All deduction fields are read-only in Full Month view
-              </div>
-            <?php endif; ?>
-          </div>
+      <div class="card">
+        <div class="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <h2 class="text-lg font-semibold text-gray-900">
+            Permanent Payroll Details for <?php echo date('F Y', strtotime($selected_period . '-01')); ?>
+            (<?php echo $current_cutoff['label']; ?>)
+          </h2>
+          <?php if ($is_full_month): ?>
+            <div class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-medium">
+              <i class="fas fa-lock mr-1"></i> All deduction fields are read-only in Full Month view
+            </div>
+          <?php endif; ?>
+        </div>
 
-          <div class="table-container">
-            <table class="payroll-table" id="payroll-table">
-              <thead>
+        <div class="table-container">
+          <table class="payroll-table" id="payroll-table">
+            <thead>
+              <tr>
+                <th rowspan="2" class="w-12">
+                  <input type="checkbox" id="select-all" class="border border-gray-500 bg-transparent rounded-sm" title="Select all employees">
+                </th>
+                <th rowspan="2" class="w-12">#</th>
+                <th rowspan="2" class="min-w-[120px]">Employee ID</th>
+                <th rowspan="2" class="min-w-[150px]">Name</th>
+                <th rowspan="2" class="min-w-[120px]">Position</th>
+                <th rowspan="2" class="min-w-[100px]">Department</th>
+                <th rowspan="2" class="min-w-[100px]">Days Present</th>
+                <th rowspan="2" class="min-w-[100px]">Monthly Salary</th>
+                <th rowspan="2" class="min-w-[100px]">Amount Accrued</th>
+                <th colspan="14" class="text-center bg-yellow-50">DEDUCTIONS</th>
+                <th colspan="3" class="text-center bg-green-50">ADDITIONAL</th>
+                <th rowspan="2" class="min-w-[100px] bg-gray-100">Net Amount</th>
+                <th rowspan="2" class="min-w-[120px]">Signature of Payee</th>
+                <th rowspan="2" class="min-w-[90px]">Actions</th>
+              </tr>
+              <tr>
+                <th class="min-w-[90px] bg-yellow-50">Withholding Tax</th>
+                <th class="min-w-[90px] bg-yellow-50">PAG-IBIG LOAN - MPL</th>
+                <th class="min-w-[90px] bg-yellow-50">Corso Loan</th>
+                <th class="min-w-[90px] bg-yellow-50">Policy Loan</th>
+                <th class="min-w-[90px] bg-yellow-50">PhilHealth P.S.</th>
+                <th class="min-w-[90px] bg-yellow-50">UEF / Retirement</th>
+                <th class="min-w-[90px] bg-yellow-50">Emergency Loan</th>
+                <th class="min-w-[90px] bg-yellow-50">GFAL</th>
+                <th class="min-w-[90px] bg-yellow-50">LBP Loan</th>
+                <th class="min-w-[90px] bg-yellow-50">MPL</th>
+                <th class="min-w-[90px] bg-yellow-50">MPL Lite</th>
+                <th class="min-w-[90px] bg-yellow-50">SSS Contribution</th>
+                <th class="min-w-[90px] bg-green-50">PAG-IBIG CONT.</th>
+                <th class="min-w-[90px] bg-green-50">STATE INS. G.S.</th>
+                <th class="min-w-[90px] bg-yellow-50">Total Deductions</th>
+                <th class="min-w-[90px] bg-green-50">Amount Due</th>
+                <th class="min-w-[90px] bg-green-50">No.</th>
+              </tr>
+            </thead>
+            <tbody id="payroll-tbody">
+              <?php if (empty($permanent_employees)): ?>
                 <tr>
-                  <th rowspan="2" class="w-12">
-                    <input type="checkbox" id="select-all" class="border border-gray-500 bg-transparent rounded-sm" title="Select all employees">
-                  </th>
-                  <th rowspan="2" class="w-12">#</th>
-                  <th rowspan="2" class="min-w-[120px]">Employee ID</th>
-                  <th rowspan="2" class="min-w-[150px]">Name</th>
-                  <th rowspan="2" class="min-w-[120px]">Position</th>
-                  <th rowspan="2" class="min-w-[100px]">Department</th>
-                  <th rowspan="2" class="min-w-[100px]">Days Present</th>
-                  <th rowspan="2" class="min-w-[100px]">Monthly Salary</th>
-                  <th rowspan="2" class="min-w-[100px]">Amount Accrued</th>
-                  <th colspan="14" class="text-center bg-yellow-50">DEDUCTIONS</th>
-                  <th colspan="4" class="text-center bg-green-50">ADDITIONAL</th>
-                  <th rowspan="2" class="min-w-[100px] bg-gray-100">Net Amount</th>
-                  <th rowspan="2" class="min-w-[120px]">Signature of Payee</th>
-                  <th rowspan="2" class="min-w-[180px]">Actions</th>
+                  <td colspan="27" class="text-center py-8 text-gray-500">
+                    No permanent employees found.
+                  </td>
                 </tr>
-                <tr>
-                  <th class="min-w-[90px] bg-yellow-50">Withholding Tax</th>
-                  <th class="min-w-[90px] bg-yellow-50">PAG-IBIG LOAN - MPL</th>
-                  <th class="min-w-[90px] bg-yellow-50">Corso Loan</th>
-                  <th class="min-w-[90px] bg-yellow-50">Policy Loan</th>
-                  <th class="min-w-[90px] bg-yellow-50">PhilHealth P.S.</th>
-                  <th class="min-w-[90px] bg-yellow-50">UEF / Retirement</th>
-                  <th class="min-w-[90px] bg-yellow-50">Emergency Loan</th>
-                  <th class="min-w-[90px] bg-yellow-50">GFAL</th>
-                  <th class="min-w-[90px] bg-yellow-50">LBP Loan</th>
-                  <th class="min-w-[90px] bg-yellow-50">MPL</th>
-                  <th class="min-w-[90px] bg-yellow-50">MPL Lite</th>
-                  <th class="min-w-[90px] bg-yellow-50">SSS Contribution</th>
-                  <th class="min-w-[90px] bg-green-50">PAG-IBIG CONT.</th>
-                  <th class="min-w-[90px] bg-green-50">STATE INS. G.S.</th>
-                  <th class="min-w-[90px] bg-yellow-50">Total Deductions</th>
-                  <th class="min-w-[90px] bg-green-50">Amount Due</th>
-                  <th class="min-w-[90px] bg-green-50">No.</th>
-                </tr>
-              </thead>
-              <tbody id="payroll-tbody">
-                <?php if (empty($permanent_employees)): ?>
-                  <tr>
-                    <td colspan="27" class="text-center py-8 text-gray-500">
-                      No permanent employees found.
+              <?php else: ?>
+                <?php $counter = $offset + 1; ?>
+                <?php foreach ($permanent_employees as $employee): ?>
+                  <?php
+                  $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
+                  $amount_accrued = floatval($employee['amount_accrued'] ?? 0);
+                  $other_comp = floatval($employee['other_comp'] ?? 0);
+                  $days_present = floatval($employee['days_present'] ?? 0);
+
+                  // Deduction fields
+                  $withholding_tax = floatval($employee['withholding_tax'] ?? 0);
+                  $pagibig_loan_mpl = floatval($employee['pagibig_loan_mpl'] ?? 0);
+                  $corso_loan = floatval($employee['corso_loan'] ?? 0);
+                  $policy_loan = floatval($employee['policy_loan'] ?? 0);
+                  $philhealth_ps = floatval($employee['philhealth_ps'] ?? 0);
+                  $uef_retirement = floatval($employee['uef_retirement'] ?? 0);
+                  $emergency_loan = floatval($employee['emergency_loan'] ?? 0);
+                  $gfal = floatval($employee['gfal'] ?? 0);
+                  $lbp_loan = floatval($employee['lbp_loan'] ?? 0);
+                  $mpl = floatval($employee['mpl'] ?? 0);
+                  $mpl_lite = floatval($employee['mpl_lite'] ?? 0);
+                  $sss_contribution = floatval($employee['sss_contribution'] ?? 0);
+
+                  // Additional fields
+                  $pagibig_cont = floatval($employee['pagibig_cont'] ?? 0);
+                  $state_ins_gs = floatval($employee['state_ins_gs'] ?? 0);
+
+                  $total_deductions_row = floatval($employee['total_deductions'] ?? 0);
+                  $amount_due_row = floatval($employee['amount_due'] ?? 0);
+                  $payroll_id = $employee['payroll_id'] ?? null;
+                  $payroll_exists = $employee['payroll_exists'] ?? false;
+                  $signature_status = $employee['signature_status'] ?? '(Not signed)';
+
+                  $has_attendance = ($days_present > 0);
+                  $row_class = $has_attendance ? '' : 'no-attendance';
+
+                  $full_month_readonly = $is_full_month ? 'readonly disabled' : '';
+                  $full_month_style = $is_full_month ? 'background-color: #f0f0f0; color: #888; cursor: not-allowed;' : '';
+                  ?>
+                  <tr class="bg-white border-b hover:bg-gray-50 payroll-row <?php echo $row_class; ?>"
+                    data-user-id="<?php echo $employee['user_id']; ?>"
+                    data-employee-id="<?php echo htmlspecialchars($employee['employee_id']); ?>"
+                    data-payroll-id="<?php echo $payroll_id; ?>"
+                    data-payroll-exists="<?php echo $payroll_exists ? '1' : '0'; ?>">
+
+                    <td class="text-center">
+                      <input type="checkbox" class="employee-checkbox" value="<?php echo htmlspecialchars($employee['employee_id']); ?>"
+                        data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>"
+                        data-user-id="<?php echo $employee['user_id']; ?>">
+                    </td>
+                    <td class="text-center"><?php echo $counter; ?></td>
+                    <td class="font-medium"><?php echo htmlspecialchars($employee['employee_id']); ?></td>
+                    <td class="font-medium">
+                      <?php echo htmlspecialchars($employee['full_name']); ?>
+                      <input type="hidden" name="user_id[]" class="hidden-user-id" value="<?php echo $employee['user_id']; ?>">
+                      <input type="hidden" name="employee_id[]" class="hidden-employee-id" value="<?php echo htmlspecialchars($employee['employee_id']); ?>">
+                      <input type="hidden" name="days_present[]" class="hidden-days-present" value="<?php echo $days_present; ?>">
+                    </td>
+                    <td><?php echo htmlspecialchars($employee['position']); ?></td>
+                    <td><?php echo htmlspecialchars($employee['department']); ?></td>
+                    <td>
+                      <span class="font-medium"><?php echo number_format($days_present, 1); ?></span>
+                      <?php if ($days_present <= 0): ?>
+                        <span class="days-present-badge warning">No attendance</span>
+                      <?php else: ?>
+                        <span class="days-present-badge success">Present</span>
+                      <?php endif; ?>
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="monthly_salary[]"
+                        class="payroll-input readonly disabled-field"
+                        value="<?php echo number_format($monthly_salary, 2, '.', ''); ?>"
+                        readonly disabled tabindex="-1">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="amount_accrued[]"
+                        class="payroll-input readonly disabled-field"
+                        value="<?php echo number_format($amount_accrued, 2, '.', ''); ?>"
+                        readonly disabled tabindex="-1">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="withholding_tax[]"
+                        class="payroll-input withholding-tax <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($withholding_tax, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="withholding_tax"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="pagibig_loan_mpl[]"
+                        class="payroll-input pagibig-loan-mpl <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($pagibig_loan_mpl, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="pagibig_loan_mpl"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="corso_loan[]"
+                        class="payroll-input corso-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($corso_loan, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="corso_loan"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="policy_loan[]"
+                        class="payroll-input policy-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($policy_loan, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="policy_loan"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="philhealth_ps[]"
+                        class="payroll-input philhealth-ps <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($philhealth_ps, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="philhealth_ps"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="uef_retirement[]"
+                        class="payroll-input uef-retirement <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($uef_retirement, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="uef_retirement"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="emergency_loan[]"
+                        class="payroll-input emergency-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($emergency_loan, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="emergency_loan"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="gfal[]"
+                        class="payroll-input gfal <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($gfal, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="gfal"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="lbp_loan[]"
+                        class="payroll-input lbp-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($lbp_loan, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="lbp_loan"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="mpl[]"
+                        class="payroll-input mpl <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($mpl, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="mpl"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="mpl_lite[]"
+                        class="payroll-input mpl-lite <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($mpl_lite, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="mpl_lite"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="sss_contribution[]"
+                        class="payroll-input sss-contribution <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($sss_contribution, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="sss_contribution"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="pagibig_cont[]"
+                        class="payroll-input pagibig-cont <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($pagibig_cont, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="pagibig_cont"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="state_ins_gs[]"
+                        class="payroll-input state-ins-gs <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
+                        value="<?php echo number_format($state_ins_gs, 2, '.', ''); ?>"
+                        min="0" step="0.01"
+                        data-user-id="<?php echo $employee['user_id']; ?>"
+                        data-field="state_ins_gs"
+                        <?php echo $full_month_readonly; ?>
+                        style="<?php echo $full_month_style; ?>">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="total_deduction[]"
+                        class="payroll-input total-deduction readonly disabled-field"
+                        value="<?php echo number_format($total_deductions_row, 2, '.', ''); ?>"
+                        readonly disabled tabindex="-1">
+                    </td>
+                    <td class="text-right currency-cell">
+                      <input type="number"
+                        name="amount_due[]"
+                        class="payroll-input amount-due readonly disabled-field"
+                        value="<?php echo number_format($amount_due_row, 2, '.', ''); ?>"
+                        readonly disabled tabindex="-1">
+                    </td>
+                    <td class="text-center"><?php echo $counter; ?></td>
+                    <td class="text-right currency-cell net-amount-field important-column">
+                      <input type="number"
+                        name="net_amount[]"
+                        class="payroll-input net-amount readonly disabled-field <?php echo ($amount_due_row <= 0) ? 'zero-amount' : ''; ?>"
+                        value="<?php echo number_format($amount_due_row, 2, '.', ''); ?>"
+                        readonly disabled tabindex="-1">
+                    </td>
+                    <td class="italic text-gray-500 signature-status"><?php echo htmlspecialchars($signature_status); ?></td>
+                    <td class="text-center action-cell">
+                      <div class="action-buttons">
+                        <button type="button" class="action-btn view-btn" onclick="viewEmployeeData(<?php echo $employee['user_id']; ?>, '<?php echo $selected_period; ?>', '<?php echo $selected_cutoff; ?>')">
+                          <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                <?php else: ?>
-                  <?php $counter = $offset + 1; ?>
-                  <?php foreach ($permanent_employees as $employee): ?>
-                    <?php
-                    $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
-                    $amount_accrued = floatval($employee['amount_accrued'] ?? 0);
-                    $other_comp = floatval($employee['other_comp'] ?? 0);
-                    $days_present = floatval($employee['days_present'] ?? 0);
+                  <?php $counter++; ?>
+                <?php endforeach; ?>
+              <?php endif; ?>
 
-                    // Deduction fields
-                    $withholding_tax = floatval($employee['withholding_tax'] ?? 0);
-                    $pagibig_loan_mpl = floatval($employee['pagibig_loan_mpl'] ?? 0);
-                    $corso_loan = floatval($employee['corso_loan'] ?? 0);
-                    $policy_loan = floatval($employee['policy_loan'] ?? 0);
-                    $philhealth_ps = floatval($employee['philhealth_ps'] ?? 0);
-                    $uef_retirement = floatval($employee['uef_retirement'] ?? 0);
-                    $emergency_loan = floatval($employee['emergency_loan'] ?? 0);
-                    $gfal = floatval($employee['gfal'] ?? 0);
-                    $lbp_loan = floatval($employee['lbp_loan'] ?? 0);
-                    $mpl = floatval($employee['mpl'] ?? 0);
-                    $mpl_lite = floatval($employee['mpl_lite'] ?? 0);
-                    $sss_contribution = floatval($employee['sss_contribution'] ?? 0);
-
-                    // Additional fields
-                    $pagibig_cont = floatval($employee['pagibig_cont'] ?? 0);
-                    $state_ins_gs = floatval($employee['state_ins_gs'] ?? 0);
-
-                    $total_deductions_row = floatval($employee['total_deductions'] ?? 0);
-                    $amount_due_row = floatval($employee['amount_due'] ?? 0);
-                    $payroll_id = $employee['payroll_id'] ?? null;
-                    $payroll_exists = $employee['payroll_exists'] ?? false;
-                    $signature_status = $employee['signature_status'] ?? '(Not signed)';
-
-                    $has_attendance = ($days_present > 0);
-                    $row_class = $has_attendance ? '' : 'no-attendance';
-
-                    $full_month_readonly = $is_full_month ? 'readonly disabled' : '';
-                    $full_month_style = $is_full_month ? 'background-color: #f0f0f0; color: #888; cursor: not-allowed;' : '';
-                    ?>
-                    <tr class="bg-white border-b hover:bg-gray-50 payroll-row <?php echo $row_class; ?>"
-                      data-user-id="<?php echo $employee['user_id']; ?>"
-                      data-employee-id="<?php echo htmlspecialchars($employee['employee_id']); ?>"
-                      data-payroll-id="<?php echo $payroll_id; ?>"
-                      data-payroll-exists="<?php echo $payroll_exists ? '1' : '0'; ?>">
-
-                      <td class="text-center">
-                        <input type="checkbox" class="employee-checkbox" value="<?php echo htmlspecialchars($employee['employee_id']); ?>"
-                          data-employee-name="<?php echo htmlspecialchars($employee['full_name']); ?>"
-                          data-user-id="<?php echo $employee['user_id']; ?>">
-                      </td>
-                      <td class="text-center"><?php echo $counter; ?></td>
-                      <td class="font-medium"><?php echo htmlspecialchars($employee['employee_id']); ?></td>
-                      <td class="font-medium">
-                        <?php echo htmlspecialchars($employee['full_name']); ?>
-                        <input type="hidden" name="user_id[]" class="hidden-user-id" value="<?php echo $employee['user_id']; ?>">
-                        <input type="hidden" name="employee_id[]" class="hidden-employee-id" value="<?php echo htmlspecialchars($employee['employee_id']); ?>">
-                        <input type="hidden" name="days_present[]" class="hidden-days-present" value="<?php echo $days_present; ?>">
-                      </td>
-                      <td><?php echo htmlspecialchars($employee['position']); ?></td>
-                      <td><?php echo htmlspecialchars($employee['department']); ?></td>
-                      <td>
-                        <span class="font-medium"><?php echo number_format($days_present, 1); ?></span>
-                        <?php if ($days_present <= 0): ?>
-                          <span class="days-present-badge warning">No attendance</span>
-                        <?php else: ?>
-                          <span class="days-present-badge success">Present</span>
-                        <?php endif; ?>
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="monthly_salary[]"
-                          class="payroll-input readonly disabled-field"
-                          value="<?php echo number_format($monthly_salary, 2, '.', ''); ?>"
-                          readonly disabled tabindex="-1">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="amount_accrued[]"
-                          class="payroll-input readonly disabled-field"
-                          value="<?php echo number_format($amount_accrued, 2, '.', ''); ?>"
-                          readonly disabled tabindex="-1">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="withholding_tax[]"
-                          class="payroll-input withholding-tax <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($withholding_tax, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="withholding_tax"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="pagibig_loan_mpl[]"
-                          class="payroll-input pagibig-loan-mpl <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($pagibig_loan_mpl, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="pagibig_loan_mpl"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="corso_loan[]"
-                          class="payroll-input corso-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($corso_loan, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="corso_loan"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="policy_loan[]"
-                          class="payroll-input policy-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($policy_loan, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="policy_loan"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="philhealth_ps[]"
-                          class="payroll-input philhealth-ps <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($philhealth_ps, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="philhealth_ps"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="uef_retirement[]"
-                          class="payroll-input uef-retirement <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($uef_retirement, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="uef_retirement"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="emergency_loan[]"
-                          class="payroll-input emergency-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($emergency_loan, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="emergency_loan"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="gfal[]"
-                          class="payroll-input gfal <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($gfal, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="gfal"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="lbp_loan[]"
-                          class="payroll-input lbp-loan <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($lbp_loan, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="lbp_loan"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="mpl[]"
-                          class="payroll-input mpl <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($mpl, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="mpl"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="mpl_lite[]"
-                          class="payroll-input mpl-lite <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($mpl_lite, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="mpl_lite"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="sss_contribution[]"
-                          class="payroll-input sss-contribution <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($sss_contribution, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="sss_contribution"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="pagibig_cont[]"
-                          class="payroll-input pagibig-cont <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($pagibig_cont, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="pagibig_cont"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="state_ins_gs[]"
-                          class="payroll-input state-ins-gs <?php echo $is_full_month ? 'readonly disabled-field full-month-disabled' : 'editable auto-save-field'; ?>"
-                          value="<?php echo number_format($state_ins_gs, 2, '.', ''); ?>"
-                          min="0" step="0.01"
-                          data-user-id="<?php echo $employee['user_id']; ?>"
-                          data-field="state_ins_gs"
-                          <?php echo $full_month_readonly; ?>
-                          style="<?php echo $full_month_style; ?>">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="total_deduction[]"
-                          class="payroll-input total-deduction readonly disabled-field"
-                          value="<?php echo number_format($total_deductions_row, 2, '.', ''); ?>"
-                          readonly disabled tabindex="-1">
-                      </td>
-                      <td class="text-right currency-cell">
-                        <input type="number"
-                          name="amount_due[]"
-                          class="payroll-input amount-due readonly disabled-field"
-                          value="<?php echo number_format($amount_due_row, 2, '.', ''); ?>"
-                          readonly disabled tabindex="-1">
-                      </td>
-                      <td class="text-center"><?php echo $counter; ?></td>
-                      <td class="text-right currency-cell net-amount-field important-column">
-                        <input type="number"
-                          name="net_amount[]"
-                          class="payroll-input net-amount readonly disabled-field <?php echo ($amount_due_row <= 0) ? 'zero-amount' : ''; ?>"
-                          value="<?php echo number_format($amount_due_row, 2, '.', ''); ?>"
-                          readonly disabled tabindex="-1">
-                      </td>
-                      <td class="italic text-gray-500 signature-status"><?php echo htmlspecialchars($signature_status); ?></td>
-                      <td class="text-center action-cell">
-                        <div class="action-buttons">
-                          <button type="button" class="action-btn view-btn" onclick="viewEmployeeData(<?php echo $employee['user_id']; ?>, '<?php echo $selected_period; ?>', '<?php echo $selected_cutoff; ?>')">
-                            <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
-                          </button>
-                          <?php if (!$is_full_month && ($payroll_status == 'pending' || $payroll_status == 'draft')): ?>
-                            <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
-                              <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
-                            </button>
-                          <?php endif; ?>
-                          <?php if ($payroll_id): ?>
-                            <button type="button" class="action-btn bg-purple-500 text-white hover:bg-purple-600" onclick="viewDeductions(<?php echo $payroll_id; ?>)">
-                              <i class="fas fa-chart-pie"></i> <span class="hidden md:inline">Deductions</span>
-                            </button>
-                          <?php endif; ?>
-                        </div>
-                      </td>
-                    </tr>
-                    <?php $counter++; ?>
-                  <?php endforeach; ?>
-                <?php endif; ?>
-
-                <!-- Totals Row -->
-                <tr class="bg-gray-100 font-bold">
-                  <td></td>
-                  <td colspan="9" class="text-right">TOTAL AMOUNT</td>
-                  <td class="text-right" id="total-withholding-tax">₱<?php echo number_format($total_withholding_tax, 2); ?></td>
-                  <td class="text-right" id="total-pagibig-loan-mpl">₱<?php echo number_format($total_pagibig_loan_mpl, 2); ?></td>
-                  <td class="text-right" id="total-corso-loan">₱<?php echo number_format($total_corso_loan, 2); ?></td>
-                  <td class="text-right" id="total-policy-loan">₱<?php echo number_format($total_policy_loan, 2); ?></td>
-                  <td class="text-right" id="total-philhealth-ps">₱<?php echo number_format($total_philhealth_ps, 2); ?></td>
-                  <td class="text-right" id="total-uef-retirement">₱<?php echo number_format($total_uef_retirement, 2); ?></td>
-                  <td class="text-right" id="total-emergency-loan">₱<?php echo number_format($total_emergency_loan, 2); ?></td>
-                  <td class="text-right" id="total-gfal">₱<?php echo number_format($total_gfal, 2); ?></td>
-                  <td class="text-right" id="total-lbp-loan">₱<?php echo number_format($total_lbp_loan, 2); ?></td>
-                  <td class="text-right" id="total-mpl">₱<?php echo number_format($total_mpl, 2); ?></td>
-                  <td class="text-right" id="total-mpl-lite">₱<?php echo number_format($total_mpl_lite, 2); ?></td>
-                  <td class="text-right" id="total-sss-contribution">₱<?php echo number_format($total_sss_contribution, 2); ?></td>
-                  <td class="text-right" id="total-pagibig-cont">₱<?php echo number_format($total_pagibig_cont, 2); ?></td>
-                  <td class="text-right" id="total-state-ins-gs">₱<?php echo number_format($total_state_ins_gs, 2); ?></td>
-                  <td class="text-right" id="total-deduction">₱<?php echo number_format($total_deductions, 2); ?></td>
-                  <td class="text-right" id="total-amount-due">₱<?php echo number_format($total_amount_due, 2); ?></td>
-                  <td colspan="2"></td>
-                  <td class="text-right important-column" id="total-net-amount">₱<?php echo number_format($total_amount_due, 2); ?></td>
-                  <td colspan="2"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Table Footer with Pagination -->
-          <div class="table-footer" id="pagination-container">
-            <div class="text-sm text-gray-600">
-              Showing <span class="font-medium" id="showing-from"><?php echo $offset + 1; ?></span> to
-              <span class="font-medium" id="showing-to"><?php echo min($offset + $records_per_page, $total_employees); ?></span> of
-              <span class="font-medium" id="total-employees"><?php echo $total_employees; ?></span> employees
-            </div>
-
-            <div class="pagination-controls" id="pagination-controls">
-              <button type="button" class="pagination-btn" onclick="changePage(1)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> title="First Page">
-                <i class="fas fa-angle-double-left"></i>
-              </button>
-              <button type="button" class="pagination-btn" onclick="changePage(<?php echo $current_page - 1; ?>)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> title="Previous Page">
-                <i class="fas fa-angle-left"></i>
-              </button>
-
-              <?php
-              $start_page = max(1, $current_page - 2);
-              $end_page = min($total_pages, $current_page + 2);
-
-              if ($start_page > 1) {
-                echo '<button type="button" class="pagination-btn" onclick="changePage(1)">1</button>';
-                if ($start_page > 2) {
-                  echo '<span class="pagination-ellipsis">...</span>';
-                }
-              }
-
-              for ($i = $start_page; $i <= $end_page; $i++) {
-                $active_class = ($i == $current_page) ? 'active' : '';
-                echo "<button type=\"button\" class=\"pagination-btn $active_class\" onclick=\"changePage($i)\">$i</button>";
-              }
-
-              if ($end_page < $total_pages) {
-                if ($end_page < $total_pages - 1) {
-                  echo '<span class="pagination-ellipsis">...</span>';
-                }
-                echo "<button type=\"button\" class=\"pagination-btn\" onclick=\"changePage($total_pages)\">$total_pages</button>";
-              }
-              ?>
-
-              <button type="button" class="pagination-btn" onclick="changePage(<?php echo $current_page + 1; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> title="Next Page">
-                <i class="fas fa-angle-right"></i>
-              </button>
-              <button type="button" class="pagination-btn" onclick="changePage(<?php echo $total_pages; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> title="Last Page">
-                <i class="fas fa-angle-double-right"></i>
-              </button>
-            </div>
-          </div>
+              <!-- Totals Row -->
+              <tr class="bg-gray-100 font-bold">
+                <td></td>
+                <td colspan="9" class="text-right">TOTAL AMOUNT</td>
+                <td class="text-right" id="total-withholding-tax">₱<?php echo number_format($total_withholding_tax, 2); ?></td>
+                <td class="text-right" id="total-pagibig-loan-mpl">₱<?php echo number_format($total_pagibig_loan_mpl, 2); ?></td>
+                <td class="text-right" id="total-corso-loan">₱<?php echo number_format($total_corso_loan, 2); ?></td>
+                <td class="text-right" id="total-policy-loan">₱<?php echo number_format($total_policy_loan, 2); ?></td>
+                <td class="text-right" id="total-philhealth-ps">₱<?php echo number_format($total_philhealth_ps, 2); ?></td>
+                <td class="text-right" id="total-uef-retirement">₱<?php echo number_format($total_uef_retirement, 2); ?></td>
+                <td class="text-right" id="total-emergency-loan">₱<?php echo number_format($total_emergency_loan, 2); ?></td>
+                <td class="text-right" id="total-gfal">₱<?php echo number_format($total_gfal, 2); ?></td>
+                <td class="text-right" id="total-lbp-loan">₱<?php echo number_format($total_lbp_loan, 2); ?></td>
+                <td class="text-right" id="total-mpl">₱<?php echo number_format($total_mpl, 2); ?></td>
+                <td class="text-right" id="total-mpl-lite">₱<?php echo number_format($total_mpl_lite, 2); ?></td>
+                <td class="text-right" id="total-sss-contribution">₱<?php echo number_format($total_sss_contribution, 2); ?></td>
+                <td class="text-right" id="total-pagibig-cont">₱<?php echo number_format($total_pagibig_cont, 2); ?></td>
+                <td class="text-right" id="total-state-ins-gs">₱<?php echo number_format($total_state_ins_gs, 2); ?></td>
+                <td class="text-right" id="total-deduction">₱<?php echo number_format($total_deductions, 2); ?></td>
+                <td class="text-right" id="total-amount-due">₱<?php echo number_format($total_amount_due, 2); ?></td>
+                <td colspan="2"></td>
+                <td class="text-right important-column" id="total-net-amount">₱<?php echo number_format($total_amount_due, 2); ?></td>
+                <td colspan="2"></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <!-- Action Buttons -->
-        <?php if ($payroll_status == 'pending' || $payroll_status == 'draft'): ?>
-          <div class="mt-6 flex flex-col sm:flex-row justify-end gap-3">
-            <button type="submit" class="px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 flex items-center justify-center">
-              <i class="fas fa-save mr-2"></i> Save Payroll (<?php echo $current_cutoff['label']; ?>)
+        <!-- Table Footer with Pagination -->
+        <div class="table-footer" id="pagination-container">
+          <div class="text-sm text-gray-600">
+            Showing <span class="font-medium" id="showing-from"><?php echo $offset + 1; ?></span> to
+            <span class="font-medium" id="showing-to"><?php echo min($offset + $records_per_page, $total_employees); ?></span> of
+            <span class="font-medium" id="total-employees"><?php echo $total_employees; ?></span> employees
+          </div>
+
+          <div class="pagination-controls" id="pagination-controls">
+            <button type="button" class="pagination-btn" onclick="changePage(1)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> title="First Page">
+              <i class="fas fa-angle-double-left"></i>
             </button>
-            <button type="button" onclick="generateObligationRequest()" class="px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 flex items-center justify-center">
-              Generate Obligation Request <i class="fas fa-arrow-right ml-2"></i>
+            <button type="button" class="pagination-btn" onclick="changePage(<?php echo $current_page - 1; ?>)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> title="Previous Page">
+              <i class="fas fa-angle-left"></i>
+            </button>
+
+            <?php
+            $start_page = max(1, $current_page - 2);
+            $end_page = min($total_pages, $current_page + 2);
+
+            if ($start_page > 1) {
+              echo '<button type="button" class="pagination-btn" onclick="changePage(1)">1</button>';
+              if ($start_page > 2) {
+                echo '<span class="pagination-ellipsis">...</span>';
+              }
+            }
+
+            for ($i = $start_page; $i <= $end_page; $i++) {
+              $active_class = ($i == $current_page) ? 'active' : '';
+              echo "<button type=\"button\" class=\"pagination-btn $active_class\" onclick=\"changePage($i)\">$i</button>";
+            }
+
+            if ($end_page < $total_pages) {
+              if ($end_page < $total_pages - 1) {
+                echo '<span class="pagination-ellipsis">...</span>';
+              }
+              echo "<button type=\"button\" class=\"pagination-btn\" onclick=\"changePage($total_pages)\">$total_pages</button>";
+            }
+            ?>
+
+            <button type="button" class="pagination-btn" onclick="changePage(<?php echo $current_page + 1; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> title="Next Page">
+              <i class="fas fa-angle-right"></i>
+            </button>
+            <button type="button" class="pagination-btn" onclick="changePage(<?php echo $total_pages; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> title="Last Page">
+              <i class="fas fa-angle-double-right"></i>
             </button>
           </div>
-        <?php elseif ($payroll_status == 'approved'): ?>
-          <div class="mt-6 flex justify-end">
-            <button type="button" onclick="showApproveModal()" class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-              <i class="fas fa-check-circle mr-2"></i> Approve Payroll
-            </button>
-          </div>
-        <?php endif; ?>
-      </form>
-    </div>
-
-    <!-- Payroll Summary Tab -->
-    <div class="tab-content" id="tab-summary">
-      <div class="card p-6">
-        <h2 class="text-xl font-bold mb-4">
-          Payroll Summary for <?php echo date('F Y', strtotime($selected_period . '-01')); ?>
-          (<?php echo $current_cutoff['label']; ?>)
-        </h2>
-
-        <?php if ($payroll_summary && ($payroll_summary['total_gross_amount'] > 0 || $payroll_summary['total_amount_due'] > 0)): ?>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <div class="summary-card">
-                <h3 class="text-lg opacity-90">Total Amount Due</h3>
-                <div class="amount">₱<?php echo number_format($payroll_summary['total_amount_due'] ?? 0, 2); ?></div>
-              </div>
-
-              <div class="mt-4 space-y-3">
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <span class="font-medium">Total Employees:</span>
-                  <span class="font-bold"><?php echo $payroll_summary['total_employees'] ?? 0; ?></span>
-                </div>
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <span class="font-medium">Total Days Present:</span>
-                  <span class="font-bold"><?php echo number_format($payroll_summary['total_days_present'] ?? 0, 1); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <span class="font-medium">Total Amount Accrued:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_amount_accrued'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <span class="font-medium">Total Other Compensation:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_other_comp'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                  <span class="font-medium">Total Gross Amount:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_gross_amount'] ?? 0, 2); ?></span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 class="text-lg font-semibold mb-3">Deductions Breakdown</h3>
-              <div class="space-y-2">
-                <div class="flex justify-between items-center p-2 bg-red-50 rounded text-sm">
-                  <span class="font-medium">Withholding Tax:</span>
-                  <span class="font-bold text-red-600">₱<?php echo number_format($payroll_summary['total_withholding_tax'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-blue-50 rounded text-sm">
-                  <span class="font-medium">PAG-IBIG LOAN - MPL:</span>
-                  <span class="font-bold text-blue-600">₱<?php echo number_format($payroll_summary['total_pagibig_loan_mpl'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-purple-50 rounded text-sm">
-                  <span class="font-medium">Corso Loan:</span>
-                  <span class="font-bold text-purple-600">₱<?php echo number_format($payroll_summary['total_corso_loan'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-indigo-50 rounded text-sm">
-                  <span class="font-medium">Policy Loan:</span>
-                  <span class="font-bold text-indigo-600">₱<?php echo number_format($payroll_summary['total_policy_loan'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-green-50 rounded text-sm">
-                  <span class="font-medium">PhilHealth P.S.:</span>
-                  <span class="font-bold text-green-600">₱<?php echo number_format($payroll_summary['total_philhealth_ps'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-yellow-50 rounded text-sm">
-                  <span class="font-medium">UEF / Retirement:</span>
-                  <span class="font-bold text-yellow-600">₱<?php echo number_format($payroll_summary['total_uef_retirement'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-orange-50 rounded text-sm">
-                  <span class="font-medium">Emergency Loan:</span>
-                  <span class="font-bold text-orange-600">₱<?php echo number_format($payroll_summary['total_emergency_loan'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-pink-50 rounded text-sm">
-                  <span class="font-medium">GFAL:</span>
-                  <span class="font-bold text-pink-600">₱<?php echo number_format($payroll_summary['total_gfal'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-teal-50 rounded text-sm">
-                  <span class="font-medium">LBP Loan:</span>
-                  <span class="font-bold text-teal-600">₱<?php echo number_format($payroll_summary['total_lbp_loan'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
-                  <span class="font-medium">MPL:</span>
-                  <span class="font-bold text-gray-600">₱<?php echo number_format($payroll_summary['total_mpl'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-gray-100 rounded text-sm">
-                  <span class="font-medium">MPL Lite:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_mpl_lite'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-blue-100 rounded text-sm">
-                  <span class="font-medium">SSS Contribution:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_sss_contribution'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-green-100 rounded text-sm">
-                  <span class="font-medium">PAG-IBIG CONT.:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_pagibig_cont'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-purple-100 rounded text-sm">
-                  <span class="font-medium">STATE INS. G.S.:</span>
-                  <span class="font-bold">₱<?php echo number_format($payroll_summary['total_state_ins_gs'] ?? 0, 2); ?></span>
-                </div>
-                <div class="flex justify-between items-center p-3 bg-orange-100 rounded font-bold mt-2">
-                  <span class="font-bold">Total Deductions:</span>
-                  <span class="font-bold text-orange-700">₱<?php echo number_format($payroll_summary['total_deductions'] ?? 0, 2); ?></span>
-                </div>
-              </div>
-            </div>
-          </div>
-        <?php else: ?>
-          <p class="text-gray-500 text-center py-8">No payroll summary available for this period and cutoff.</p>
-        <?php endif; ?>
+        </div>
       </div>
-    </div>
+
+      <!-- Action Buttons -->
+      <?php if ($payroll_status == 'pending' || $payroll_status == 'draft'): ?>
+        <div class="mt-6 flex justify-end">
+          <button type="submit" class="px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 flex items-center justify-center">
+            <i class="fas fa-save mr-2"></i> Save Payroll (<?php echo $current_cutoff['label']; ?>)
+          </button>
+        </div>
+      <?php elseif ($payroll_status == 'approved'): ?>
+        <div class="mt-6 flex justify-end">
+          <button type="button" onclick="showApproveModal()" class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+            <i class="fas fa-check-circle mr-2"></i> Approve Payroll
+          </button>
+        </div>
+      <?php endif; ?>
+    </form>
 
     <!-- View Employee Modal -->
     <div class="modal" id="viewModal">
       <div class="modal-content large">
         <div class="modal-header">
           <h3 class="text-lg font-semibold">Employee Payroll Details</h3>
-          <button onclick="closeModal('viewModal')" class="text-gray-500 hover:text-gray-700">
+          <button onclick="closeModal('viewModal')" class="close-button">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="modal-body" id="viewModalBody">
           <!-- Content will be loaded dynamically -->
-          <div class="text-center py-4">
-            <div class="spinner mx-auto"></div>
-            <p class="mt-2 text-gray-600">Loading employee details...</p>
+          <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading employee details...</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -4921,7 +4364,7 @@ ob_end_flush();
       <div class="modal-content">
         <div class="modal-header">
           <h3 class="text-lg font-semibold">Approve Payroll</h3>
-          <button onclick="closeModal('approveModal')" class="text-gray-500 hover:text-gray-700">
+          <button onclick="closeModal('approveModal')" class="close-button">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -4961,7 +4404,7 @@ ob_end_flush();
       <div class="modal-content">
         <div class="modal-header">
           <h3 class="text-lg font-semibold">Deductions Details</h3>
-          <button onclick="closeModal('deductionsModal')" class="text-gray-500 hover:text-gray-700">
+          <button onclick="closeModal('deductionsModal')" class="close-button">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -4972,79 +4415,133 @@ ob_end_flush();
     </div>
   </main>
 
-  <!-- JavaScript - COMPLETE VERSION WITH FIXES FOR DUPLICATE ISSUES -->
+  <!-- JavaScript - UPDATED with sidebar functionality, but main functionality preserved -->
   <script>
     // ============================================
-    // GLOBAL VARIABLES AND SELECTION FUNCTIONS
+    // SIDEBAR FUNCTIONALITY - UPDATED to match other payroll pages
     // ============================================
-
-    // Global selections storage - Map to ensure uniqueness
-    let selectedEmployeesMap = new Map(); // Store all selected employees across pages
-    const storageKey = `permanent_selected_<?php echo $selected_period; ?>_<?php echo $selected_cutoff; ?>`;
-
-    // Pagination variables
-    let currentPage = <?php echo $current_page; ?>;
-    let totalPages = <?php echo $total_pages; ?>;
-    let recordsPerPage = <?php echo $records_per_page; ?>;
-    let totalEmployees = <?php echo $total_employees; ?>;
-    let searchTerm = '<?php echo addslashes($search_term); ?>';
-    let isLoading = false;
-    let sidebarOpen = false;
-    let payrollMenuOpen = true;
-    let activeSaves = 0;
-    let saveTimeout;
-    let searchTimeout;
-
-    // DOM Ready
     document.addEventListener('DOMContentLoaded', function() {
-      console.log('DOM loaded, total employees:', totalEmployees);
+      const sidebarToggle = document.getElementById('sidebar-toggle');
+      const sidebarContainer = document.getElementById('sidebar-container');
+      const overlay = document.getElementById('overlay');
+      const payrollToggle = document.getElementById('payroll-toggle');
+      const payrollDropdown = document.getElementById('payroll-dropdown');
 
-      // Initialize sidebar
-      initSidebar();
-
-      // Initialize payroll dropdown
-      const payrollDropdown = document.getElementById('payroll-submenu');
-      const payrollChevron = document.getElementById('payroll-toggle')?.querySelector('.chevron');
-      if (payrollDropdown) {
+      // Ensure payroll dropdown is open by default on this page
+      if (payrollToggle && payrollDropdown) {
+        // Make sure dropdown is open and chevron is rotated
         payrollDropdown.classList.add('open');
-        if (payrollChevron) payrollChevron.classList.add('rotated');
+        const chevron = payrollToggle.querySelector('.chevron');
+        if (chevron) {
+          chevron.classList.add('rotated');
+        }
+
+        // Keep the toggle functionality but preserve open state
+        payrollToggle.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Toggle the dropdown
+          payrollDropdown.classList.toggle('open');
+
+          // Toggle chevron rotation
+          if (chevron) {
+            chevron.classList.toggle('rotated');
+          }
+        });
       }
 
-      // Set hidden cutoff value
-      const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
-      if (hiddenCutoff) {
-        hiddenCutoff.value = '<?php echo $selected_cutoff; ?>';
+      // Toggle sidebar
+      if (sidebarToggle && sidebarContainer && overlay) {
+        sidebarToggle.addEventListener('click', function() {
+          sidebarContainer.classList.toggle('active');
+          overlay.classList.toggle('active');
+        });
+
+        overlay.addEventListener('click', function() {
+          sidebarContainer.classList.remove('active');
+          overlay.classList.remove('active');
+        });
       }
 
-      // Load saved selections from storage
-      loadSelectionsFromStorage();
+      // Close sidebar on window resize if open
+      window.addEventListener('resize', function() {
+        if (window.innerWidth >= 1024 && sidebarContainer.classList.contains('active')) {
+          sidebarContainer.classList.remove('active');
+          overlay.classList.remove('active');
+        }
+      });
 
-      // Initialize components
-      initAutoSave();
-      initSearch();
-      initPaginationEvents();
-      highlightRowsByAttendance();
+      // Initialize date/time
       updateDateTime();
       setInterval(updateDateTime, 1000);
 
-      // Initialize tabs
+      // Initialize other functionality (preserved)
+      initCheckboxHandlers();
+      initAutoSave();
+      loadSelectionsFromStorage();
+      syncCheckboxesWithSelections();
+      initPaginationEvents();
+      highlightRowsByAttendance();
       initTabs();
 
-      // Initialize pagination buttons on initial load
-      setupPaginationButtons();
+      // Modal close handlers
+      setupModalCloseHandlers();
 
-      // Initialize checkbox functionality
-      initCheckboxHandlers();
-
-      // Sync checkboxes with stored selections
-      syncCheckboxesWithSelections();
-
-      console.log('Page loaded with global selection across pages');
+      // Click outside to close modals
+      window.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('modal')) {
+          e.target.classList.remove('active');
+          document.body.style.overflow = '';
+        }
+      });
     });
 
+    function setupModalCloseHandlers() {
+      document.querySelectorAll('.modal .close-button, .modal .modal-footer button[onclick*="closeModal"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const modal = this.closest('.modal');
+          if (modal) {
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+          }
+        });
+      });
+    }
+
     // ============================================
-    // GLOBAL SELECTION FUNCTIONS
+    // DATE/TIME FUNCTIONS (preserved)
     // ============================================
+    function updateDateTime() {
+      const now = new Date();
+      const optionsDate = {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      };
+      const dateString = now.toLocaleDateString('en-US', optionsDate);
+
+      let hours = now.getHours();
+      let minutes = now.getMinutes();
+      let seconds = now.getSeconds();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      minutes = minutes < 10 ? '0' + minutes : minutes;
+      seconds = seconds < 10 ? '0' + seconds : seconds;
+
+      const timeString = `${hours}:${minutes}:${seconds} ${ampm}`;
+
+      document.getElementById('current-date').textContent = dateString;
+      document.getElementById('current-time').textContent = timeString;
+    }
+
+    // ============================================
+    // GLOBAL SELECTION FUNCTIONS (preserved)
+    // ============================================
+    let selectedEmployeesMap = new Map();
+    const storageKey = `permanent_selected_<?php echo $selected_period; ?>_<?php echo $selected_cutoff; ?>`;
 
     function loadSelectionsFromStorage() {
       try {
@@ -5053,7 +4550,6 @@ ob_end_flush();
           const selections = JSON.parse(saved);
           selectedEmployeesMap.clear();
 
-          // Convert array back to Map - filter out invalid entries and duplicates
           const uniqueSelections = new Map();
           selections.forEach(item => {
             if (item && item.id && item.id !== 'undefined' && item.id !== '') {
@@ -5065,10 +4561,7 @@ ob_end_flush();
             }
           });
 
-          // Convert back to our map
           selectedEmployeesMap = uniqueSelections;
-
-          console.log(`Loaded ${selectedEmployeesMap.size} valid unique selections from storage`);
         }
       } catch (e) {
         console.error('Error loading selections:', e);
@@ -5081,7 +4574,6 @@ ob_end_flush();
         const selections = Array.from(selectedEmployeesMap.values())
           .filter(item => item && item.id && item.id !== 'undefined' && item.id !== '');
         sessionStorage.setItem(storageKey, JSON.stringify(selections));
-        console.log(`Saved ${selections.length} unique selections to storage`);
       } catch (e) {
         console.error('Error saving selections:', e);
       }
@@ -5093,9 +4585,11 @@ ob_end_flush();
 
       employeeCheckboxes.forEach(checkbox => {
         const employeeId = String(checkbox.value);
+
         if (!employeeId || employeeId === 'undefined' || employeeId === '') {
           return;
         }
+
         if (selectedEmployeesMap.has(employeeId)) {
           checkbox.checked = true;
           syncedCount++;
@@ -5104,7 +4598,6 @@ ob_end_flush();
         }
       });
 
-      console.log(`Synced ${syncedCount} checkboxes with selections`);
       updateSelectAllCheckbox();
       updateSelectedUI();
     }
@@ -5179,9 +4672,8 @@ ob_end_flush();
     }
 
     // ============================================
-    // CHECKBOX HANDLERS
+    // CHECKBOX HANDLERS (preserved)
     // ============================================
-
     function initCheckboxHandlers() {
       const selectAllCheckbox = document.getElementById('select-all');
       const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
@@ -5195,8 +4687,6 @@ ob_end_flush();
         selectAllCheckbox.removeEventListener('change', handleSelectAllChange);
         selectAllCheckbox.addEventListener('change', handleSelectAllChange);
       }
-
-      createSelectAllPagesButton();
     }
 
     function handleCheckboxChange(e) {
@@ -5256,78 +4746,23 @@ ob_end_flush();
       updateSelectedUI();
     }
 
-    function createSelectAllPagesButton() {
-      if (document.getElementById('select-all-pages-btn')) return;
+    window.clearSelections = function() {
+      selectedEmployeesMap.clear();
 
-      const searchContainer = document.querySelector('.mb-4.flex.justify-between.items-center');
-      if (!searchContainer) return;
+      const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
+      employeeCheckboxes.forEach(checkbox => {
+        checkbox.checked = false;
+      });
 
-      const selectAllPagesBtn = document.createElement('button');
-      selectAllPagesBtn.id = 'select-all-pages-btn';
-      selectAllPagesBtn.className = 'ml-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1';
-      selectAllPagesBtn.innerHTML = '<i class="fas fa-check-double"></i> Select All (All Pages)';
-      selectAllPagesBtn.onclick = selectAllAcrossPages;
-
-      const rightSide = document.createElement('div');
-      rightSide.className = 'flex items-center';
-      rightSide.appendChild(selectAllPagesBtn);
-
-      const perPageSelector = document.querySelector('.per-page-selector');
-      if (perPageSelector && perPageSelector.parentNode) {
-        perPageSelector.parentNode.appendChild(rightSide);
+      const selectAllCheckbox = document.getElementById('select-all');
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
       }
-    }
 
-    async function selectAllAcrossPages() {
-      showLoading();
-
-      try {
-        const response = await fetch(window.location.href, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            'ajax_action': 'get_all_employees_for_selection',
-            'period': document.getElementById('payroll-period').value,
-            'cutoff': document.getElementById('hidden-payroll-cutoff').value,
-            'search': searchTerm
-          })
-        });
-
-        const result = await response.json();
-
-        if (result.success && result.employees) {
-          selectedEmployeesMap.clear();
-
-          result.employees.forEach(emp => {
-            if (emp.employee_id) {
-              selectedEmployeesMap.set(String(emp.employee_id), {
-                id: String(emp.employee_id),
-                name: emp.full_name || 'Employee',
-                user_id: emp.user_id || ''
-              });
-            }
-          });
-
-          const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-          employeeCheckboxes.forEach(checkbox => {
-            const employeeId = String(checkbox.value);
-            checkbox.checked = selectedEmployeesMap.has(employeeId);
-          });
-
-          updateSelectAllCheckbox();
-          updateSelectedUI();
-
-          showNotification(`Selected ${selectedEmployeesMap.size} unique employees across all pages`, 'success');
-        }
-      } catch (error) {
-        console.error('Error selecting all employees:', error);
-        showNotification('Error selecting all employees', 'error');
-      } finally {
-        hideLoading();
-      }
-    }
+      updateSelectedUI();
+      saveSelectionsToStorage();
+    };
 
     window.printSelectedPayslips = function() {
       const validSelections = Array.from(selectedEmployeesMap.values())
@@ -5345,31 +4780,17 @@ ob_end_flush();
       window.open(`print_multiple_payslips_permanent.php?employees=${encodeURIComponent(employeeIds)}&period=${encodeURIComponent(period)}&cutoff=${encodeURIComponent(cutoff)}`, '_blank');
     };
 
-    window.clearSelections = function() {
-      selectedEmployeesMap.clear();
-
-      const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-      employeeCheckboxes.forEach(checkbox => {
-        checkbox.checked = false;
-      });
-
-      const selectAllCheckbox = document.getElementById('select-all');
-      if (selectAllCheckbox) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-      }
-
-      updateSelectedUI();
-      saveSelectionsToStorage();
-      showNotification('All selections cleared', 'info');
-    };
-
     // ============================================
-    // PAGINATION FUNCTIONS
+    // PAGINATION FUNCTIONS (preserved)
     // ============================================
+    let currentPage = <?php echo $current_page; ?>;
+    let totalPages = <?php echo $total_pages; ?>;
+    let recordsPerPage = <?php echo $records_per_page; ?>;
+    let searchTerm = '<?php echo addslashes($search_term); ?>';
+    let searchTimeout;
 
     window.changePage = function(page) {
-      if (page < 1 || page > totalPages || isLoading) return;
+      if (page < 1 || page > totalPages) return;
 
       saveSelectionsToStorage();
 
@@ -5384,7 +4805,7 @@ ob_end_flush();
 
     window.changePerPage = function(perPage) {
       const newPerPage = parseInt(perPage);
-      if (isNaN(newPerPage) || newPerPage < 1 || isLoading) return;
+      if (isNaN(newPerPage) || newPerPage < 1) return;
 
       saveSelectionsToStorage();
 
@@ -5397,7 +4818,7 @@ ob_end_flush();
       window.location.href = url.toString();
     };
 
-    function setupPaginationButtons() {
+    function initPaginationEvents() {
       document.querySelectorAll('.pagination-btn:not([disabled])').forEach(btn => {
         btn.removeEventListener('click', handlePaginationClick);
         btn.addEventListener('click', handlePaginationClick);
@@ -5426,10 +4847,6 @@ ob_end_flush();
       }
     }
 
-    function initPaginationEvents() {
-      setupPaginationButtons();
-    }
-
     function initSearch() {
       const searchInput = document.getElementById('search-employees');
       if (searchInput) {
@@ -5438,21 +4855,21 @@ ob_end_flush();
           searchTerm = e.target.value.trim();
           if (searchTimeout) clearTimeout(searchTimeout);
           searchTimeout = setTimeout(() => {
-            if (!isLoading) {
-              saveSelectionsToStorage();
-              const url = new URL(window.location.href);
-              url.searchParams.set('page', '1');
-              if (searchTerm) {
-                url.searchParams.set('search', searchTerm);
-              } else {
-                url.searchParams.delete('search');
-              }
-              window.location.href = url.toString();
+            saveSelectionsToStorage();
+            const url = new URL(window.location.href);
+            url.searchParams.set('page', '1');
+            if (searchTerm) {
+              url.searchParams.set('search', searchTerm);
+            } else {
+              url.searchParams.delete('search');
             }
+            window.location.href = url.toString();
           }, 500);
         });
       }
     }
+
+    initSearch();
 
     const periodSelect = document.getElementById('payroll-period');
     if (periodSelect) {
@@ -5467,8 +4884,10 @@ ob_end_flush();
     }
 
     // ============================================
-    // AUTO-SAVE FUNCTIONS
+    // AUTO-SAVE FUNCTIONALITY (preserved)
     // ============================================
+    let activeSaves = 0;
+    let saveTimeout;
 
     function initAutoSave() {
       document.querySelectorAll('.auto-save-field').forEach(field => {
@@ -5490,8 +4909,7 @@ ob_end_flush();
       const field = e.currentTarget;
       if (!field) return;
 
-      if (field.readonly || field.disabled) return;
-      if (field.classList.contains('full-month-disabled')) return;
+      if (field.readonly || field.disabled || field.classList.contains('full-month-disabled')) return;
 
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
@@ -5509,11 +4927,8 @@ ob_end_flush();
       const fieldName = field.dataset.field;
       const value = parseFloat(field.value) || 0;
 
-      const periodSelect = document.getElementById('payroll-period');
-      const period = periodSelect ? periodSelect.value : '';
-
-      const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
-      const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
+      const period = document.getElementById('payroll-period').value;
+      const cutoff = document.getElementById('hidden-payroll-cutoff').value;
 
       if (cutoff === 'full') {
         showAutoSaveIndicator('error', 'Cannot edit in Full Month');
@@ -5538,7 +4953,7 @@ ob_end_flush();
 
         await calculateRow(row);
 
-        // Get all current values from the row
+        // Get all current values from the row after calculation
         const withholdingTaxField = row.querySelector('.withholding-tax');
         const pagibigLoanField = row.querySelector('.pagibig-loan-mpl');
         const corsoLoanField = row.querySelector('.corso-loan');
@@ -5621,8 +5036,6 @@ ob_end_flush();
         }
 
         const responseText = await response.text();
-        console.log('Raw response:', responseText);
-
         let result;
         try {
           result = JSON.parse(responseText);
@@ -5651,7 +5064,6 @@ ob_end_flush();
 
           await calculateAll();
         } else {
-          console.error('Save failed:', result.error);
           showAutoSaveIndicator('error', result.error || 'Save failed');
           field.classList.add('error');
           setTimeout(() => field.classList.remove('error'), 2000);
@@ -5694,10 +5106,6 @@ ob_end_flush();
         }, 3000);
       }
     }
-
-    // ============================================
-    // CALCULATION FUNCTIONS
-    // ============================================
 
     async function calculateRow(row) {
       if (!row) return null;
@@ -5819,79 +5227,90 @@ ob_end_flush();
         }
       }
 
-      document.getElementById('total-amount-accrued').textContent = '₱' + totalAmountAccrued.toFixed(2);
-      document.getElementById('total-withholding-tax').textContent = '₱' + totalWithholdingTax.toFixed(2);
-      document.getElementById('total-pagibig-loan-mpl').textContent = '₱' + totalPagibigLoanMpl.toFixed(2);
-      document.getElementById('total-corso-loan').textContent = '₱' + totalCorsoLoan.toFixed(2);
-      document.getElementById('total-policy-loan').textContent = '₱' + totalPolicyLoan.toFixed(2);
-      document.getElementById('total-philhealth-ps').textContent = '₱' + totalPhilhealthPs.toFixed(2);
-      document.getElementById('total-uef-retirement').textContent = '₱' + totalUefRetirement.toFixed(2);
-      document.getElementById('total-emergency-loan').textContent = '₱' + totalEmergencyLoan.toFixed(2);
-      document.getElementById('total-gfal').textContent = '₱' + totalGfal.toFixed(2);
-      document.getElementById('total-lbp-loan').textContent = '₱' + totalLbpLoan.toFixed(2);
-      document.getElementById('total-mpl').textContent = '₱' + totalMpl.toFixed(2);
-      document.getElementById('total-mpl-lite').textContent = '₱' + totalMplLite.toFixed(2);
-      document.getElementById('total-sss-contribution').textContent = '₱' + totalSssContribution.toFixed(2);
-      document.getElementById('total-pagibig-cont').textContent = '₱' + totalPagibigCont.toFixed(2);
-      document.getElementById('total-state-ins-gs').textContent = '₱' + totalStateInsGs.toFixed(2);
-      document.getElementById('total-deduction').textContent = '₱' + totalDeductions.toFixed(2);
-      document.getElementById('total-amount-due').textContent = '₱' + totalAmountDue.toFixed(2);
-      document.getElementById('total-net-amount').textContent = '₱' + totalAmountDue.toFixed(2);
+      // Safely update totals with null checks
+      const totalAmountAccruedEl = document.getElementById('total-amount-accrued');
+      if (totalAmountAccruedEl) totalAmountAccruedEl.textContent = '₱' + totalAmountAccrued.toFixed(2);
 
-      document.getElementById('total-deductions-display').textContent = '₱' + totalDeductions.toFixed(2);
-      document.getElementById('amount-due-display').textContent = '₱' + totalAmountDue.toFixed(2);
+      const totalWithholdingTaxEl = document.getElementById('total-withholding-tax');
+      if (totalWithholdingTaxEl) totalWithholdingTaxEl.textContent = '₱' + totalWithholdingTax.toFixed(2);
+
+      const totalPagibigLoanMplEl = document.getElementById('total-pagibig-loan-mpl');
+      if (totalPagibigLoanMplEl) totalPagibigLoanMplEl.textContent = '₱' + totalPagibigLoanMpl.toFixed(2);
+
+      const totalCorsoLoanEl = document.getElementById('total-corso-loan');
+      if (totalCorsoLoanEl) totalCorsoLoanEl.textContent = '₱' + totalCorsoLoan.toFixed(2);
+
+      const totalPolicyLoanEl = document.getElementById('total-policy-loan');
+      if (totalPolicyLoanEl) totalPolicyLoanEl.textContent = '₱' + totalPolicyLoan.toFixed(2);
+
+      const totalPhilhealthPsEl = document.getElementById('total-philhealth-ps');
+      if (totalPhilhealthPsEl) totalPhilhealthPsEl.textContent = '₱' + totalPhilhealthPs.toFixed(2);
+
+      const totalUefRetirementEl = document.getElementById('total-uef-retirement');
+      if (totalUefRetirementEl) totalUefRetirementEl.textContent = '₱' + totalUefRetirement.toFixed(2);
+
+      const totalEmergencyLoanEl = document.getElementById('total-emergency-loan');
+      if (totalEmergencyLoanEl) totalEmergencyLoanEl.textContent = '₱' + totalEmergencyLoan.toFixed(2);
+
+      const totalGfalEl = document.getElementById('total-gfal');
+      if (totalGfalEl) totalGfalEl.textContent = '₱' + totalGfal.toFixed(2);
+
+      const totalLbpLoanEl = document.getElementById('total-lbp-loan');
+      if (totalLbpLoanEl) totalLbpLoanEl.textContent = '₱' + totalLbpLoan.toFixed(2);
+
+      const totalMplEl = document.getElementById('total-mpl');
+      if (totalMplEl) totalMplEl.textContent = '₱' + totalMpl.toFixed(2);
+
+      const totalMplLiteEl = document.getElementById('total-mpl-lite');
+      if (totalMplLiteEl) totalMplLiteEl.textContent = '₱' + totalMplLite.toFixed(2);
+
+      const totalSssContributionEl = document.getElementById('total-sss-contribution');
+      if (totalSssContributionEl) totalSssContributionEl.textContent = '₱' + totalSssContribution.toFixed(2);
+
+      const totalPagibigContEl = document.getElementById('total-pagibig-cont');
+      if (totalPagibigContEl) totalPagibigContEl.textContent = '₱' + totalPagibigCont.toFixed(2);
+
+      const totalStateInsGsEl = document.getElementById('total-state-ins-gs');
+      if (totalStateInsGsEl) totalStateInsGsEl.textContent = '₱' + totalStateInsGs.toFixed(2);
+
+      const totalDeductionEl = document.getElementById('total-deduction');
+      if (totalDeductionEl) totalDeductionEl.textContent = '₱' + totalDeductions.toFixed(2);
+
+      const totalAmountDueEl = document.getElementById('total-amount-due');
+      if (totalAmountDueEl) totalAmountDueEl.textContent = '₱' + totalAmountDue.toFixed(2);
+
+      const totalNetAmountEl = document.getElementById('total-net-amount');
+      if (totalNetAmountEl) totalNetAmountEl.textContent = '₱' + totalAmountDue.toFixed(2);
+
+      const totalDeductionsDisplayEl = document.getElementById('total-deductions-display');
+      if (totalDeductionsDisplayEl) totalDeductionsDisplayEl.textContent = '₱' + totalDeductions.toFixed(2);
+
+      const amountDueDisplayEl = document.getElementById('amount-due-display');
+      if (amountDueDisplayEl) amountDueDisplayEl.textContent = '₱' + totalAmountDue.toFixed(2);
 
       highlightRowsByAttendance();
     }
 
-    function calculateSingleRowHandler(e) {
-      e.preventDefault();
-      const button = e.currentTarget;
-      const row = button.closest('.payroll-row');
-      if (row) {
-        calculateRow(row).then(() => calculateAll());
-      }
-    }
-
-    window.calculateSingleRow = calculateSingleRowHandler;
-
-    const calculateAllBtn = document.getElementById('calculate-all-btn');
-    if (calculateAllBtn) {
-      calculateAllBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        calculateAll();
+    function highlightRowsByAttendance() {
+      document.querySelectorAll('.payroll-row').forEach(row => {
+        const daysPresentInput = row.querySelector('.hidden-days-present');
+        if (daysPresentInput) {
+          const daysPresent = parseFloat(daysPresentInput.value) || 0;
+          if (daysPresent <= 0) {
+            row.classList.add('no-attendance');
+          } else {
+            row.classList.remove('no-attendance');
+          }
+        }
       });
     }
 
     // ============================================
-    // MODAL FUNCTIONS
+    // EMPLOYEE DETAILS MODAL (preserved)
     // ============================================
-
-    function openModal(modalId) {
-      const modal = document.getElementById(modalId);
-      if (modal) {
-        modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-      }
-    }
-
-    window.closeModal = function(modalId) {
-      const modal = document.getElementById(modalId);
-      if (modal) {
-        modal.classList.remove('active');
-        document.body.style.overflow = '';
-      }
-    };
-
-    window.addEventListener('click', function(e) {
-      if (e.target.classList && e.target.classList.contains('modal')) {
-        e.target.classList.remove('active');
-        document.body.style.overflow = '';
-      }
-    });
-
     window.viewEmployeeData = async function(userId, period, cutoff) {
       showLoading();
+
       try {
         const formData = new FormData();
         formData.append('ajax_action', 'get_employee_details');
@@ -5908,11 +5327,11 @@ ob_end_flush();
         if (result.success) {
           displayEmployeeDetails(result);
         } else {
-          showNotification('Error loading employee details', 'error');
+          alert('Error: ' + (result.error || 'Failed to load employee details'));
         }
       } catch (error) {
         console.error('Error:', error);
-        showNotification('Error loading employee details', 'error');
+        alert('Error loading employee details');
       } finally {
         hideLoading();
       }
@@ -5943,89 +5362,89 @@ ob_end_flush();
       const hasAttendance = (attendance.days_present > 0);
 
       let html = `
-                <div class="space-y-4">
-                    <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-600">
-                        <h4 class="font-bold text-lg mb-2">Payroll Period: ${cutoff.label}</h4>
-                        <p class="text-sm">Period: ${cutoff.start} to ${cutoff.end}</p>
-                        <p class="text-sm">Working Days: ${cutoff.working_days} days</p>
+        <div class="space-y-4">
+            <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-600">
+                <h4 class="font-bold text-lg mb-2">Payroll Period: ${cutoff.label}</h4>
+                <p class="text-sm">Period: ${cutoff.start} to ${cutoff.end}</p>
+                <p class="text-sm">Working Days: ${cutoff.working_days} days</p>
+            </div>
+            
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-bold text-lg mb-2">${safeText(employee.full_name)}</h4>
+                <p class="text-sm">Employee ID: ${safeText(employee.employee_id)}</p>
+                <p class="text-sm">Position: ${safeText(employee.position)}</p>
+                <p class="text-sm">Department: ${safeText(employee.department)}</p>
+            </div>
+            
+            <div class="border p-4 rounded-lg">
+                <h4 class="font-semibold mb-2">Contact Information</h4>
+                <p class="text-sm">Email: ${safeText(employee.email_address)}</p>
+                <p class="text-sm">Mobile: ${safeText(employee.mobile_number)}</p>
+            </div>
+            
+            <div class="border p-4 rounded-lg">
+                <h4 class="font-semibold mb-2">Attendance Summary (${cutoff.label})</h4>
+                <div class="attendance-summary">
+                    <div class="attendance-card">
+                        <div class="value">${safeNumber(attendance.days_present, 1)}</div>
+                        <div class="label">Days Present</div>
                     </div>
-                    
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="font-bold text-lg mb-2">${safeText(employee.full_name)}</h4>
-                        <p class="text-sm">Employee ID: ${safeText(employee.employee_id)}</p>
-                        <p class="text-sm">Position: ${safeText(employee.position)}</p>
-                        <p class="text-sm">Department: ${safeText(employee.department)}</p>
+                    <div class="attendance-card">
+                        <div class="value">${cutoff.working_days}</div>
+                        <div class="label">Working Days</div>
                     </div>
-                    
-                    <div class="border p-4 rounded-lg">
-                        <h4 class="font-semibold mb-2">Contact Information</h4>
-                        <p class="text-sm">Email: ${safeText(employee.email_address)}</p>
-                        <p class="text-sm">Mobile: ${safeText(employee.mobile_number)}</p>
+                    <div class="attendance-card">
+                        <div class="value">${((attendance.days_present / cutoff.working_days) * 100).toFixed(1)}%</div>
+                        <div class="label">Attendance Rate</div>
                     </div>
-                    
-                    <div class="border p-4 rounded-lg">
-                        <h4 class="font-semibold mb-2">Attendance Summary (${cutoff.label})</h4>
-                        <div class="attendance-summary">
-                            <div class="attendance-card">
-                                <div class="value">${safeNumber(attendance.days_present, 1)}</div>
-                                <div class="label">Days Present</div>
-                            </div>
-                            <div class="attendance-card">
-                                <div class="value">${cutoff.working_days}</div>
-                                <div class="label">Working Days</div>
-                            </div>
-                            <div class="attendance-card">
-                                <div class="value">${((attendance.days_present / cutoff.working_days) * 100).toFixed(1)}%</div>
-                                <div class="label">Attendance Rate</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="border p-4 rounded-lg">
-                        <h4 class="font-semibold mb-2">Compensation & Deductions</h4>
-                        <p class="text-sm">Monthly Salary: ${safeCurrency(calculations.monthly_salary)}</p>
-                        <p class="text-sm">Daily Rate: ${safeCurrency(calculations.daily_rate)}</p>
-                        <p class="text-sm">Amount Accrued: ${safeCurrency(calculations.amount_accrued)}</p>
-                        <p class="text-sm">Other Compensation: ${safeCurrency(calculations.other_comp)}</p>
-                        <p class="text-sm font-bold mt-2">Deductions:</p>
-                        <p class="text-sm ml-2">Withholding Tax: ${safeCurrency(calculations.withholding_tax)}</p>
-                        <p class="text-sm ml-2">PAG-IBIG LOAN - MPL: ${safeCurrency(calculations.pagibig_loan_mpl)}</p>
-                        <p class="text-sm ml-2">Corso Loan: ${safeCurrency(calculations.corso_loan)}</p>
-                        <p class="text-sm ml-2">Policy Loan: ${safeCurrency(calculations.policy_loan)}</p>
-                        <p class="text-sm ml-2">PhilHealth P.S.: ${safeCurrency(calculations.philhealth_ps)}</p>
-                        <p class="text-sm ml-2">UEF / Retirement: ${safeCurrency(calculations.uef_retirement)}</p>
-                        <p class="text-sm ml-2">Emergency Loan: ${safeCurrency(calculations.emergency_loan)}</p>
-                        <p class="text-sm ml-2">GFAL: ${safeCurrency(calculations.gfal)}</p>
-                        <p class="text-sm ml-2">LBP Loan: ${safeCurrency(calculations.lbp_loan)}</p>
-                        <p class="text-sm ml-2">MPL: ${safeCurrency(calculations.mpl)}</p>
-                        <p class="text-sm ml-2">MPL Lite: ${safeCurrency(calculations.mpl_lite)}</p>
-                        <p class="text-sm ml-2">SSS Contribution: ${safeCurrency(calculations.sss_contribution)}</p>
-                        <p class="text-sm ml-2">PAG-IBIG CONT.: ${safeCurrency(calculations.pagibig_cont)}</p>
-                        <p class="text-sm ml-2">STATE INS. G.S.: ${safeCurrency(calculations.state_ins_gs)}</p>
-                        <p class="text-sm font-bold mt-2">Total Deductions: ${safeCurrency(calculations.total_deductions)}</p>
-                        <p class="text-sm font-bold text-blue-600 mt-2">Amount Due: ${safeCurrency(calculations.amount_due)}</p>
-                    </div>
-            `;
+                </div>
+            </div>
+            
+            <div class="border p-4 rounded-lg">
+                <h4 class="font-semibold mb-2">Compensation & Deductions</h4>
+                <p class="text-sm">Monthly Salary: ${safeCurrency(calculations.monthly_salary)}</p>
+                <p class="text-sm">Daily Rate: ${safeCurrency(calculations.daily_rate)}</p>
+                <p class="text-sm">Amount Accrued: ${safeCurrency(calculations.amount_accrued)}</p>
+                <p class="text-sm">Other Compensation: ${safeCurrency(calculations.other_comp)}</p>
+                <p class="text-sm font-bold mt-2">Deductions:</p>
+                <p class="text-sm ml-2">Withholding Tax: ${safeCurrency(calculations.withholding_tax)}</p>
+                <p class="text-sm ml-2">PAG-IBIG LOAN - MPL: ${safeCurrency(calculations.pagibig_loan_mpl)}</p>
+                <p class="text-sm ml-2">Corso Loan: ${safeCurrency(calculations.corso_loan)}</p>
+                <p class="text-sm ml-2">Policy Loan: ${safeCurrency(calculations.policy_loan)}</p>
+                <p class="text-sm ml-2">PhilHealth P.S.: ${safeCurrency(calculations.philhealth_ps)}</p>
+                <p class="text-sm ml-2">UEF / Retirement: ${safeCurrency(calculations.uef_retirement)}</p>
+                <p class="text-sm ml-2">Emergency Loan: ${safeCurrency(calculations.emergency_loan)}</p>
+                <p class="text-sm ml-2">GFAL: ${safeCurrency(calculations.gfal)}</p>
+                <p class="text-sm ml-2">LBP Loan: ${safeCurrency(calculations.lbp_loan)}</p>
+                <p class="text-sm ml-2">MPL: ${safeCurrency(calculations.mpl)}</p>
+                <p class="text-sm ml-2">MPL Lite: ${safeCurrency(calculations.mpl_lite)}</p>
+                <p class="text-sm ml-2">SSS Contribution: ${safeCurrency(calculations.sss_contribution)}</p>
+                <p class="text-sm ml-2">PAG-IBIG CONT.: ${safeCurrency(calculations.pagibig_cont)}</p>
+                <p class="text-sm ml-2">STATE INS. G.S.: ${safeCurrency(calculations.state_ins_gs)}</p>
+                <p class="text-sm font-bold mt-2">Total Deductions: ${safeCurrency(calculations.total_deductions)}</p>
+                <p class="text-sm font-bold text-blue-600 mt-2">Amount Due: ${safeCurrency(calculations.amount_due)}</p>
+            </div>
+    `;
 
       if (payrollHistory && payrollHistory.length > 0) {
         html += `
-                    <div class="border p-4 rounded-lg">
-                        <h4 class="font-semibold mb-2">Recent Payroll History</h4>
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full text-sm">
-                                <thead>
-                                    <tr class="bg-gray-100">
-                                        <th class="p-2">Period</th>
-                                        <th class="p-2">Cutoff</th>
-                                        <th class="p-2">Days</th>
-                                        <th class="p-2">Amount Accrued</th>
-                                        <th class="p-2">Deductions</th>
-                                        <th class="p-2">Amount Due</th>
-                                        <th class="p-2">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                `;
+            <div class="border p-4 rounded-lg">
+                <h4 class="font-semibold mb-2">Recent Payroll History</h4>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="p-2">Period</th>
+                                <th class="p-2">Cutoff</th>
+                                <th class="p-2">Days</th>
+                                <th class="p-2">Amount Accrued</th>
+                                <th class="p-2">Deductions</th>
+                                <th class="p-2">Amount Due</th>
+                                <th class="p-2">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
 
         payrollHistory.forEach(payroll => {
           html += `
@@ -6121,59 +5540,25 @@ ob_end_flush();
       if (overlay) overlay.classList.remove('active');
     }
 
-    function showApproveModal() {
-      openModal('approveModal');
+    function openModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      }
     }
 
-    window.generateObligationRequest = function() {
-      const periodSelect = document.getElementById('payroll-period');
-      const period = periodSelect ? periodSelect.value : '';
-
-      const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
-      const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
-
-      window.location.href = `permanentobligationrequest.php?period=${period}&cutoff=${cutoff}`;
+    window.closeModal = function(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+      }
     };
 
-    // ============================================
-    // UTILITY FUNCTIONS
-    // ============================================
-
-    function highlightRowsByAttendance() {
-      document.querySelectorAll('.payroll-row').forEach(row => {
-        const daysPresentInput = row.querySelector('.hidden-days-present');
-        if (daysPresentInput) {
-          const daysPresent = parseFloat(daysPresentInput.value) || 0;
-          if (daysPresent <= 0) {
-            row.classList.add('no-attendance');
-          } else {
-            row.classList.remove('no-attendance');
-          }
-        }
-      });
-    }
-
-    function updateDateTime() {
-      const now = new Date();
-      const dateString = now.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      const timeString = now.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      });
-
-      const dateElement = document.getElementById('current-date');
-      const timeElement = document.getElementById('current-time');
-
-      if (dateElement) dateElement.textContent = dateString;
-      if (timeElement) timeElement.textContent = timeString;
-    }
+    window.showApproveModal = function() {
+      openModal('approveModal');
+    };
 
     function printEmployeeDetails() {
       const modalBody = document.getElementById('viewModalBody');
@@ -6202,80 +5587,6 @@ ob_end_flush();
       printWindow.document.close();
       printWindow.print();
     }
-
-    // ============================================
-    // SIDEBAR FUNCTIONS
-    // ============================================
-
-    function initSidebar() {
-      const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-      const sidebarOverlay = document.getElementById('sidebar-overlay');
-      const payrollToggle = document.getElementById('payroll-toggle');
-
-      if (mobileMenuToggle) {
-        mobileMenuToggle.addEventListener('click', toggleSidebar);
-      }
-
-      if (sidebarOverlay) {
-        sidebarOverlay.addEventListener('click', closeSidebar);
-      }
-
-      if (payrollToggle) {
-        payrollToggle.addEventListener('click', togglePayrollDropdown);
-      }
-
-      document.querySelectorAll('.sidebar-item, .submenu-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-          if (window.innerWidth < 1024) closeSidebar();
-        });
-      });
-
-      window.addEventListener('resize', function() {
-        if (window.innerWidth >= 1024) closeSidebar();
-      });
-    }
-
-    function toggleSidebar() {
-      const sidebar = document.getElementById('sidebar');
-      const overlay = document.getElementById('sidebar-overlay');
-
-      sidebarOpen = !sidebarOpen;
-
-      if (sidebar) sidebar.classList.toggle('active');
-      if (overlay) overlay.classList.toggle('active');
-
-      if (window.innerWidth < 1024) {
-        document.body.style.overflow = sidebarOpen ? 'hidden' : '';
-      }
-    }
-
-    function closeSidebar() {
-      const sidebar = document.getElementById('sidebar');
-      const overlay = document.getElementById('sidebar-overlay');
-
-      if (sidebar) sidebar.classList.remove('active');
-      if (overlay) overlay.classList.remove('active');
-
-      sidebarOpen = false;
-      document.body.style.overflow = '';
-    }
-
-    function togglePayrollDropdown(e) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const dropdown = document.getElementById('payroll-submenu');
-      const chevron = this.querySelector('.chevron');
-
-      payrollMenuOpen = !payrollMenuOpen;
-
-      if (dropdown) dropdown.classList.toggle('open');
-      if (chevron) chevron.classList.toggle('rotated');
-    }
-
-    // ============================================
-    // TAB FUNCTIONS
-    // ============================================
 
     function initTabs() {
       document.querySelectorAll('.tab').forEach(tab => {
@@ -6375,6 +5686,16 @@ ob_end_flush();
         }
       });
     }
+
+    window.generateObligationRequest = function() {
+      const periodSelect = document.getElementById('payroll-period');
+      const period = periodSelect ? periodSelect.value : '';
+
+      const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
+      const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
+
+      window.location.href = `permanentobligationrequest.php?period=${period}&cutoff=${cutoff}`;
+    };
 
     window.addEventListener('popstate', function() {
       window.location.reload();

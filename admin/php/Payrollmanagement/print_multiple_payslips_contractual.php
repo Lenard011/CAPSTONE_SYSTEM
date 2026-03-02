@@ -336,629 +336,7 @@ function formatDate($date)
 {
     return date('F d, Y', strtotime($date));
 }
-?>
-<!DOCTYPE html>
-<html lang="en">
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiple Contractual Payslips - <?php echo $company_name; ?></title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Arial', sans-serif;
-            background: #f0f2f5;
-            padding: 20px;
-        }
-
-        .print-container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .payslip {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-            page-break-after: always;
-            position: relative;
-        }
-
-        .payslip:last-child {
-            page-break-after: auto;
-        }
-
-        .payslip-header {
-            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 8px 8px 0 0;
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .company-logo {
-            width: 80px;
-            height: 80px;
-            object-fit: contain;
-            background: white;
-            border-radius: 50%;
-            padding: 5px;
-        }
-
-        .company-info h2 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-
-        .company-info p {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .payslip-title {
-            margin-left: auto;
-            text-align: right;
-        }
-
-        .payslip-title h3 {
-            font-size: 20px;
-            margin-bottom: 5px;
-        }
-
-        .payslip-title .period {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .employee-info {
-            padding: 20px;
-            border-bottom: 2px solid #e5e7eb;
-            background: #f8fafc;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-        }
-
-        .info-item {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .info-label {
-            font-size: 12px;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .info-value {
-            font-size: 16px;
-            font-weight: 600;
-            color: #1f2937;
-            margin-top: 4px;
-        }
-
-        .attendance-summary {
-            padding: 20px;
-            background: #eff6ff;
-            border-bottom: 2px solid #e5e7eb;
-        }
-
-        .attendance-grid {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-        }
-
-        .attendance-box {
-            text-align: center;
-        }
-
-        .attendance-box .value {
-            font-size: 24px;
-            font-weight: 700;
-            color: #1e40af;
-        }
-
-        .attendance-box .label {
-            font-size: 12px;
-            color: #6b7280;
-            margin-top: 4px;
-        }
-
-        .salary-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
-
-        .salary-table th {
-            background: #f3f4f6;
-            padding: 12px;
-            text-align: left;
-            font-size: 14px;
-            font-weight: 600;
-            color: #374151;
-            border-bottom: 2px solid #d1d5db;
-        }
-
-        .salary-table td {
-            padding: 12px;
-            border-bottom: 1px solid #e5e7eb;
-            font-size: 14px;
-        }
-
-        .salary-table .amount {
-            text-align: right;
-            font-weight: 500;
-        }
-
-        .salary-table .total-row {
-            background: #f8fafc;
-            font-weight: 600;
-        }
-
-        .salary-table .grand-total {
-            background: #eff6ff;
-            font-weight: 700;
-            font-size: 16px;
-        }
-
-        .deductions-section {
-            padding: 20px;
-            border-top: 2px dashed #e5e7eb;
-        }
-
-        .deductions-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1e40af;
-            margin-bottom: 15px;
-        }
-
-        .deductions-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-        }
-
-        .deduction-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px dotted #e5e7eb;
-        }
-
-        .deduction-label {
-            color: #4b5563;
-        }
-
-        .deduction-amount {
-            font-weight: 500;
-            color: #dc2626;
-        }
-
-        .net-pay {
-            margin-top: 20px;
-            padding: 15px;
-            background: #dcfce7;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        .net-pay-label {
-            color: #166534;
-        }
-
-        .net-pay-amount {
-            color: #059669;
-        }
-
-        .payslip-footer {
-            padding: 20px;
-            border-top: 2px solid #e5e7eb;
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            color: #6b7280;
-        }
-
-        .signature-area {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 30px;
-            padding: 0 20px 20px;
-        }
-
-        .signature-box {
-            text-align: center;
-            width: 200px;
-        }
-
-        .signature-line {
-            border-top: 1px solid #000;
-            margin: 10px 0 5px;
-            width: 100%;
-        }
-
-        .signature-label {
-            font-size: 12px;
-            color: #6b7280;
-        }
-
-        .print-controls {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            display: flex;
-            gap: 10px;
-            z-index: 1000;
-        }
-
-        .print-btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .print-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .print-btn.print {
-            background: #1e40af;
-            color: white;
-        }
-
-        .print-btn.back {
-            background: #6b7280;
-            color: white;
-        }
-
-        .text-center {
-            text-align: center;
-        }
-
-        .contractual-badge {
-            display: inline-block;
-            background: #1e40af;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-left: 8px;
-        }
-
-        @media print {
-            body {
-                background: white;
-                padding: 0;
-            }
-
-            .print-controls {
-                display: none;
-            }
-
-            .payslip {
-                box-shadow: none;
-                margin: 0;
-                page-break-after: always;
-            }
-
-            .payslip-header {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .attendance-summary {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .grand-total {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .net-pay {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-        }
-    </style>
-</head>
-
-<body>
-    <div class="print-container">
-        <?php if (empty($employees_data)): ?>
-            <div class="payslip" style="padding: 50px; text-align: center;">
-                <h3>No employee data found</h3>
-                <p>Please select employees with valid payroll data.</p>
-                <p style="color: #666; margin-top: 10px;">Debug: Employee IDs received: <?php echo htmlspecialchars($employee_ids); ?></p>
-                <button class="print-btn back" onclick="goBackAndClose()" style="margin-top: 20px; display: inline-block;">
-                    <i class="fas fa-arrow-left"></i> Back
-                </button>
-            </div>
-        <?php else: ?>
-            <?php foreach ($employees_data as $index => $employee): ?>
-                <div class="payslip">
-                    <!-- Header -->
-                    <div class="payslip-header">
-                        <img src="<?php echo $company_logo; ?>" alt="Company Logo" class="company-logo">
-                        <div class="company-info">
-                            <h2><?php echo $company_name; ?></h2>
-                            <p><?php echo $company_address; ?></p>
-                        </div>
-                        <div class="payslip-title">
-                            <h3>CONTRACTUAL PAYSLIP</h3>
-                            <p class="period"><?php echo $current_cutoff['label']; ?> - <?php echo date('F Y', strtotime($period . '-01')); ?></p>
-                        </div>
-                    </div>
-
-                    <!-- Employee Information -->
-                    <div class="employee-info">
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="info-label">Employee ID</span>
-                                <span class="info-value"><?php echo htmlspecialchars($employee['employee_id']); ?></span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Full Name</span>
-                                <span class="info-value"><?php echo htmlspecialchars($employee['full_name']); ?></span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Position</span>
-                                <span class="info-value"><?php echo htmlspecialchars($employee['position']); ?></span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Department/Office</span>
-                                <span class="info-value"><?php echo htmlspecialchars($employee['department']); ?></span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Payroll Period</span>
-                                <span class="info-value"><?php echo formatDate($current_cutoff['start']); ?> - <?php echo formatDate($current_cutoff['end']); ?></span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Status</span>
-                                <span class="info-value"><?php echo ucfirst($employee['payroll_status']); ?></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Attendance Summary -->
-                    <div class="attendance-summary">
-                        <div class="attendance-grid">
-                            <div class="attendance-box">
-                                <div class="value"><?php echo number_format($employee['days_present'], 1); ?></div>
-                                <div class="label">Days Present</div>
-                            </div>
-                            <div class="attendance-box">
-                                <div class="value"><?php echo $current_cutoff['working_days']; ?></div>
-                                <div class="label">Working Days</div>
-                            </div>
-                            <div class="attendance-box">
-                                <div class="value"><?php echo $employee['days_present'] > 0 ? number_format(($employee['days_present'] / $current_cutoff['working_days']) * 100, 1) : '0'; ?>%</div>
-                                <div class="label">Attendance Rate</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Salary Details -->
-                    <table class="salary-table">
-                        <thead>
-                            <tr>
-                                <th>Description</th>
-                                <th class="amount">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Monthly Salary (Base)</td>
-                                <td class="amount"><?php echo formatCurrency($employee['monthly_salary']); ?></td>
-                            </tr>
-                            <tr>
-                                <td>Daily Rate (22 days/month)</td>
-                                <td class="amount"><?php echo formatCurrency($employee['rate_per_day'] ?? 0); ?></td>
-                            </tr>
-                            <tr>
-                                <td>Days Present</td>
-                                <td class="amount"><?php echo number_format($employee['days_present'], 1); ?> days</td>
-                            </tr>
-                            <tr>
-                                <td>Prorated Salary (Daily Rate × Days Present)</td>
-                                <td class="amount"><?php echo formatCurrency(($employee['rate_per_day'] ?? 0) * $employee['days_present']); ?></td>
-                            </tr>
-                            <?php if (isset($employee['other_comp']) && $employee['other_comp'] > 0): ?>
-                                <tr>
-                                    <td>Other Compensation</td>
-                                    <td class="amount"><?php echo formatCurrency($employee['other_comp']); ?></td>
-                                </tr>
-                            <?php endif; ?>
-                            <tr class="total-row">
-                                <td><strong>GROSS AMOUNT</strong></td>
-                                <td class="amount"><strong><?php echo formatCurrency($employee['gross_amount']); ?></strong></td>
-                            </tr>
-
-                            <!-- Deductions -->
-                            <tr>
-                                <td colspan="2" style="padding: 20px 0 10px;">
-                                    <div class="deductions-title">DEDUCTIONS</div>
-                                </td>
-                            </tr>
-                            <?php if (isset($employee['withholding_tax']) && $employee['withholding_tax'] > 0): ?>
-                                <tr>
-                                    <td>Withholding Tax</td>
-                                    <td class="amount" style="color: #dc2626;"><?php echo formatCurrency($employee['withholding_tax']); ?></td>
-                                </tr>
-                            <?php endif; ?>
-                            <?php if (isset($employee['sss']) && $employee['sss'] > 0): ?>
-                                <tr>
-                                    <td>SSS Contribution</td>
-                                    <td class="amount" style="color: #dc2626;"><?php echo formatCurrency($employee['sss']); ?></td>
-                                </tr>
-                            <?php endif; ?>
-                            <?php if ((!isset($employee['withholding_tax']) || $employee['withholding_tax'] == 0) &&
-                                (!isset($employee['sss']) || $employee['sss'] == 0)
-                            ): ?>
-                                <tr>
-                                    <td colspan="2" class="text-center" style="color: #6b7280; padding: 10px;">No deductions for this period</td>
-                                </tr>
-                            <?php endif; ?>
-
-                            <tr class="total-row">
-                                <td><strong>TOTAL DEDUCTIONS</strong></td>
-                                <td class="amount"><strong style="color: #dc2626;"><?php echo formatCurrency($employee['total_deductions'] ?? 0); ?></strong></td>
-                            </tr>
-
-                            <!-- Net Pay -->
-                            <tr class="grand-total">
-                                <td><strong>NET PAY (Take Home Pay)</strong></td>
-                                <td class="amount"><strong><?php echo formatCurrency($employee['net_amount']); ?></strong></td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <!-- Net Pay Summary -->
-                    <div class="net-pay">
-                        <span class="net-pay-label">NET AMOUNT DUE:</span>
-                        <span class="net-pay-amount"><?php echo formatCurrency($employee['net_amount']); ?></span>
-                    </div>
-
-                    <!-- Amount in Words -->
-                    <div style="padding: 0 20px 20px;">
-                        <p style="font-size: 12px; color: #6b7280;">
-                            <strong>Amount in Words:</strong>
-                            <?php
-                            // Simple number to words conversion
-                            $amount_parts = explode('.', number_format($employee['net_amount'], 2, '.', ''));
-                            echo strtoupper(convertNumberToWords((int)$amount_parts[0])) . ' PESOS AND ' . $amount_parts[1] . '/100 ONLY';
-                            ?>
-                        </p>
-                    </div>
-
-                    <!-- Contact Information (if available) -->
-                    <?php if (!empty($employee['email_address']) || !empty($employee['mobile_number'])): ?>
-                        <div style="padding: 0 20px 20px;">
-                            <p style="font-size: 11px; color: #6b7280;">
-                                <?php if (!empty($employee['email_address'])): ?>
-                                    <strong>Email:</strong> <?php echo htmlspecialchars($employee['email_address']); ?>
-                                <?php endif; ?>
-                                <?php if (!empty($employee['mobile_number'])): ?>
-                                    <?php if (!empty($employee['email_address'])): ?> | <?php endif; ?>
-                                    <strong>Mobile:</strong> <?php echo htmlspecialchars($employee['mobile_number']); ?>
-                                <?php endif; ?>
-                            </p>
-                        </div>
-                    <?php endif; ?>
-
-                    <!-- Signature Area -->
-                    <div class="signature-area">
-                        <div class="signature-box">
-                            <div class="signature-line"></div>
-                            <div class="signature-label">Employee Signature</div>
-                        </div>
-                        <div class="signature-box">
-                            <div class="signature-line"></div>
-                            <div class="signature-label">HR Officer Signature</div>
-                        </div>
-                    </div>
-
-                    <!-- Footer -->
-                    <div class="payslip-footer">
-                        <span>Generated on: <?php echo date('F d, Y h:i A'); ?></span>
-                        <span>This is a computer-generated document. No signature required.</span>
-                    </div>
-
-                    <?php if ($index < count($employees_data) - 1): ?>
-                        <div style="page-break-before: always;"></div>
-                    <?php endif; ?>
-                </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
-    </div>
-
-    <!-- Print Controls - FIXED BACK BUTTON -->
-    <div class="print-controls">
-        <button class="print-btn back" onclick="goBackAndClose()">
-            <i class="fas fa-arrow-left"></i> Back
-        </button>
-        <?php if (!empty($employees_data)): ?>
-            <button class="print-btn print" onclick="window.print()">
-                <i class="fas fa-print"></i> Print All Payslips
-            </button>
-        <?php endif; ?>
-    </div>
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-
-    <script>
-        // Function to go back to previous page and close current tab
-        function goBackAndClose() {
-            // Try to close the current window
-            window.close();
-
-            // If window.close() doesn't work (browser restrictions), go back in history
-            // Use a slight delay to ensure close() had a chance to work
-            setTimeout(function() {
-                // Fallback: go back in history
-                if (document.referrer) {
-                    window.location.href = document.referrer;
-                } else {
-                    // If no referrer, go to a default page
-                    window.location.href = 'contractualpayrolltable1.php?period=<?php echo $period; ?>&cutoff=<?php echo $cutoff; ?>';
-                }
-            }, 100);
-        }
-
-        // Auto-close if opened as a popup and printing is done
-        window.onafterprint = function() {
-            // Optional: Ask user if they want to close after printing
-            if (confirm('Printing complete. Do you want to close this window?')) {
-                goBackAndClose();
-            }
-        };
-
-        // Handle page show event (for back/forward cache)
-        window.onpageshow = function(event) {
-            if (event.persisted) {
-                // Page was loaded from cache (back/forward navigation)
-                console.log('Page loaded from cache');
-            }
-        };
-    </script>
-</body>
-
-</html>
-
-<?php
 // Helper function to convert numbers to words
 function convertNumberToWords($number)
 {
@@ -1024,3 +402,613 @@ function convertNumberToWords($number)
     }
 }
 ?>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiple Contractual Payslips - <?php echo $company_name; ?></title>
+    <style>
+        /* PAPER SIZE: Short Bond Paper (8.5" x 11" / 216mm x 279mm) */
+        @page {
+            size: portrait;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+
+        .print-container {
+            max-width: 8.5in;
+            /* Exact width of short bond paper */
+            margin: 0 auto;
+            background: white;
+        }
+
+        .payslip {
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 25px;
+            border: 1px solid #e5e7eb;
+            padding: 0.25in;
+            /* 0.25 inch padding inside the payslip */
+        }
+
+        /* Only add page breaks when printing multiple employees */
+        .payslip:not(:last-child) {
+            page-break-after: always;
+        }
+
+        .payslip-header {
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .company-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            background: white;
+            border-radius: 50%;
+            padding: 3px;
+        }
+
+        .company-info h2 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .company-info p {
+            font-size: 11px;
+            opacity: 0.9;
+        }
+
+        .payslip-title {
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .payslip-title h3 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .payslip-title .period {
+            font-size: 11px;
+            opacity: 0.9;
+        }
+
+        .contractual-badge {
+            display: inline-block;
+            background: #1e40af;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 5px;
+        }
+
+        .employee-info {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e5e7eb;
+            background: #f8fafc;
+            margin-bottom: 12px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 9px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .info-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-top: 2px;
+        }
+
+        .attendance-summary {
+            padding: 10px 15px;
+            background: #eff6ff;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 12px;
+        }
+
+        .attendance-grid {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .attendance-box {
+            text-align: center;
+        }
+
+        .attendance-box .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e40af;
+        }
+
+        .attendance-box .label {
+            font-size: 9px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .salary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 12px;
+            font-size: 11px;
+        }
+
+        .salary-table th {
+            background: #f3f4f6;
+            padding: 6px 8px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+
+        .salary-table td {
+            padding: 6px 8px;
+            border: 1px solid #e5e7eb;
+            font-size: 11px;
+        }
+
+        .salary-table .amount {
+            text-align: right;
+            font-weight: 500;
+            width: 120px;
+        }
+
+        .salary-table .total-row {
+            background: #f8fafc;
+            font-weight: 600;
+        }
+
+        .salary-table .grand-total {
+            background: #eff6ff;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .deductions-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1e40af;
+            margin-bottom: 4px;
+        }
+
+        .net-pay {
+            margin: 12px 0;
+            padding: 8px 15px;
+            background: #dbeafe;
+            border-radius: 3px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .net-pay-label {
+            color: #1e40af;
+        }
+
+        .net-pay-amount {
+            color: #059669;
+        }
+
+        .amount-words {
+            padding: 0 15px 8px;
+            font-size: 9px;
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        .signature-area {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            padding: 0 15px 8px;
+        }
+
+        .signature-box {
+            text-align: center;
+            width: 180px;
+        }
+
+        .signature-line {
+            border-top: 1px solid #000;
+            margin: 6px 0 4px;
+            width: 100%;
+        }
+
+        .signature-label {
+            font-size: 9px;
+            color: #6b7280;
+        }
+
+        .payslip-footer {
+            padding: 6px 15px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            font-size: 8px;
+            color: #6b7280;
+        }
+
+        .print-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .print-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .print-btn.print {
+            background: #1e40af;
+            color: white;
+        }
+
+        .print-btn.back {
+            background: #6b7280;
+            color: white;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+                margin: 0;
+            }
+
+            .print-controls {
+                display: none;
+            }
+
+            .print-container {
+                max-width: 100%;
+                margin: 0;
+                background: white;
+            }
+
+            .payslip {
+                box-shadow: none;
+                border: none;
+                margin: 0;
+                padding: 0.25in;
+                border-radius: 0;
+                background: white;
+            }
+
+            /* Only add page breaks between payslips when there are multiple */
+            .payslip:not(:last-child) {
+                page-break-after: always;
+            }
+
+            .payslip:last-child {
+                page-break-after: auto;
+            }
+
+            .payslip-header,
+            .attendance-summary,
+            .grand-total,
+            .net-pay,
+            .total-row {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .salary-table {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="print-container">
+        <?php if (empty($employees_data)): ?>
+            <div class="payslip" style="padding: 40px; text-align: center;">
+                <h3 style="font-size: 16px; margin-bottom: 15px;">No employee data found</h3>
+                <p style="font-size: 12px; margin-bottom: 20px;">Please select employees with valid payroll data.</p>
+                <p style="color: #666; margin-top: 10px; font-size: 11px;">Debug: Employee IDs received: <?php echo htmlspecialchars($employee_ids); ?></p>
+                <button class="print-btn back" onclick="goBackAndClose()" style="margin-top: 15px; display: inline-block; position: static;">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+            </div>
+        <?php else: ?>
+            <?php foreach ($employees_data as $index => $employee): ?>
+                <div class="payslip">
+                    <!-- Header -->
+                    <div class="payslip-header">
+                        <img src="<?php echo $company_logo; ?>" alt="Company Logo" class="company-logo">
+                        <div class="company-info">
+                            <h2><?php echo $company_name; ?></h2>
+                            <p><?php echo $company_address; ?></p>
+                        </div>
+                        <div class="payslip-title">
+                            <h3>CONTRACTUAL PAYSLIP <span class="contractual-badge">CONTRACTUAL</span></h3>
+                            <p class="period"><?php echo $current_cutoff['label']; ?> - <?php echo date('F Y', strtotime($period . '-01')); ?></p>
+                        </div>
+                    </div>
+
+                    <!-- Employee Information -->
+                    <div class="employee-info">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Employee ID</span>
+                                <span class="info-value"><?php echo htmlspecialchars($employee['employee_id'] ?? ''); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Name</span>
+                                <span class="info-value"><?php echo htmlspecialchars($employee['full_name'] ?? ''); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Position</span>
+                                <span class="info-value"><?php echo htmlspecialchars($employee['position'] ?? ''); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Department</span>
+                                <span class="info-value"><?php echo htmlspecialchars($employee['department'] ?? ''); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Period</span>
+                                <span class="info-value"><?php echo formatDate($current_cutoff['start']); ?> - <?php echo formatDate($current_cutoff['end']); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Status</span>
+                                <span class="info-value"><?php echo ucfirst($employee['payroll_status'] ?? 'pending'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attendance Summary -->
+                    <div class="attendance-summary">
+                        <div class="attendance-grid">
+                            <div class="attendance-box">
+                                <div class="value"><?php echo number_format($employee['days_present'] ?? 0, 1); ?></div>
+                                <div class="label">Days Present</div>
+                            </div>
+                            <div class="attendance-box">
+                                <div class="value"><?php echo $current_cutoff['working_days']; ?></div>
+                                <div class="label">Working Days</div>
+                            </div>
+                            <div class="attendance-box">
+                                <div class="value"><?php echo ($employee['days_present'] ?? 0) > 0 ? number_format((($employee['days_present'] ?? 0) / $current_cutoff['working_days']) * 100, 1) : '0'; ?>%</div>
+                                <div class="label">Attendance Rate</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Salary Details -->
+                    <table class="salary-table">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th class="amount">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Monthly Salary (Base)</td>
+                                <td class="amount"><?php echo formatCurrency($employee['monthly_salary'] ?? 0); ?></td>
+                            </tr>
+                            <tr>
+                                <td>Daily Rate (22 days/month)</td>
+                                <td class="amount"><?php echo formatCurrency($employee['rate_per_day'] ?? 0); ?></td>
+                            </tr>
+                            <tr>
+                                <td>Days Present</td>
+                                <td class="amount"><?php echo number_format($employee['days_present'] ?? 0, 1); ?> days</td>
+                            </tr>
+                            <tr>
+                                <td>Prorated Salary</td>
+                                <td class="amount"><?php echo formatCurrency(($employee['rate_per_day'] ?? 0) * ($employee['days_present'] ?? 0)); ?></td>
+                            </tr>
+                            <?php if (isset($employee['other_comp']) && $employee['other_comp'] > 0): ?>
+                                <tr>
+                                    <td>Other Compensation</td>
+                                    <td class="amount"><?php echo formatCurrency($employee['other_comp']); ?></td>
+                                </tr>
+                            <?php endif; ?>
+                            <tr class="total-row">
+                                <td><strong>GROSS AMOUNT</strong></td>
+                                <td class="amount"><strong><?php echo formatCurrency($employee['gross_amount'] ?? 0); ?></strong></td>
+                            </tr>
+
+                            <!-- Deductions -->
+                            <tr>
+                                <td colspan="2" style="padding: 8px 0 4px;">
+                                    <div class="deductions-title">DEDUCTIONS</div>
+                                </td>
+                            </tr>
+
+                            <?php
+                            $deduction_rows = [
+                                'withholding_tax' => 'Withholding Tax',
+                                'sss' => 'SSS Contribution'
+                            ];
+
+                            $has_deductions = false;
+                            foreach ($deduction_rows as $field => $label):
+                                if (isset($employee[$field]) && $employee[$field] > 0):
+                                    $has_deductions = true;
+                            ?>
+                                    <tr>
+                                        <td><?php echo $label; ?></td>
+                                        <td class="amount" style="color: #dc2626;"><?php echo formatCurrency($employee[$field]); ?></td>
+                                    </tr>
+                            <?php
+                                endif;
+                            endforeach;
+                            ?>
+
+                            <?php if (!$has_deductions): ?>
+                                <tr>
+                                    <td colspan="2" class="text-center" style="color: #6b7280; padding: 8px; text-align: center;">No deductions for this period</td>
+                                </tr>
+                            <?php endif; ?>
+
+                            <tr class="total-row">
+                                <td><strong>TOTAL DEDUCTIONS</strong></td>
+                                <td class="amount"><strong style="color: #dc2626;"><?php echo formatCurrency($employee['total_deductions'] ?? 0); ?></strong></td>
+                            </tr>
+
+                            <!-- Net Pay -->
+                            <tr class="grand-total">
+                                <td><strong>NET PAY (Take Home Pay)</strong></td>
+                                <td class="amount"><strong><?php echo formatCurrency($employee['net_amount'] ?? 0); ?></strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Net Pay Summary -->
+                    <div class="net-pay">
+                        <span class="net-pay-label">NET AMOUNT DUE:</span>
+                        <span class="net-pay-amount"><?php echo formatCurrency($employee['net_amount'] ?? 0); ?></span>
+                    </div>
+
+                    <!-- Amount in Words -->
+                    <div class="amount-words">
+                        <strong>Amount in Words:</strong>
+                        <?php
+                        $net_amount = $employee['net_amount'] ?? 0;
+                        $amount_parts = explode('.', number_format($net_amount, 2, '.', ''));
+                        echo strtoupper(convertNumberToWords((int)$amount_parts[0])) . ' PESOS AND ' . $amount_parts[1] . '/100 ONLY';
+                        ?>
+                    </div>
+
+                    <!-- Contact Information (if available) -->
+                    <?php if (!empty($employee['email_address']) || !empty($employee['mobile_number'])): ?>
+                        <div style="padding: 0 15px 8px;">
+                            <p style="font-size: 8px; color: #6b7280;">
+                                <?php if (!empty($employee['email_address'])): ?>
+                                    <strong>Email:</strong> <?php echo htmlspecialchars($employee['email_address']); ?>
+                                <?php endif; ?>
+                                <?php if (!empty($employee['mobile_number'])): ?>
+                                    <?php if (!empty($employee['email_address'])): ?> | <?php endif; ?>
+                                    <strong>Mobile:</strong> <?php echo htmlspecialchars($employee['mobile_number']); ?>
+                                <?php endif; ?>
+                            </p>
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- Signature Area -->
+                    <div class="signature-area">
+                        <div class="signature-box">
+                            <div class="signature-line"></div>
+                            <div class="signature-label">Employee Signature</div>
+                        </div>
+                        <div class="signature-box">
+                            <div class="signature-line"></div>
+                            <div class="signature-label">HR Officer Signature</div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="payslip-footer">
+                        <span>Generated: <?php echo date('F d, Y h:i A'); ?></span>
+                        <span>Computer-generated document</span>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+
+    <!-- Print Controls -->
+    <div class="print-controls">
+        <button class="print-btn back" onclick="goBackAndClose()">
+            <i class="fas fa-arrow-left"></i> Back
+        </button>
+        <?php if (!empty($employees_data)): ?>
+            <button class="print-btn print" onclick="window.print()">
+                <i class="fas fa-print"></i> Print All Payslips
+            </button>
+        <?php endif; ?>
+    </div>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <script>
+        // Function to go back to previous page and close current tab
+        function goBackAndClose() {
+            window.close();
+            setTimeout(function() {
+                if (document.referrer) {
+                    window.location.href = document.referrer;
+                } else {
+                    window.location.href = 'contractualpayrolltable1.php?period=<?php echo $period; ?>&cutoff=<?php echo $cutoff; ?>';
+                }
+            }, 100);
+        }
+
+        // Auto-close if opened as a popup and printing is done
+        window.onafterprint = function() {
+            if (confirm('Printing complete. Do you want to close this window?')) {
+                goBackAndClose();
+            }
+        };
+    </script>
+</body>
+
+</html>

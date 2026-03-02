@@ -121,11 +121,11 @@ if (isset($_GET['view_attendance']) && isset($_GET['employee_id'])) {
     if ($employee_details) {
         try {
             // Pagination settings
-            $records_per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10; // Changed from 20 to 10
-// Validate records per page
-            $valid_per_page = [10, 20, 50, 100]; // 10 is now first in the list
+            $records_per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
+            // Validate records per page
+            $valid_per_page = [10, 20, 50, 100];
             if (!in_array($records_per_page, $valid_per_page)) {
-                $records_per_page = 10; // Changed from 20 to 10
+                $records_per_page = 10;
             }
 
             $attendance_current_page = isset($_GET['att_page']) ? (int) $_GET['att_page'] : 1;
@@ -214,9 +214,7 @@ if (isset($_GET['view_attendance']) && isset($_GET['employee_id'])) {
                 $record['department'] = $employee_details['department'];
             }
 
-            // Debug log
             error_log("Attendance Debug - Employee: {$view_employee_id}, Records: {$attendance_total_records}, Pages: {$attendance_total_pages}");
-
         } catch (PDOException $e) {
             error_log("View attendance error: " . $e->getMessage());
             $error_message = "Could not retrieve attendance records for this employee.";
@@ -386,15 +384,19 @@ function getEmployeeTypes($pdo)
     }
 
     // Get contractual employees
-    $contractual_sql = "SELECT employee_id, full_name, office as department FROM contractofservice WHERE status = 'active'";
-    $stmt = $pdo->query($contractual_sql);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $employees[] = [
-            'employee_id' => $row['employee_id'],
-            'full_name' => $row['full_name'],
-            'department' => $row['department'],
-            'type' => 'Contractual'
-        ];
+    try {
+        $contractual_sql = "SELECT employee_id, full_name, office as department FROM contractofservice WHERE status = 'active'";
+        $stmt = $pdo->query($contractual_sql);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $employees[] = [
+                'employee_id' => $row['employee_id'],
+                'full_name' => $row['full_name'],
+                'department' => $row['department'],
+                'type' => 'Contractual'
+            ];
+        }
+    } catch (PDOException $e) {
+        error_log("Error fetching contractual employees: " . $e->getMessage());
     }
 
     // Sort employees by name
@@ -446,16 +448,20 @@ function getEmployeeById($pdo, $employee_id)
     }
 
     // Search in contractual table
-    $contractual_sql = "SELECT employee_id, full_name, office as department FROM contractofservice WHERE employee_id = ? AND status = 'active'";
-    $stmt = $pdo->prepare($contractual_sql);
-    $stmt->execute([$employee_id]);
-    if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        return [
-            'employee_id' => $row['employee_id'],
-            'full_name' => $row['full_name'],
-            'department' => $row['department'],
-            'type' => 'Contractual'
-        ];
+    try {
+        $contractual_sql = "SELECT employee_id, full_name, office as department FROM contractofservice WHERE employee_id = ? AND status = 'active'";
+        $stmt = $pdo->prepare($contractual_sql);
+        $stmt->execute([$employee_id]);
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            return [
+                'employee_id' => $row['employee_id'],
+                'full_name' => $row['full_name'],
+                'department' => $row['department'],
+                'type' => 'Contractual'
+            ];
+        }
+    } catch (PDOException $e) {
+        error_log("Error fetching contractual employee by ID: " . $e->getMessage());
     }
 
     return null;
@@ -535,8 +541,8 @@ function getEmployeeSummary($pdo, $search = '', $department = '', $status_filter
 
     // Apply search filter
     if (!empty($search)) {
-        $all_employees = array_filter($all_employees, function ($emp) use ($search) {
-            $search_lower = strtolower($search);
+        $search_lower = strtolower(trim($search));
+        $all_employees = array_filter($all_employees, function ($emp) use ($search_lower) {
             return (strpos(strtolower($emp['employee_id']), $search_lower) !== false) ||
                 (strpos(strtolower($emp['full_name']), $search_lower) !== false) ||
                 (strpos(strtolower($emp['department']), $search_lower) !== false);
@@ -607,8 +613,8 @@ function getEmployeeSummary($pdo, $search = '', $department = '', $status_filter
             'full_name' => $emp['full_name'],
             'department' => $emp['department'],
             'type' => $emp['type'],
-            'total_records' => $stats['total_records'],
-            'present_days' => $stats['present_days'],
+            'total_records' => (int)$stats['total_records'],
+            'present_days' => (int)$stats['present_days'],
             'total_hours' => floatval($stats['total_hours']),
             'total_ot' => floatval($stats['total_ot']),
             'total_undertime' => floatval($stats['total_undertime']),
@@ -619,7 +625,7 @@ function getEmployeeSummary($pdo, $search = '', $department = '', $status_filter
     return [
         'employees' => $employees,
         'total' => $total_records,
-        'pages' => ceil($total_records / $per_page)
+        'pages' => $total_records > 0 ? ceil($total_records / $per_page) : 1
     ];
 }
 // =================================================================================
@@ -647,18 +653,27 @@ function generatePeriodDates($start_date, $end_date)
 if (isset($_GET['ajax_search'])) {
     header('Content-Type: application/json');
 
-    $search = isset($_GET['search']) ? $_GET['search'] : '';
-    $department = isset($_GET['department']) ? $_GET['department'] : '';
-    $status_filter = isset($_GET['status_filter']) ? $_GET['status_filter'] : '';
-    $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
-    $per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
+    try {
+        $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+        $department = isset($_GET['department']) ? trim($_GET['department']) : '';
+        $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
+        $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+        $per_page = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
 
-    $result = getEmployeeSummary($pdo, $search, $department, $status_filter, $page, $per_page);
+        $result = getEmployeeSummary($pdo, $search, $department, $status_filter, $page, $per_page);
 
-    echo json_encode($result);
+        // Ensure we always return valid JSON
+        echo json_encode($result);
+    } catch (Exception $e) {
+        error_log("AJAX search error: " . $e->getMessage());
+        echo json_encode([
+            'employees' => [],
+            'total' => 0,
+            'pages' => 1
+        ]);
+    }
     exit();
 }
-
 // =================================================================================
 // --- Handle AJAX Get All Employee IDs Request ---
 // =================================================================================
@@ -909,126 +924,6 @@ if (isset($_GET['download_template'])) {
 }
 
 // =================================================================================
-// --- Import Attendance Records ---
-// =================================================================================
-
-if (isset($_POST['import_attendance'])) {
-    if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == UPLOAD_ERR_OK) {
-        $file = $_FILES['csv_file'];
-        $fileType = pathinfo($file['name'], PATHINFO_EXTENSION);
-
-        $allowedExtensions = ['csv'];
-        if (!in_array(strtolower($fileType), $allowedExtensions)) {
-            $error_message = "Error: Only CSV files are allowed.";
-        } else {
-            $successCount = 0;
-            $errorCount = 0;
-            $duplicateCount = 0;
-            $importErrors = [];
-
-            try {
-                $handle = fopen($file['tmp_name'], 'r');
-
-                if ($handle !== FALSE) {
-                    $header = fgetcsv($handle);
-                    $rowNumber = 1;
-
-                    while (($data = fgetcsv($handle)) !== FALSE) {
-                        $rowNumber++;
-
-                        if (empty(array_filter($data))) {
-                            continue;
-                        }
-
-                        $date = !empty($data[0]) ? trim($data[0]) : '';
-                        $employee_id = !empty($data[1]) ? trim($data[1]) : '';
-                        $employee_name = !empty($data[2]) ? trim($data[2]) : '';
-                        $department = !empty($data[3]) ? trim($data[3]) : '';
-                        $am_time_in = !empty($data[4]) ? trim($data[4]) : null;
-                        $am_time_out = !empty($data[5]) ? trim($data[5]) : null;
-                        $pm_time_in = !empty($data[6]) ? trim($data[6]) : null;
-                        $pm_time_out = !empty($data[7]) ? trim($data[7]) : null;
-
-                        if (empty($date) || empty($employee_id) || empty($employee_name)) {
-                            $errorCount++;
-                            $importErrors[] = "Row $rowNumber: Missing required fields";
-                            continue;
-                        }
-
-                        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-                            $errorCount++;
-                            $importErrors[] = "Row $rowNumber: Invalid date format";
-                            continue;
-                        }
-
-                        $check_sql = "SELECT id FROM attendance WHERE employee_id = ? AND date = ?";
-                        $check_stmt = $pdo->prepare($check_sql);
-                        $check_stmt->execute([$employee_id, $date]);
-
-                        if ($check_stmt->rowCount() > 0) {
-                            $duplicateCount++;
-                            continue;
-                        }
-
-                        $hours = calculateWorkingHours($am_time_in, $am_time_out, $pm_time_in, $pm_time_out);
-
-                        $sql = "INSERT INTO attendance 
-                                (date, employee_id, employee_name, department, am_time_in, am_time_out, pm_time_in, pm_time_out, ot_hours, under_time, total_hours) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-                        $stmt = $pdo->prepare($sql);
-
-                        if (
-                            $stmt->execute([
-                                $date,
-                                $employee_id,
-                                $employee_name,
-                                $department,
-                                $am_time_in,
-                                $am_time_out,
-                                $pm_time_in,
-                                $pm_time_out,
-                                $hours['ot_hours'],
-                                $hours['undertime_hours'],
-                                $hours['total_hours']
-                            ])
-                        ) {
-                            $successCount++;
-                        } else {
-                            $errorCount++;
-                            $importErrors[] = "Row $rowNumber: Database error";
-                        }
-                    }
-                    fclose($handle);
-                }
-
-                if ($successCount > 0) {
-                    $success_message = "Import completed successfully! $successCount records imported.";
-                    if ($duplicateCount > 0) {
-                        $success_message .= " $duplicateCount duplicate records were skipped.";
-                    }
-                    if ($errorCount > 0) {
-                        $error_message = "$errorCount records failed to import.";
-                    }
-                } else if ($duplicateCount > 0) {
-                    $error_message = "All records already exist in the database. No new records were imported.";
-                } else {
-                    $error_message = "No valid records were imported. Please check your CSV file format.";
-                }
-            } catch (PDOException $e) {
-                error_log("Import attendance error: " . $e->getMessage());
-                $error_message = "Database error during import. Please try again.";
-            } catch (Exception $e) {
-                error_log("Import file error: " . $e->getMessage());
-                $error_message = "Error processing file. Please check the file format.";
-            }
-        }
-    } else {
-        $error_message = "Error: Please select a file to upload.";
-    }
-}
-
-// =================================================================================
 // --- Get Search and Filter Parameters for Employee Summary ---
 // =================================================================================
 
@@ -1138,11 +1033,11 @@ $departments = [
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* All existing styles remain exactly the same */
+        /* EXACT STYLES FROM Employee.php */
         :root {
             --primary: #1e40af;
-            --primary-light: #3b82f6;
             --primary-dark: #1e3a8a;
+            --primary-light: #3b82f6;
             --secondary: #6366f1;
             --success: #10b981;
             --warning: #f59e0b;
@@ -1150,88 +1045,33 @@ $departments = [
             --info: #3b82f6;
             --dark: #1f2937;
             --light: #f8fafc;
-            --gray-50: #f9fafb;
-            --gray-100: #f3f4f6;
-            --gray-200: #e5e7eb;
-            --gray-300: #d1d5db;
-            --gray-400: #9ca3af;
-            --gray-500: #6b7280;
-            --gray-600: #4b5563;
-            --gray-700: #374151;
             --gradient-primary: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
-            --gradient-secondary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            --gradient-success: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-            --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
-            --gradient-danger: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-            --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
-            --shadow-blue: 0 10px 25px -3px rgba(30, 64, 175, 0.2);
         }
 
         * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
             font-family: 'Inter', sans-serif;
+            background: #f8fafc;
+            color: var(--dark);
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        .table-container::-webkit-scrollbar {
-            height: 6px;
-        }
-
-        .table-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-
-        .table-container::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
-            border-radius: 10px;
-        }
-
-        .table-container::-webkit-scrollbar-thumb:hover {
-            background: #a8a8a8;
-        }
-
-        .modal-animation {
-            animation: slideIn 0.2s ease-out;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #1048cb 0%, #0C379D 100%);
-            transition: all 0.3s ease;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(16, 72, 203, 0.3);
-        }
-
-        .card-shadow {
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-        }
-
+        /* Navbar Styling - EXACT from Employee.php */
         .navbar {
-            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            background: var(--gradient-primary);
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            z-index: 50;
             height: 70px;
-            backdrop-filter: blur(10px);
+            z-index: 50;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
@@ -1240,7 +1080,7 @@ $departments = [
             align-items: center;
             justify-content: space-between;
             height: 100%;
-            padding: 0 1rem;
+            padding: 0 1.5rem;
             max-width: 100%;
         }
 
@@ -1248,13 +1088,31 @@ $departments = [
             display: flex;
             align-items: center;
             gap: 1rem;
-            flex: 1;
         }
 
         .navbar-right {
             display: flex;
             align-items: center;
             gap: 1rem;
+        }
+
+        .mobile-toggle {
+            display: none;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+        }
+
+        .mobile-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
         }
 
         .navbar-brand {
@@ -1266,7 +1124,7 @@ $departments = [
         }
 
         .navbar-brand:hover {
-            transform: scale(1.02);
+            transform: translateY(-2px);
         }
 
         .brand-logo {
@@ -1283,30 +1141,21 @@ $departments = [
 
         .brand-title {
             font-size: 1.1rem;
-            font-weight: 700;
+            font-weight: 800;
             color: white;
             line-height: 1.2;
-            letter-spacing: 0.5px;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            letter-spacing: -0.5px;
         }
 
         .brand-subtitle {
             font-size: 0.75rem;
             color: rgba(255, 255, 255, 0.9);
             font-weight: 500;
-            letter-spacing: 0.3px;
         }
 
         .datetime-container {
-            display: none;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        @media (min-width: 768px) {
-            .datetime-container {
-                display: flex;
-            }
+            display: flex;
+            gap: 1rem;
         }
 
         .datetime-box {
@@ -1315,23 +1164,20 @@ $departments = [
             gap: 0.5rem;
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
-            border-radius: 8px;
-            padding: 0.5rem 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.3s ease;
-            min-width: 140px;
         }
 
         .datetime-box:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.25);
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
 
         .datetime-icon {
-            font-size: 0.9rem;
             color: white;
-            opacity: 0.9;
+            font-size: 1rem;
         }
 
         .datetime-text {
@@ -1341,270 +1187,129 @@ $departments = [
 
         .datetime-label {
             font-size: 0.7rem;
-            color: rgba(255, 255, 255, 0.7);
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .datetime-value {
-            font-size: 0.85rem;
-            color: white;
-            font-weight: 600;
-            line-height: 1.3;
-        }
-
-        .user-menu {
-            position: relative;
-        }
-
-        .user-button {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50px;
-            padding: 0.4rem 0.6rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .user-button:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            object-fit: cover;
-        }
-
-        .user-info {
-            display: none;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        @media (min-width: 768px) {
-            .user-info {
-                display: flex;
-            }
-        }
-
-        .user-name {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: white;
-            line-height: 1.2;
-        }
-
-        .user-role {
-            font-size: 0.65rem;
             color: rgba(255, 255, 255, 0.8);
             font-weight: 500;
         }
 
-        .user-chevron {
-            font-size: 0.7rem;
+        .datetime-value {
+            font-size: 0.85rem;
+            font-weight: 700;
             color: white;
-            opacity: 0.8;
-            transition: transform 0.3s ease;
         }
 
-        .user-button.active .user-chevron {
-            transform: rotate(180deg);
+        /* Toast Notifications - EXACT from Employee.php */
+        .toast-container {
+            position: fixed;
+            top: 90px;
+            right: 10px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 95%;
         }
 
-        .user-dropdown {
-            position: absolute;
-            top: calc(100% + 10px);
-            right: 0;
-            width: 250px;
+        .toast {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 0.9rem 1rem;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            min-width: 280px;
+            max-width: 400px;
+            animation: slideInRight 0.3s ease;
+            transform: translateX(100%);
             opacity: 0;
-            visibility: hidden;
-            transform: translateY(-10px);
-            transition: all 0.3s ease;
-            z-index: 1000;
-            overflow: hidden;
         }
 
-        .user-dropdown.active {
+        .toast.show {
+            transform: translateX(0);
             opacity: 1;
-            visibility: visible;
-            transform: translateY(0);
         }
 
-        .dropdown-header {
-            padding: 1rem;
-            background: var(--gradient-primary);
-            color: white;
-        }
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
 
-        .dropdown-header h3 {
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-
-        .dropdown-header p {
-            font-size: 0.75rem;
-            opacity: 0.9;
-        }
-
-        .dropdown-menu {
-            padding: 0.5rem;
-        }
-
-        .dropdown-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            color: #4b5563;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .dropdown-item:hover {
-            background: #f3f4f6;
-            color: var(--primary);
-            transform: translateX(5px);
-        }
-
-        .dropdown-item i {
-            width: 20px;
-            text-align: center;
-            color: #9ca3af;
-        }
-
-        .dropdown-item:hover i {
-            color: var(--primary);
-        }
-
-        .mobile-toggle {
-            display: flex;
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            width: 36px;
-            height: 36px;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        @media (min-width: 768px) {
-            .mobile-toggle {
-                display: none;
+            to {
+                transform: translateX(0);
+                opacity: 1;
             }
         }
 
-        .mobile-toggle:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: scale(1.05);
+        .toast.success {
+            border-left-color: #10b981;
         }
 
-        .mobile-toggle i {
+        .toast.error {
+            border-left-color: #ef4444;
+        }
+
+        .toast-icon {
             font-size: 1.1rem;
-            color: white;
         }
 
+        .toast.success .toast-icon {
+            color: #10b981;
+        }
+
+        .toast.error .toast-icon {
+            color: #ef4444;
+        }
+
+        .toast-content {
+            flex: 1;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+            font-size: 0.9rem;
+        }
+
+        .toast-message {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0.2rem;
+        }
+
+        /* Sidebar - EXACT from Employee.php */
         .sidebar-container {
             position: fixed;
-            top: 70px;
             left: 0;
-            height: calc(100vh - 70px);
-            z-index: 40;
-            transform: translateX(-100%);
-            transition: transform 0.3s ease-in-out;
+            top: 70px;
             width: 260px;
-        }
-
-        .sidebar-container.active {
-            transform: translateX(0);
-        }
-
-        @media (min-width: 768px) {
-            .sidebar-container {
-                transform: translateX(0);
-                top: 0;
-                height: 100vh;
-                padding-top: 70px;
-            }
+            height: calc(100vh - 70px);
+            background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
+            z-index: 50;
+            transition: transform 0.3s ease;
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
         }
 
         .sidebar {
-            width: 100%;
             height: 100%;
-            background: var(--gradient-primary);
-            box-shadow: 5px 0 25px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
+            padding: 1.5rem 0;
             display: flex;
             flex-direction: column;
         }
 
         .sidebar-content {
             flex: 1;
-            padding: 1rem;
-            overflow-y: auto;
-        }
-
-        .sidebar-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-        }
-
-        .sidebar-overlay {
-            position: fixed;
-            top: 70px;
-            left: 0;
-            width: 100%;
-            height: calc(100vh - 70px);
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-            z-index: 39;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        @media (min-width: 768px) {
-            .sidebar-overlay {
-                display: none;
-            }
-        }
-
-        .sidebar-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .main-content {
-            margin-top: 70px;
-            padding: 1rem;
-            transition: all 0.3s ease;
-            min-height: calc(100vh - 70px);
-            width: 100%;
-        }
-
-        @media (min-width: 768px) {
-            .main-content {
-                margin-left: 260px;
-                width: calc(100% - 260px);
-                padding: 1.5rem;
-            }
+            padding: 0 1rem;
         }
 
         .sidebar-item {
@@ -1678,273 +1383,589 @@ $departments = [
             color: #fecaca;
         }
 
-        .sidebar-item .chevron {
-            transition: transform 0.3s ease;
-        }
-
-        .sidebar-item .chevron.rotated {
-            transform: rotate(180deg);
-        }
-
-        .sidebar-dropdown-menu {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
+        .dropdown-menu {
+            display: none;
+            padding-left: 1rem;
             margin-left: 2.5rem;
+            border-left: 2px solid rgba(255, 255, 255, 0.1);
+            animation: fadeIn 0.3s ease;
         }
 
-        .sidebar-dropdown-menu.open {
-            max-height: 500px;
+        .dropdown-menu.show {
+            display: block;
         }
 
-        .sidebar-dropdown-item {
+        .dropdown-menu .dropdown-item {
+            padding: 0.7rem 1rem;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.8);
+            border-bottom: none;
             display: flex;
             align-items: center;
-            padding: 0.5rem 1rem;
-            color: rgba(255, 255, 255, 0.8);
+            gap: 0.75rem;
             text-decoration: none;
-            border-radius: 8px;
-            margin-bottom: 0.25rem;
             transition: all 0.3s ease;
-            font-size: 0.85rem;
+            border-radius: 8px;
         }
 
-        .sidebar-dropdown-item:hover {
-            background: rgba(255, 255, 255, 0.1);
+        .dropdown-menu .dropdown-item:hover {
             color: white;
+            background: rgba(255, 255, 255, 0.1);
             transform: translateX(5px);
         }
 
-        .sidebar-dropdown-item i {
+        .dropdown-menu .dropdown-item i {
             font-size: 0.75rem;
             margin-right: 0.5rem;
+            color: rgba(255, 255, 255, 0.6);
         }
 
-        .mobile-brand {
+        .chevron {
+            transition: transform 0.3s ease;
+        }
+
+        .chevron.rotate {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-footer {
+            padding: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.75rem;
+        }
+
+        /* Overlay for mobile - EXACT from Employee.php */
+        .sidebar-overlay {
+            position: fixed;
+            top: 70px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 998;
+            display: none;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Main Content - EXACT from Employee.php */
+        .main-content {
+            margin-left: 260px;
+            margin-top: 70px;
+            padding: 1.5rem;
+            min-height: calc(100vh - 70px);
+            transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Breadcrumb - EXACT from Employee.php */
+        .breadcrumb {
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #e5e7eb;
+        }
+
+        .breadcrumb ol {
             display: flex;
             align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
-        @media (min-width: 768px) {
-            .mobile-brand {
-                display: none;
-            }
-        }
-
-        .mobile-brand-text {
+        .breadcrumb li {
             display: flex;
-            flex-direction: column;
-            margin-left: 0.5rem;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
         }
 
-        .mobile-brand-title {
-            font-size: 1rem;
-            font-weight: 700;
-            color: white;
-            line-height: 1.2;
+        .breadcrumb a {
+            color: #3b82f6;
+            text-decoration: none;
+            transition: color 0.2s;
         }
 
-        .mobile-brand-subtitle {
-            font-size: 0.65rem;
-            color: rgba(255, 255, 255, 0.9);
-            font-weight: 500;
+        .breadcrumb a:hover {
+            color: #1e40af;
+            text-decoration: underline;
         }
 
-        ::-webkit-scrollbar {
-            width: 6px;
+        /* Dashboard Grid - EXACT from Employee.php */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
         }
 
-        ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.4);
-        }
-
-        @media (max-width: 768px) {
-            .mobile-table-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                margin: 0 -1rem;
-                width: calc(100% + 2rem);
-            }
-
-            .mobile-table {
-                min-width: 800px;
-            }
-
-            .mobile-stack {
-                flex-direction: column;
-                width: 100%;
-            }
-
-            .mobile-stack>* {
-                width: 100%;
-                margin-bottom: 0.5rem;
-            }
-
-            .mobile-text-sm {
-                font-size: 0.75rem;
-            }
-
-            .mobile-padding {
-                padding: 1rem 0;
-            }
-
-            .mobile-full {
-                width: 100%;
-            }
-
-            .mobile-hidden {
-                display: none;
-            }
-
-            .modal-mobile-padding {
-                padding: 1rem;
-            }
-
-            .modal-mobile-full {
-                width: 95vw;
-                margin: 0 auto;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .responsive-grid {
-                grid-template-columns: 1fr !important;
-            }
-        }
-
-        @media (min-width: 641px) and (max-width: 1024px) {
-            .responsive-grid {
-                grid-template-columns: repeat(2, 1fr) !important;
-            }
-        }
-
-        .import-success {
-            background-color: #dcfce7;
-            border-left: 4px solid #22c55e;
-        }
-
-        .import-error {
-            background-color: #fee2e2;
-            border-left: 4px solid #ef4444;
-        }
-
-        .import-warning {
-            background-color: #fef3c7;
-            border-left: 4px solid #f59e0b;
-        }
-
-        .file-upload-area {
+        .stat-card {
+            background: white;
+            border-radius: 14px;
+            padding: 1.25rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
 
-        .file-upload-area:hover {
-            border-color: #3b82f6;
-            background-color: #f8fafc;
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
         }
 
-        .pagination-link {
-            display: inline-flex;
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-light), var(--primary));
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .stat-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
             align-items: center;
             justify-content: center;
-            min-width: 2.5rem;
-            height: 2.5rem;
-            padding: 0 0.75rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #4b5563;
-            background-color: white;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            transition: all 0.2s ease;
+            font-size: 1.4rem;
         }
 
-        .pagination-link:hover {
-            background-color: #f3f4f6;
-            border-color: #9ca3af;
-            color: #374151;
-        }
-
-        .pagination-link.active {
-            background-color: #3b82f6;
-            border-color: #3b82f6;
-            color: white;
-        }
-
-        .pagination-link.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .time-input {
-            width: 100px;
-            text-align: center;
-        }
-
-        .bulk-table-container {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .day-header {
-            background-color: #f8fafc;
+        .stat-title {
+            font-size: 0.85rem;
+            color: #6b7280;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
-        .weekend-row {
-            background-color: #fef3c7;
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #1f2937;
+            line-height: 1;
+            margin-bottom: 0.5rem;
         }
 
-        .holiday-row {
-            background-color: #fee2e2;
+        /* Search Bar - EXACT from Employee.php */
+        .search-container {
+            background: white;
+            border-radius: 14px;
+            padding: 1.25rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+            margin-bottom: 2rem;
         }
 
-        input[type="time"] {
-            padding: 4px 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 0.875rem;
+        .search-wrapper {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
         }
 
-        input[type="time"]:focus {
+        .search-input {
+            flex: 1;
+            position: relative;
+        }
+
+        .search-input input {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            background: #f9fafb;
+        }
+
+        .search-input input:focus {
             outline: none;
             border-color: #3b82f6;
+            background: white;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
-        .quick-time-btn {
-            padding: 2px 6px;
-            font-size: 0.75rem;
-            margin: 2px;
-            border-radius: 3px;
-            background-color: #f3f4f6;
-            border: 1px solid #d1d5db;
-            cursor: pointer;
-        }
-
-        .quick-time-btn:hover {
-            background-color: #e5e7eb;
-        }
-
-        .future-date {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-
-        .future-date input {
-            background-color: #f3f4f6;
+        .search-input i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
             color: #9ca3af;
-            cursor: not-allowed;
+        }
+
+        .search-button {
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+            color: white;
+            border: none;
+            padding: 0.875rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+        }
+
+        .search-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Responsive Design - EXACT from Employee.php */
+        @media (max-width: 1200px) {
+            .sidebar-container {
+                transform: translateX(-100%);
+            }
+
+            .sidebar-container.active {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: flex;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .datetime-container {
+                display: none;
+            }
+
+            .brand-text {
+                display: none;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .search-wrapper {
+                flex-direction: column;
+            }
+
+            .search-button {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .navbar-container {
+                padding: 0 0.75rem;
+            }
+
+            .main-content {
+                padding: 1rem;
+            }
+
+            .stat-card {
+                padding: 1rem;
+            }
+
+            .stat-value {
+                font-size: 1.6rem;
+            }
+        }
+
+        /* Scrollbar Styling - EXACT from Employee.php */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+
+        /* Modal Styles - EXACT from Employee.php */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1100;
+            padding: 1rem;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 18px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+            padding: 1.25rem 1.5rem;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+        }
+
+        .close-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-subheader {
+            padding: 1rem 1.5rem;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .modal-subheader p {
+            color: #4b5563;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .modal-body {
+            padding: 1.25rem;
+            overflow-y: auto;
+            max-height: 50vh;
+        }
+
+        .loading-spinner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+
+        .spinner {
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 3px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .employee-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .employee-table th {
+            padding: 0.75rem 0.5rem;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .employee-table td {
+            padding: 0.75rem 0.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            color: #4b5563;
+            word-break: break-word;
+        }
+
+        .employee-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .employee-name {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 0.9rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+            white-space: nowrap;
+        }
+
+        /* Status badge colors */
+        .bg-indigo-100 {
+            background-color: #e0e7ff;
+        }
+
+        .text-indigo-800 {
+            color: #3730a3;
+        }
+
+        .bg-amber-100 {
+            background-color: #fef3c7;
+        }
+
+        .text-amber-800 {
+            color: #92400e;
+        }
+
+        .bg-red-100 {
+            background-color: #fee2e2;
+        }
+
+        .text-red-800 {
+            color: #991b1b;
+        }
+
+        /* Utility Classes */
+        .hidden {
+            display: none !important;
+        }
+
+        .flex {
+            display: flex;
+        }
+
+        .items-center {
+            align-items: center;
+        }
+
+        .justify-center {
+            justify-content: center;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        /* Your existing attendance-specific styles (keep all of them) */
+        .table-container::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .table-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 10px;
+        }
+
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        .attendance-status {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-present {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .status-absent {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-late {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-leave {
+            background-color: #dbeafe;
+            color: #1e40af;
         }
 
         .action-btn {
@@ -1984,88 +2005,6 @@ $departments = [
             background-color: #dc2626;
         }
 
-        .employee-summary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-
-        .stats-card {
-            background: white;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 15px;
-        }
-
-        .attendance-status {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .status-present {
-            background-color: #dcfce7;
-            color: #166534;
-        }
-
-        .status-absent {
-            background-color: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status-late {
-            background-color: #fef3c7;
-            color: #92400e;
-        }
-
-        .status-leave {
-            background-color: #dbeafe;
-            color: #1e40af;
-        }
-
-        #editAttendanceModal {
-            background-color: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-            z-index: 9999;
-        }
-
-        #editAttendanceModal .modal-content {
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-
-        .spinner-border {
-            border-width: 3px;
-            border-style: solid;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            from {
-                transform: rotate(0deg);
-            }
-
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        .quick-option-btn {
-            transition: all 0.2s ease;
-        }
-
-        .quick-option-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Filter badge */
         .filter-badge {
             background-color: #3b82f6;
             color: white;
@@ -2094,7 +2033,22 @@ $departments = [
             background-color: rgba(255, 255, 255, 0.3);
         }
 
-        /* Pagination Styles */
+        .employee-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 15px;
+        }
+
         .pagination-container {
             display: flex;
             flex-direction: column;
@@ -2153,111 +2107,35 @@ $departments = [
             color: white;
         }
 
-        .pagination-btn:disabled {
+        .time-input {
+            width: 100px;
+            text-align: center;
+        }
+
+        .bulk-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .weekend-row {
+            background-color: #fef3c7;
+        }
+
+        .holiday-row {
+            background-color: #fee2e2;
+        }
+
+        .future-date {
             opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .future-date input {
+            background-color: #f3f4f6;
+            color: #9ca3af;
             cursor: not-allowed;
         }
 
-        .pagination-ellipsis {
-            border: none;
-            background: none;
-            cursor: default;
-            min-width: auto;
-            padding: 0 0.25rem;
-        }
-
-        .pagination-ellipsis:hover {
-            background: none;
-            transform: none;
-        }
-
-        /* Records per page selector */
-        .per-page-selector {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background-color: white;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            padding: 0.5rem 0.75rem;
-        }
-
-        .per-page-selector select {
-            border: none;
-            background: transparent;
-            font-size: 0.875rem;
-            color: #374151;
-            outline: none;
-            cursor: pointer;
-        }
-
-        .per-page-selector select:focus {
-            ring: none;
-        }
-
-        /* Loading Spinner */
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* Search highlighting */
-        .search-highlight {
-            background-color: #fef3c7;
-            padding: 0 2px;
-            border-radius: 2px;
-        }
-
-        /* Export Modal Styles */
-        .export-checkbox-container {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 12px;
-            background-color: #f9fafb;
-        }
-
-        .export-checkbox-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 10px;
-            border-bottom: 1px solid #f0f0f0;
-            transition: background-color 0.2s;
-        }
-
-        .export-checkbox-item:hover {
-            background-color: #f0f7ff;
-        }
-
-        .export-checkbox-item:last-child {
-            border-bottom: none;
-        }
-
-        .export-summary {
-            background-color: #f0f9ff;
-            border: 1px solid #bae6fd;
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 10px;
-        }
-
-        /* Global Select Styles */
         .global-select-badge {
             background-color: #10b981;
             color: white;
@@ -2278,10 +2156,6 @@ $departments = [
             box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
         }
 
-        .global-select-badge i {
-            font-size: 0.75rem;
-        }
-
         .selection-info {
             background-color: #f0f9ff;
             border-left: 4px solid #3b82f6;
@@ -2293,13 +2167,6 @@ $departments = [
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 10px;
-        }
-
-        .selection-info-text {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
         }
 
         .clear-selection-btn {
@@ -2318,99 +2185,6 @@ $departments = [
             background-color: #fecaca;
             color: #b91c1c;
         }
-
-        /* Add to your existing styles */
-        #clearGlobalSelection {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        #clearGlobalSelection:hover {
-            background-color: #fecaca;
-            color: #991b1b;
-            border-color: #fca5a5;
-        }
-
-        /* Import modal improvements */
-        .file-upload-area {
-            transition: all 0.3s ease;
-        }
-
-        .file-upload-area:hover {
-            border-color: #9333ea;
-            background-color: #faf5ff;
-        }
-
-        .file-upload-area.border-purple-600 {
-            border-width: 2px;
-            transform: scale(1.01);
-        }
-
-        /* Remove button animations */
-        #removeXlsxFile,
-        #sampleFileDisplay button {
-            transition: all 0.2s ease;
-        }
-
-        #removeXlsxFile:hover,
-        #sampleFileDisplay button:hover {
-            transform: scale(1.1);
-            background-color: #fee2e2;
-        }
-
-        #removeXlsxFile:active,
-        #sampleFileDisplay button:active {
-            transform: scale(0.95);
-        }
-
-        /* File info animations */
-        #xlsxFileInfo,
-        #sampleFileDisplay {
-            animation: slideDown 0.3s ease-out;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Progress bar enhancements */
-        #xlsxProgressBar {
-            transition: width 0.3s ease;
-        }
-
-        /* Disabled state styling */
-        #importXlsxBtn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        /* Sample file badge */
-        #sampleFileDisplay .bg-green-100 {
-            font-size: 0.65rem;
-            font-weight: 600;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.7;
-            }
-        }
     </style>
 </head>
 
@@ -2425,8 +2199,8 @@ $departments = [
                     <i class="fas fa-bars"></i>
                 </button>
 
-                <!-- Logo and Brand (Desktop) -->
-                <a href="../dashboard.php" class="navbar-brand hidden md:flex">
+                <!-- Logo and Brand -->
+                <a href="dashboard.php" class="navbar-brand">
                     <img class="brand-logo"
                         src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
                         alt="Logo" />
@@ -2435,17 +2209,6 @@ $departments = [
                         <span class="brand-subtitle">Paluan Occidental Mindoro</span>
                     </div>
                 </a>
-
-                <!-- Logo and Brand (Mobile) -->
-                <div class="mobile-brand">
-                    <img class="brand-logo"
-                        src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
-                        alt="Logo" />
-                    <div class="mobile-brand-text">
-                        <span class="mobile-brand-title">HRMS</span>
-                        <span class="mobile-brand-subtitle">Attendance</span>
-                    </div>
-                </div>
             </div>
 
             <!-- Right Section -->
@@ -2468,50 +2231,19 @@ $departments = [
                         </div>
                     </div>
                 </div>
-
-                <!-- User Menu -->
-                <div class="user-menu">
-                    <button id="user-menu-button" class="user-button">
-                        <div class="user-info">
-                            <span class="user-name">HR Administrator</span>
-                            <span class="user-role">Administrator</span>
-                        </div>
-                        <i class="user-chevron fas fa-chevron-down"></i>
-                    </button>
-                    <div id="user-dropdown" class="user-dropdown">
-                        <div class="dropdown-header">
-                            <h3>HR Administrator</h3>
-                            <p>Administrator</p>
-                        </div>
-                        <div class="dropdown-menu">
-                            <a href="profile.php" class="dropdown-item">
-                                <i class="fas fa-user"></i>
-                                <span>My Profile</span>
-                            </a>
-                            <a href="settings.php" class="dropdown-item">
-                                <i class="fas fa-cog"></i>
-                                <span>Settings</span>
-                            </a>
-                            <a href="?logout=true" class="dropdown-item">
-                                <i class="fas fa-sign-out-alt"></i>
-                                <span>Logout</span>
-                            </a>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </nav>
 
-    <!-- Mobile Sidebar Overlay -->
+    <!-- Mobile Overlay - EXACT from Employee.php -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <!-- Sidebar -->
+    <!-- Sidebar - EXACT from Employee.php -->
     <div class="sidebar-container" id="sidebar-container">
         <div class="sidebar">
             <div class="sidebar-content">
                 <!-- Dashboard -->
-                <a href="dashboard.php" class="sidebar-item ">
+                <a href="dashboard.php" class="sidebar-item">
                     <i class="fas fa-chart-line"></i>
                     <span>Dashboard Analytics</span>
                 </a>
@@ -2523,40 +2255,34 @@ $departments = [
                 </a>
 
                 <!-- Attendance -->
-                <a href="attendance.php" class="sidebar-item active">
+                <a href="#" class="sidebar-item active">
                     <i class="fas fa-calendar-check"></i>
                     <span>Attendance</span>
                 </a>
 
-                <!-- Payroll -->
-                <a href=".payroll" class="sidebar-item" id="payroll-toggle">
+                <!-- Payroll with dropdown - EXACT from Employee.php -->
+                <a href="#" class="sidebar-item" id="payroll-toggle">
                     <i class="fas fa-money-bill-wave"></i>
                     <span>Payroll</span>
                     <i class="fas fa-chevron-down chevron ml-auto"></i>
                 </a>
-                <div class="sidebar-dropdown-menu" id="payroll-dropdown">
-                    <a href="Payrollmanagement/contractualpayrolltable1.php" class="sidebar-dropdown-item">
-                        <i class="fas fa-circle text-xs"></i>
+                <div class="dropdown-menu" id="payroll-dropdown">
+                    <a href="Payrollmanagement/contractualpayrolltable1.php" class="dropdown-item">
+                        <i class="fas fa-circle text-xs" style="font-size: 8px; color: rgba(255,255,255,0.6);"></i>
                         Contractual
                     </a>
-                    <a href="Payrollmanagement/joboerderpayrolltable1.php" class="sidebar-dropdown-item">
-                        <i class="fas fa-circle text-xs"></i>
+                    <a href="Payrollmanagement/joboerderpayrolltable1.php" class="dropdown-item">
+                        <i class="fas fa-circle text-xs" style="font-size: 8px; color: rgba(255,255,255,0.6);"></i>
                         Job Order
                     </a>
-                    <a href="Payrollmanagement/permanentpayrolltable1.php" class="sidebar-dropdown-item">
-                        <i class="fas fa-circle text-xs"></i>
+                    <a href="Payrollmanagement/permanentpayrolltable1.php" class="dropdown-item">
+                        <i class="fas fa-circle text-xs" style="font-size: 8px; color: rgba(255,255,255,0.6);"></i>
                         Permanent
                     </a>
                 </div>
 
-                <!-- Salary -->
-                <a href="sallarypayheads.php" class="sidebar-item">
-                    <i class="fas fa-hand-holding-usd"></i>
-                    <span>Salary Structure</span>
-                </a>
-
                 <!-- Settings -->
-                <a href="settings.php" class="sidebar-item">
+                <a href="../settings.php" class="sidebar-item">
                     <i class="fas fa-sliders-h"></i>
                     <span>Settings</span>
                 </a>
@@ -2903,7 +2629,7 @@ $departments = [
                                         $status = 'Weekend Work';
                                         $status_class = 'status-leave';
                                     }
-                                    ?>
+                                ?>
                                     <tr class="bg-white hover:bg-gray-50 transition-colors duration-150">
                                         <td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap mobile-text-sm">
                                             <?php echo date('M d, Y', strtotime($row['date'])); ?>
@@ -3617,10 +3343,11 @@ $departments = [
 
     <!-- Monthly DTR Entry Modal (Keep exactly as original) -->
     <div id="bulkAddAttendanceModal" tabindex="-1" aria-hidden="true"
-        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 md:inset-0 h-[calc(100%-1rem)] max-h-full">
-        <div class="relative w-full max-w-6xl rounded-lg max-h-full modal-animation modal-mobile-full overflow-y-auto">
+        class="fixed inset-0 z-50 hidden flex items-center justify-center p-4"
+        style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+        <div class="relative w-full max-w-6xl max-h-[90vh] rounded-lg modal-animation overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-lg">
-                <div class="flex items-center justify-between p-5 border-b rounded-t bg-yellow-600 text-white">
+                <div class="flex items-center justify-between p-5 border-b rounded-t bg-yellow-600 text-white sticky top-0">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-calendar-alt mr-2"></i>Monthly DTR Entry (Daily Time Records)
                     </h3>
@@ -3688,7 +3415,7 @@ $departments = [
                                     $currentMonth = date('n');
                                     for ($i = 1; $i <= 12; $i++):
                                         $monthName = date('F', mktime(0, 0, 0, $i, 1));
-                                        ?>
+                                    ?>
                                         <option value="<?php echo $i; ?>" <?php echo $i == $currentMonth ? 'selected' : ''; ?>>
                                             <?php echo $monthName; ?>
                                         </option>
@@ -3844,135 +3571,141 @@ $departments = [
         </div>
     </div>
 
-    <!-- Import Attendance Modal (Updated with Remove Button) -->
+    <!-- Import Attendance Modal (Fixed Centering and Working) -->
     <div id="importAttendanceModal" tabindex="-1" aria-hidden="true"
-        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 md:inset-0 h-[calc(100%-1rem)] max-h-full">
-        <div class="relative w-full max-w-md rounded-lg max-h-full modal-animation modal-mobile-full overflow-y-auto">
+        class="fixed inset-0 z-50 hidden flex items-center justify-center p-4"
+        style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+        <div class="relative w-full max-w-md max-h-[90vh] rounded-lg modal-animation overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-lg">
-                <div class="flex items-center justify-between p-5 border-b rounded-t bg-purple-600 text-white">
+                <div class="flex items-center justify-between p-5 border-b rounded-t bg-purple-600 text-white sticky top-0">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-file-import mr-2"></i>Import Attendance Records
                     </h3>
                     <button type="button"
-                        class="text-white bg-transparent hover:bg-purple-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out"
-                        data-modal-hide="importAttendanceModal">
+                        class="text-white bg-transparent hover:bg-purple-700 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition duration-150 ease-in-out close-import-modal">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
 
-                <div class="p-4 md:p-6 space-y-4">
-                    <!-- Tab Navigation -->
-                    <div class="border-b border-gray-200">
-                        <ul class="flex flex-wrap -mb-px text-sm font-medium text-center justify-center" id="importTab"
-                            role="tablist">
-                            <li class="mr-2" role="presentation">
-                                <button
-                                    class="inline-block p-4 border-b-2 rounded-t-lg active border-purple-600 text-purple-600"
-                                    id="xlsx-tab" type="button" role="tab" aria-controls="xlsx" aria-selected="true">
-                                    <i class="fas fa-file-excel mr-2 text-green-600"></i>XLSX/DTR Format
-                                </button>
-                            </li>
-                        </ul>
-                    </div>
-
+                <div class="p-4 md:p-6">
                     <!-- XLSX Import Tab -->
-                    <div class="p-4" id="xlsx" role="tabpanel" aria-labelledby="xlsx-tab">
+                    <div id="xlsx" role="tabpanel">
                         <form id="xlsxImportForm" method="POST" enctype="multipart/form-data"
-                            action="import_attendance_xlsx.php">
-                            <div class="space-y-4">
-                                <!-- File Upload Area -->
-                                <div>
-                                    <label for="xlsx_file" class="block mb-2 text-sm font-medium text-gray-900">Upload
-                                        XLSX/DTR File *</label>
-                                    <div class="flex items-center justify-center w-full">
-                                        <label for="xlsx_file"
-                                            class="flex flex-col items-center justify-center w-full h-32 border-2 border-purple-300 border-dashed rounded-lg cursor-pointer bg-purple-50 hover:bg-purple-100 file-upload-area transition-all duration-200">
-                                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
-                                                <i class="fas fa-file-excel text-3xl text-purple-600 mb-2"></i>
-                                                <p class="mb-2 text-sm text-gray-700"><span
-                                                        class="font-semibold text-purple-600">Click to upload</span> or
-                                                    drag and drop</p>
-                                                <p class="text-xs text-gray-500">XLSX files from attendance system (max
-                                                    10MB)</p>
-                                            </div>
-                                            <input id="xlsx_file" name="xlsx_file" type="file" class="hidden"
-                                                accept=".xlsx,.xls" />
-                                        </label>
-                                    </div>
-                                </div>
+                            action="./import_attendance_xlsx.php">
 
-                                <!-- File Information with Remove Button -->
-                                <div id="xlsxFileInfo"
-                                    class="hidden p-3 bg-purple-50 rounded-lg border border-purple-200">
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center min-w-0">
-                                            <i class="fas fa-file-excel text-purple-600 mr-2 flex-shrink-0"></i>
-                                            <div class="truncate">
-                                                <span id="xlsxFileName"
-                                                    class="text-sm font-medium text-gray-700 block truncate"></span>
-                                                <span id="xlsxFileSize" class="text-xs text-gray-500"></span>
-                                            </div>
-                                        </div>
-                                        <button type="button" id="removeXlsxFile"
-                                            class="ml-2 p-1.5 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors duration-200 flex-shrink-0"
-                                            title="Remove file">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                </div>
+                            <!-- Employee Selection Section -->
+                            <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <h4 class="text-sm font-semibold text-blue-800 mb-3 flex items-center">
+                                    <i class="fas fa-user mr-2 text-blue-600"></i>
+                                    Select Employee
+                                </h4>
 
-                                <!-- Sample File Display (for demonstration) -->
-                                <div id="sampleFileDisplay" class="p-2 bg-green-50 border border-green-200 rounded-lg">
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center">
-                                            <i class="fas fa-file-excel text-green-600 mr-2"></i>
-                                            <span class="text-sm text-gray-700">JANUARY (1).xlsx</span>
-                                            <span class="ml-2 text-xs text-gray-500">44.94 KB</span>
-                                            <span
-                                                class="ml-2 text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Sample</span>
-                                        </div>
-                                        <button type="button" onclick="removeSampleFile()"
-                                            class="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100 transition-colors duration-200"
-                                            title="Remove sample file">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Format Support Info -->
-                                <div class="flex items-start p-3 text-sm text-purple-700 bg-purple-50 rounded-lg"
-                                    role="alert">
-                                    <i class="fas fa-info-circle mr-2 mt-0.5 flex-shrink-0"></i>
+                                <div class="space-y-3">
+                                    <!-- Employee Search/Select -->
                                     <div>
-                                        <span class="font-medium">Format Support:</span>
-                                        <ul class="mt-1.5 ml-4 list-disc text-xs space-y-1">
-                                            <li>Multiple employees in one file</li>
-                                            <li>Daily time records with AM/PM in/out</li>
-                                            <li>Automatically skips duplicates</li>
-                                            <li>Calculates OT and undertime automatically</li>
-                                            <li>Handles weekends and holidays</li>
-                                        </ul>
+                                        <label for="employee_search" class="block mb-1 text-xs font-medium text-gray-700">Search Employee</label>
+                                        <input type="text" id="employee_search"
+                                            class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                                            placeholder="Type name or ID to search...">
+                                        <div id="employee_search_results" class="hidden mt-1 max-h-40 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
+                                            <!-- Search results will appear here -->
+                                        </div>
                                     </div>
-                                </div>
 
-                                <!-- Progress Bar -->
-                                <div id="xlsxProgressContainer" class="hidden">
-                                    <div class="flex justify-between mb-1">
-                                        <span class="text-sm font-medium text-purple-700">Importing...</span>
-                                        <span id="xlsxProgressPercent"
-                                            class="text-sm font-medium text-purple-700">0%</span>
+                                    <!-- Selected Employee Info -->
+                                    <div id="selected_employee_info" class="hidden p-3 bg-green-50 border border-green-200 rounded-lg">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-xs text-gray-600">Selected Employee:</p>
+                                                <p id="selected_employee_name" class="font-medium text-gray-900"></p>
+                                                <p id="selected_employee_id" class="text-xs text-gray-600"></p>
+                                                <p id="selected_employee_dept" class="text-xs text-gray-600"></p>
+                                            </div>
+                                            <button type="button" id="clear_employee_selection" class="text-red-600 hover:text-red-800 text-xs">
+                                                <i class="fas fa-times"></i> Clear
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                        <div id="xlsxProgressBar" class="bg-purple-600 h-2.5 rounded-full"
-                                            style="width: 0%"></div>
-                                    </div>
-                                    <p id="xlsxStatusMessage" class="mt-2 text-xs text-gray-600"></p>
-                                </div>
 
-                                <!-- Import Errors (if any) -->
-                                <div id="importErrors" class="hidden">
-                                    <!-- Will be populated by JavaScript -->
+
+                                    <!-- Hidden field to store selected employee ID -->
+                                    <input type="hidden" id="selected_employee_id_hidden" name="selected_employee_id" value="">
                                 </div>
+                            </div>
+
+                            <!-- File Upload Area -->
+                            <div class="mb-4">
+                                <label for="xlsx_file" class="block mb-2 text-sm font-medium text-gray-900">Upload XLSX/DTR File *</label>
+                                <div class="flex items-center justify-center w-full">
+                                    <label for="xlsx_file"
+                                        class="flex flex-col items-center justify-center w-full h-32 border-2 border-purple-300 border-dashed rounded-lg cursor-pointer bg-purple-50 hover:bg-purple-100 file-upload-area transition-all duration-200">
+                                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                            <i class="fas fa-file-excel text-3xl text-purple-600 mb-2"></i>
+                                            <p class="mb-2 text-sm text-gray-700"><span
+                                                    class="font-semibold text-purple-600">Click to upload</span> or
+                                                drag and drop</p>
+                                            <p class="text-xs text-gray-500">XLSX files from attendance system (max 10MB)</p>
+                                        </div>
+                                        <input id="xlsx_file" name="xlsx_file" type="file" class="hidden"
+                                            accept=".xlsx,.xls" required />
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- File Information with Remove Button -->
+                            <div id="xlsxFileInfo"
+                                class="hidden p-3 bg-purple-50 rounded-lg border border-purple-200 mb-4">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center min-w-0">
+                                        <i class="fas fa-file-excel text-purple-600 mr-2 flex-shrink-0"></i>
+                                        <div class="truncate">
+                                            <span id="xlsxFileName"
+                                                class="text-sm font-medium text-gray-700 block truncate"></span>
+                                            <span id="xlsxFileSize" class="text-xs text-gray-500"></span>
+                                        </div>
+                                    </div>
+                                    <button type="button" id="removeXlsxFile"
+                                        class="ml-2 p-1.5 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-full transition-colors duration-200 flex-shrink-0"
+                                        title="Remove file">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Format Support Info -->
+                            <div class="flex items-start p-3 text-sm text-purple-700 bg-purple-50 rounded-lg mb-4"
+                                role="alert">
+                                <i class="fas fa-info-circle mr-2 mt-0.5 flex-shrink-0"></i>
+                                <div>
+                                    <span class="font-medium">Format Support:</span>
+                                    <ul class="mt-1.5 ml-4 list-disc text-xs space-y-1">
+                                        <li>Multiple employees in one file</li>
+                                        <li>Daily time records with AM/PM in/out</li>
+                                        <li>Automatically skips duplicates</li>
+                                        <li>Calculates OT and undertime automatically</li>
+                                        <li>Handles weekends and holidays</li>
+                                        <li class="font-semibold text-purple-800">✓ Manual employee selection for accuracy</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Progress Bar -->
+                            <div id="xlsxProgressContainer" class="hidden mb-4">
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm font-medium text-purple-700">Importing...</span>
+                                    <span id="xlsxProgressPercent"
+                                        class="text-sm font-medium text-purple-700">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div id="xlsxProgressBar" class="bg-purple-600 h-2.5 rounded-full"
+                                        style="width: 0%"></div>
+                                </div>
+                                <p id="xlsxStatusMessage" class="mt-2 text-xs text-gray-600"></p>
+                            </div>
+
+                            <!-- Import Errors (if any) -->
+                            <div id="importErrors" class="hidden mb-4">
+                                <!-- Will be populated by JavaScript -->
                             </div>
 
                             <div class="flex items-center justify-end space-x-3 mt-6 pt-4 border-t">
@@ -3981,8 +3714,7 @@ $departments = [
                                     <i class="fas fa-upload mr-2"></i>
                                     <span>Import XLSX</span>
                                 </button>
-                                <button type="button" data-modal-hide="importAttendanceModal"
-                                    class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900">
+                                <button type="button" class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 close-import-modal">
                                     Cancel
                                 </button>
                             </div>
@@ -3993,42 +3725,54 @@ $departments = [
         </div>
     </div>
 
-    <!-- Import Results Modal (Keep exactly as original) -->
+    <!-- Import Results Modal (Fixed Centering) -->
     <div id="importResultsModal" tabindex="-1" aria-hidden="true"
-        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
-        <div class="relative w-full max-w-2xl max-h-full modal-animation">
+        class="fixed inset-0 z-50 hidden flex items-center justify-center p-4"
+        style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+        <div class="relative w-full max-w-2xl max-h-[90vh] rounded-lg modal-animation overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-lg">
                 <div id="importResultsHeader"
-                    class="flex items-center justify-between p-5 border-b rounded-t bg-green-600 text-white">
+                    class="flex items-center justify-between p-5 border-b rounded-t bg-green-600 text-white sticky top-0">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-check-circle mr-2"></i>Import Results
                     </h3>
-                    <button type="button"
-                        class="text-white bg-transparent hover:bg-opacity-80 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center"
-                        data-modal-hide="importResultsModal">
+                    <button type="button" onclick="closeAndReloadImportResults()"
+                        class="text-white bg-transparent hover:bg-opacity-80 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center close-results-modal">
                         <i class="fas fa-times w-5 h-5"></i>
                     </button>
                 </div>
                 <div class="p-6" id="importResultsContent">
                     <!-- Results will be populated by JavaScript -->
                 </div>
-                <div class="flex items-center justify-end p-6 pt-0 border-t">
-                    <button type="button" data-modal-hide="importResultsModal"
-                        class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900">
-                        Close
-                    </button>
+                <div class="flex items-center justify-between p-6 pt-0 border-t">
+                    <div class="text-sm text-gray-600" id="reloadMessage">
+                        <i class="fas fa-info-circle text-blue-500 mr-1"></i>
+                        Review the results below. Click Reload to refresh the page.
+                    </div>
+                    <div class="flex space-x-3">
+                        <button type="button" id="reloadPageBtn"
+                            onclick="reloadPageAfterImport()"
+                            class="text-white bg-green-600 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center flex items-center">
+                            <i class="fas fa-sync-alt mr-2"></i>
+                            Reload Page
+                        </button>
+                        <button type="button" onclick="closeAndReloadImportResults()"
+                            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-purple-300 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 close-results-modal">
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Edit Attendance Modal (Keep exactly as original) -->
+    <!-- Edit Attendance Modal (Fixed Centering) -->
     <div id="editAttendanceModal" tabindex="-1" aria-hidden="true"
-        class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full"
+        class="fixed inset-0 z-50 hidden flex items-center justify-center p-4"
         style="background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
-        <div class="relative w-full max-w-2xl max-h-full modal-animation modal-mobile-full modal-content mx-auto my-8">
+        <div class="relative w-full max-w-2xl max-h-[90vh] rounded-lg modal-animation overflow-y-auto">
             <div class="relative bg-white rounded-lg shadow-xl">
-                <div class="flex items-center justify-between p-5 border-b rounded-t bg-blue-600 text-white">
+                <div class="flex items-center justify-between p-5 border-b rounded-t bg-blue-600 text-white sticky top-0">
                     <h3 class="text-lg md:text-xl font-semibold">
                         <i class="fas fa-edit mr-2"></i>Edit Attendance Record
                     </h3>
@@ -4058,27 +3802,26 @@ $departments = [
         // GLOBAL VARIABLES
         // ============================================
         let searchTimeout;
-        let currentPage = <?php echo $current_page; ?>;
-        let totalPages = <?php echo $total_pages; ?>;
-        let recordsPerPage = <?php echo $records_per_page; ?>;
+        let currentPage = <?php echo isset($current_page) ? $current_page : 1; ?>;
+        let totalPages = <?php echo isset($total_pages) ? $total_pages : 1; ?>;
+        let recordsPerPage = <?php echo isset($records_per_page) ? $records_per_page : 10; ?>;
 
         // Selection storage - this will persist across page changes
         let selectedEmployees = [];
         let globalSelectedEmployees = [];
         let isGlobalSelection = false;
 
-        // Load saved selections from sessionStorage on page load
-        document.addEventListener('DOMContentLoaded', function () {
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        document.addEventListener('DOMContentLoaded', function() {
             // Load saved selections from storage
             loadSelectionsFromStorage();
 
             // Attach clear selection button event listener
             const clearBtn = document.getElementById('clearGlobalSelection');
             if (clearBtn) {
-                // Remove any existing event listeners to avoid duplicates
-                clearBtn.replaceWith(clearBtn.cloneNode(true));
-                const newClearBtn = document.getElementById('clearGlobalSelection');
-                newClearBtn.addEventListener('click', function (e) {
+                clearBtn.addEventListener('click', function(e) {
                     e.preventDefault();
                     clearGlobalSelection();
                 });
@@ -4086,406 +3829,335 @@ $departments = [
 
             // Initialize import functionality
             initImportFunctionality();
+
+            // Initialize modals
+            initModals();
+
+            // Initialize monthly DTR functionality
+            initMonthlyDTR();
+
+            // Initialize export functionality
+            initExportFunctionality();
+
+            // Initialize employee search
+            initEmployeeSearch();
+
+            // Update date and time
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
         });
 
         // ============================================
-        // SELECTION MANAGEMENT FUNCTIONS
+        // EMPLOYEE SEARCH FUNCTIONALITY
         // ============================================
+        function initEmployeeSearch() {
+            const employeeSearch = document.getElementById('employee_search');
+            const searchResults = document.getElementById('employee_search_results');
+            const selectedEmployeeInfo = document.getElementById('selected_employee_info');
+            const selectedEmployeeName = document.getElementById('selected_employee_name');
+            const selectedEmployeeId = document.getElementById('selected_employee_id');
+            const selectedEmployeeDept = document.getElementById('selected_employee_dept');
+            const selectedEmployeeIdHidden = document.getElementById('selected_employee_id_hidden');
+            const clearEmployeeBtn = document.getElementById('clear_employee_selection');
+            const manualEmployeeId = document.getElementById('manual_employee_id');
 
-        // Save selections to sessionStorage
-        function saveSelectionsToStorage() {
-            try {
-                sessionStorage.setItem('attendanceSelectedEmployees', JSON.stringify(selectedEmployees));
-                sessionStorage.setItem('attendanceGlobalSelected', JSON.stringify(globalSelectedEmployees));
-                sessionStorage.setItem('attendanceIsGlobalSelection', isGlobalSelection ? 'true' : 'false');
-                console.log('Saved to storage:', {
-                    selected: selectedEmployees.length,
-                    global: globalSelectedEmployees.length,
-                    isGlobal: isGlobalSelection
-                });
-            } catch (e) {
-                console.error('Error saving selections to storage:', e);
-            }
-        }
+            let searchTimeout;
 
-        // Load selections from sessionStorage
-        function loadSelectionsFromStorage() {
-            try {
-                const saved = sessionStorage.getItem('attendanceSelectedEmployees');
-                if (saved) {
-                    selectedEmployees = JSON.parse(saved);
-                }
+            if (employeeSearch) {
+                employeeSearch.addEventListener('input', function() {
+                    const query = this.value.trim();
 
-                const savedGlobal = sessionStorage.getItem('attendanceGlobalSelected');
-                if (savedGlobal) {
-                    globalSelectedEmployees = JSON.parse(savedGlobal);
-                }
-
-                const savedIsGlobal = sessionStorage.getItem('attendanceIsGlobalSelection');
-                if (savedIsGlobal) {
-                    isGlobalSelection = savedIsGlobal === 'true';
-                }
-
-                console.log('Loaded from storage:', {
-                    selected: selectedEmployees.length,
-                    global: globalSelectedEmployees.length,
-                    isGlobal: isGlobalSelection
-                });
-
-                // Update UI based on loaded selections
-                setTimeout(() => {
-                    updateCheckboxesFromSelection();
-                    updateGlobalSelectionUI();
-                }, 100);
-            } catch (e) {
-                console.error('Error loading selections from storage:', e);
-            }
-        }
-
-
-        // Update checkboxes based on selectedEmployees array
-        function updateCheckboxesFromSelection() {
-            const checkboxes = document.querySelectorAll('.employee-checkbox:not(:disabled)');
-            checkboxes.forEach(checkbox => {
-                const empId = checkbox.dataset.employeeId;
-                checkbox.checked = selectedEmployees.some(emp => emp.id === empId);
-            });
-
-            // Update select all checkbox
-            updateSelectAllCheckbox();
-        }
-
-        // Update select all checkbox state
-        function updateSelectAllCheckbox() {
-            const selectAll = document.getElementById('selectAllEmployees');
-            if (!selectAll) return;
-
-            const checkboxes = document.querySelectorAll('.employee-checkbox:not(:disabled)');
-            const checkedCount = document.querySelectorAll('.employee-checkbox:checked:not(:disabled)').length;
-
-            selectAll.checked = checkedCount > 0 && checkedCount === checkboxes.length;
-            selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
-        }
-
-        // Update selectedEmployees array from checkboxes
-        function updateSelectedEmployeesFromCheckboxes() {
-            const checkboxes = document.querySelectorAll('.employee-checkbox:checked:not(:disabled)');
-
-            // Create a Map to ensure uniqueness by employee ID
-            const currentSelectionMap = new Map();
-
-            // Add currently checked checkboxes
-            checkboxes.forEach(checkbox => {
-                currentSelectionMap.set(checkbox.dataset.employeeId, {
-                    id: checkbox.dataset.employeeId,
-                    name: checkbox.dataset.employeeName
-                });
-            });
-
-            // If we have existing selections from other pages, merge them
-            if (!isGlobalSelection) {
-                // Keep selections from other pages that aren't on current page
-                const currentPageIds = new Set(Array.from(document.querySelectorAll('.employee-checkbox')).map(cb => cb.dataset.employeeId));
-
-                selectedEmployees.forEach(emp => {
-                    if (!currentPageIds.has(emp.id) && !currentSelectionMap.has(emp.id)) {
-                        // This employee is from another page and not currently selected on this page
-                        // Keep them in selection
-                        currentSelectionMap.set(emp.id, emp);
-                    }
-                });
-            }
-
-            // Convert Map back to array
-            selectedEmployees = Array.from(currentSelectionMap.values());
-
-            // Save to storage
-            saveSelectionsToStorage();
-
-            // Update UI
-            updateSelectAllCheckbox();
-            updateGlobalSelectionUI();
-        }
-
-        document.addEventListener('click', function (e) {
-            // Handle clear selection button click
-            if (e.target.closest('#clearGlobalSelection')) {
-                e.preventDefault();
-                clearGlobalSelection();
-            }
-        });
-
-        // ============================================
-        // HELPER FUNCTION TO SHOW ADD ATTENDANCE PROMPT
-        // ============================================
-        function showAddAttendancePrompt(employeeId, employeeName) {
-            if (confirm(`No attendance records found for ${employeeName}. Would you like to add attendance records now?`)) {
-                // Open the Monthly DTR Entry modal
-                const modal = document.getElementById('bulkAddAttendanceModal');
-                if (modal) {
-                    // Pre-fill the employee ID and name
-                    document.getElementById('bulk_employee_id').value = employeeId;
-
-                    // Trigger auto-fill to get employee name and department
-                    setTimeout(() => {
-                        const event = new Event('blur', {
-                            bubbles: true
-                        });
-                        document.getElementById('bulk_employee_id').dispatchEvent(event);
-                    }, 100);
-
-                    try {
-                        const modalInstance = new Modal(modal);
-                        modalInstance.show();
-                    } catch (e) {
-                        modal.classList.remove('hidden');
-                        modal.setAttribute('aria-hidden', 'false');
-                    }
-                }
-            }
-        }
-
-        // ============================================
-        // UPDATE DATE AND TIME
-        // ============================================
-
-        function updateDateTime() {
-            const now = new Date();
-            const dateOptions = {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            };
-            const timeOptions = {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            };
-
-            const dateElement = document.getElementById('current-date');
-            const timeElement = document.getElementById('current-time');
-
-            if (dateElement) {
-                dateElement.textContent = now.toLocaleDateString('en-US', dateOptions);
-            }
-            if (timeElement) {
-                timeElement.textContent = now.toLocaleTimeString('en-US', timeOptions);
-            }
-        }
-
-        updateDateTime();
-        setInterval(updateDateTime, 1000);
-
-        // ============================================
-        // SIDEBAR TOGGLE
-        // ============================================
-
-        const sidebarToggle = document.getElementById('sidebar-toggle');
-        const sidebarContainer = document.getElementById('sidebar-container');
-        const sidebarOverlay = document.getElementById('sidebar-overlay');
-
-        if (sidebarToggle && sidebarContainer) {
-            sidebarToggle.addEventListener('click', function () {
-                sidebarContainer.classList.toggle('active');
-                sidebarOverlay.classList.toggle('active');
-            });
-
-            sidebarOverlay.addEventListener('click', function () {
-                sidebarContainer.classList.remove('active');
-                sidebarOverlay.classList.remove('active');
-            });
-        }
-
-        // ============================================
-        // USER MENU TOGGLE
-        // ============================================
-
-        const userMenuButton = document.getElementById('user-menu-button');
-        const userDropdown = document.getElementById('user-dropdown');
-
-        if (userMenuButton && userDropdown) {
-            userMenuButton.addEventListener('click', function (e) {
-                e.stopPropagation();
-                userDropdown.classList.toggle('active');
-                this.classList.toggle('active');
-            });
-
-            document.addEventListener('click', function (event) {
-                if (!userMenuButton.contains(event.target) && !userDropdown.contains(event.target)) {
-                    userDropdown.classList.remove('active');
-                    userMenuButton.classList.remove('active');
-                }
-            });
-        }
-
-        // ============================================
-        // PAYROLL DROPDOWN TOGGLE
-        // ============================================
-
-        const payrollToggle = document.getElementById('payroll-toggle');
-        const payrollDropdown = document.getElementById('payroll-dropdown');
-
-        if (payrollToggle && payrollDropdown) {
-            payrollToggle.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                payrollDropdown.classList.toggle('open');
-
-                const chevron = this.querySelector('.chevron');
-                if (chevron) {
-                    chevron.classList.toggle('rotated');
-                }
-            });
-        }
-
-        // ============================================
-        // AUTO-FILL EMPLOYEE INFO
-        // ============================================
-
-        async function autoFillEmployeeInfo() {
-            const bulkEmployeeIdInput = document.getElementById('bulk_employee_id');
-            const bulkEmployeeNameInput = document.getElementById('bulk_employee_name');
-            const bulkDepartmentSelect = document.getElementById('bulk_department');
-
-            if (!bulkEmployeeIdInput || !bulkEmployeeNameInput || !bulkDepartmentSelect) {
-                console.log('Employee form elements not found');
-                return;
-            }
-
-            // Add input event for real-time validation
-            bulkEmployeeIdInput.addEventListener('input', function () {
-                // Clear the fields if input is empty
-                if (this.value.trim() === '') {
-                    bulkEmployeeNameInput.value = '';
-                    // Reset department to default
-                    bulkDepartmentSelect.value = '';
-
-                    // Remove any error styling
-                    this.classList.remove('border-red-500', 'ring-red-500');
-                }
-            });
-
-            bulkEmployeeIdInput.addEventListener('blur', async function () {
-                const employeeId = this.value.trim();
-
-                if (employeeId.length === 0) {
-                    return;
-                }
-
-                // Show loading state
-                this.classList.add('opacity-75', 'bg-gray-100');
-                this.disabled = true;
-
-                // Clear previous error styling
-                this.classList.remove('border-red-500', 'ring-red-500');
-
-                try {
-                    console.log('Fetching employee info for ID:', employeeId);
-
-                    const response = await fetch('get_employee_info.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: 'employee_id=' + encodeURIComponent(employeeId)
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                    if (query.length < 2) {
+                        if (searchResults) searchResults.classList.add('hidden');
+                        return;
                     }
 
-                    const data = await response.json();
-                    console.log('Response data:', data);
-
-                    if (data.success) {
-                        // Success - populate the fields
-                        bulkEmployeeNameInput.value = data.employee.full_name || '';
-
-                        // Set department if it exists in the response
-                        if (data.employee.department) {
-                            // Try to find matching department in dropdown
-                            let found = false;
-                            for (let i = 0; i < bulkDepartmentSelect.options.length; i++) {
-                                if (bulkDepartmentSelect.options[i].value === data.employee.department) {
-                                    bulkDepartmentSelect.selectedIndex = i;
-                                    found = true;
-                                    break;
-                                }
-                            }
-
-                            // If exact match not found, try to find partial match
-                            if (!found) {
-                                for (let i = 0; i < bulkDepartmentSelect.options.length; i++) {
-                                    if (bulkDepartmentSelect.options[i].value.toLowerCase().includes(data.employee.department.toLowerCase()) ||
-                                        data.employee.department.toLowerCase().includes(bulkDepartmentSelect.options[i].value.toLowerCase())) {
-                                        bulkDepartmentSelect.selectedIndex = i;
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // If still not found, set a custom value? (but select doesn't support custom values)
-                            if (!found) {
-                                console.log('Department not found in dropdown:', data.employee.department);
-                            }
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        // Show loading
+                        if (searchResults) {
+                            searchResults.innerHTML = '<div class="p-2 text-gray-500">Searching...</div>';
+                            searchResults.classList.remove('hidden');
                         }
 
-                        showNotification('Employee information loaded successfully!', 'success');
-                    } else {
-                        // Error - clear fields and show error
-                        bulkEmployeeNameInput.value = '';
-                        bulkDepartmentSelect.value = '';
+                        // Fetch employees from server
+                        fetch(`get_employees.php?search=${encodeURIComponent(query)}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (searchResults) {
+                                    if (data.employees && data.employees.length > 0) {
+                                        let html = '';
+                                        data.employees.forEach(emp => {
+                                            html += `
+                                        <div class="employee-result p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 transition-colors duration-150"
+                                             data-id="${emp.employee_id}"
+                                             data-name="${emp.full_name}"
+                                             data-dept="${emp.department}"
+                                             data-type="${emp.type}">
+                                            <div class="font-medium text-gray-900">${emp.full_name}</div>
+                                            <div class="text-xs text-gray-600 mt-1">
+                                                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full mr-2">${emp.employee_id}</span>
+                                                <span class="inline-block bg-gray-100 text-gray-800 px-2 py-0.5 rounded-full">${emp.department}</span>
+                                                <span class="inline-block ml-2 ${emp.type === 'Permanent' ? 'bg-green-100 text-green-800' : emp.type === 'Job Order' ? 'bg-yellow-100 text-yellow-800' : 'bg-purple-100 text-purple-800'} px-2 py-0.5 rounded-full">${emp.type}</span>
+                                            </div>
+                                        </div>
+                                    `;
+                                        });
+                                        searchResults.innerHTML = html;
+                                        searchResults.classList.remove('hidden');
 
-                        // Add error styling
-                        this.classList.add('border-red-500', 'ring-red-500');
+                                        // Add click handlers to results
+                                        document.querySelectorAll('.employee-result').forEach(el => {
+                                            el.addEventListener('click', function() {
+                                                selectEmployee(
+                                                    this.dataset.id,
+                                                    this.dataset.name,
+                                                    this.dataset.dept,
+                                                    this.dataset.type
+                                                );
+                                            });
+                                        });
+                                    } else {
+                                        searchResults.innerHTML = '<div class="p-4 text-gray-500 text-center">No employees found matching "<span class="font-medium">' + query + '</span>"</div>';
+                                        searchResults.classList.remove('hidden');
+                                    }
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error searching employees:', error);
+                                if (searchResults) {
+                                    searchResults.innerHTML = '<div class="p-4 text-red-500 text-center">Error searching employees. Please try again.</div>';
+                                    searchResults.classList.remove('hidden');
+                                }
+                            });
+                    }, 300);
+                });
 
-                        showNotification(data.message || 'Employee ID not found. Please check and try again.', 'error');
+                // Handle keyboard navigation
+                employeeSearch.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        if (searchResults) searchResults.classList.add('hidden');
                     }
-                } catch (error) {
-                    console.error('Error fetching employee info:', error);
+                });
 
-                    // Clear fields on error
-                    bulkEmployeeNameInput.value = '';
-                    bulkDepartmentSelect.value = '';
+                // Hide results when clicking outside
+                document.addEventListener('click', function(e) {
+                    if (searchResults && !employeeSearch.contains(e.target) && !searchResults.contains(e.target)) {
+                        searchResults.classList.add('hidden');
+                    }
+                });
+            }
 
-                    // Add error styling
-                    this.classList.add('border-red-500', 'ring-red-500');
+            // Function to select an employee
+            window.selectEmployee = function(id, name, dept, type) {
+                if (selectedEmployeeName) selectedEmployeeName.textContent = name;
+                if (selectedEmployeeId) selectedEmployeeId.textContent = `ID: ${id}`;
+                if (selectedEmployeeDept) selectedEmployeeDept.textContent = `Department: ${dept} (${type})`;
+                if (selectedEmployeeIdHidden) selectedEmployeeIdHidden.value = id;
+                if (selectedEmployeeInfo) selectedEmployeeInfo.classList.remove('hidden');
 
-                    showNotification('Error loading employee information. Please try again.', 'error');
-                } finally {
-                    // Remove loading state
-                    this.classList.remove('opacity-75', 'bg-gray-100');
-                    this.disabled = false;
+                // Clear search
+                if (employeeSearch) employeeSearch.value = '';
+                if (searchResults) searchResults.classList.add('hidden');
+
+                // Clear manual input
+                if (manualEmployeeId) manualEmployeeId.value = '';
+
+                showNotification(`Employee selected: ${name}`, 'success');
+            };
+
+            // Clear employee selection
+            if (clearEmployeeBtn) {
+                clearEmployeeBtn.addEventListener('click', function() {
+                    if (selectedEmployeeInfo) selectedEmployeeInfo.classList.add('hidden');
+                    if (selectedEmployeeIdHidden) selectedEmployeeIdHidden.value = '';
+                    if (manualEmployeeId) manualEmployeeId.value = '';
+                    if (employeeSearch) employeeSearch.value = '';
+                    showNotification('Employee selection cleared', 'info');
+                });
+            }
+
+            // Manual employee ID input
+            if (manualEmployeeId) {
+                manualEmployeeId.addEventListener('input', function() {
+                    if (this.value.trim()) {
+                        // Clear selected employee
+                        if (selectedEmployeeInfo) selectedEmployeeInfo.classList.add('hidden');
+                        if (selectedEmployeeIdHidden) selectedEmployeeIdHidden.value = this.value.trim();
+                    }
+                });
+
+                // Validate on blur
+                manualEmployeeId.addEventListener('blur', function() {
+                    const id = this.value.trim();
+                    if (id) {
+                        // Optional: Validate if employee exists
+                        fetch(`get_employees.php?search=${encodeURIComponent(id)}&exact=1`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.employees && data.employees.length > 0) {
+                                    // Employee found, auto-select
+                                    const emp = data.employees[0];
+                                    selectEmployee(emp.employee_id, emp.full_name, emp.department, emp.type);
+                                }
+                            })
+                            .catch(error => console.error('Error validating employee:', error));
+                    }
+                });
+            }
+
+            // Update form submission to validate employee selection
+            const importForm = document.getElementById('xlsxImportForm');
+            if (importForm) {
+                importForm.addEventListener('submit', function(e) {
+                    const employeeIdHidden = document.getElementById('selected_employee_id_hidden');
+                    const manualId = document.getElementById('manual_employee_id');
+                    const employeeId = employeeIdHidden ? employeeIdHidden.value : '';
+                    const manualIdValue = manualId ? manualId.value.trim() : '';
+
+                    if (!employeeId && !manualIdValue) {
+                        e.preventDefault();
+                        showNotification('Please select an employee or enter an Employee ID', 'error');
+                        return false;
+                    }
+
+                    // If manual ID is entered, use that
+                    if (manualIdValue && employeeIdHidden) {
+                        employeeIdHidden.value = manualIdValue;
+                    }
+
+                    // Show loading state
+                    const submitBtn = document.getElementById('importXlsxBtn');
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Importing...';
+                    }
+
+                    return true;
+                });
+            }
+        }
+
+        // ============================================
+        // MODAL INITIALIZATION
+        // ============================================
+        function initModals() {
+            // Import modal buttons
+            const importModalBtn = document.querySelector('[data-modal-target="importAttendanceModal"]');
+            const importModal = document.getElementById('importAttendanceModal');
+
+            if (importModalBtn && importModal) {
+                importModalBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    importModal.classList.remove('hidden');
+                    importModal.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
+                });
+            }
+
+            // Close modal buttons
+            document.querySelectorAll('.close-import-modal').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const modal = document.getElementById('importAttendanceModal');
+                    if (modal) {
+                        modal.classList.add('hidden');
+                        modal.setAttribute('aria-hidden', 'true');
+                        document.body.style.overflow = '';
+
+                        // Reset form
+                        const form = document.getElementById('xlsxImportForm');
+                        if (form) form.reset();
+
+                        // Reset employee selection
+                        const selectedInfo = document.getElementById('selected_employee_info');
+                        const selectedIdHidden = document.getElementById('selected_employee_id_hidden');
+                        const searchInput = document.getElementById('employee_search');
+                        const manualInput = document.getElementById('manual_employee_id');
+
+                        if (selectedInfo) selectedInfo.classList.add('hidden');
+                        if (selectedIdHidden) selectedIdHidden.value = '';
+                        if (searchInput) searchInput.value = '';
+                        if (manualInput) manualInput.value = '';
+
+                        // Hide file info
+                        hideFileInfo();
+
+                        // Show sample file display
+                        const sampleFileDisplay = document.getElementById('sampleFileDisplay');
+                        if (sampleFileDisplay) sampleFileDisplay.classList.remove('hidden');
+
+                        // Reset progress
+                        const progressContainer = document.getElementById('xlsxProgressContainer');
+                        if (progressContainer) progressContainer.classList.add('hidden');
+                    }
+                });
+            });
+
+            document.querySelectorAll('.close-results-modal').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const modal = document.getElementById('importResultsModal');
+                    if (modal) {
+                        modal.classList.add('hidden');
+                        modal.setAttribute('aria-hidden', 'true');
+                        document.body.style.overflow = '';
+                    }
+                });
+            });
+
+            // Click outside to close modals
+            window.addEventListener('click', function(e) {
+                if (e.target.classList.contains('fixed') && e.target.style.backgroundColor) {
+                    const modals = ['importAttendanceModal', 'importResultsModal', 'exportAttendanceModal', 'bulkAddAttendanceModal', 'editAttendanceModal'];
+                    modals.forEach(modalId => {
+                        const modal = document.getElementById(modalId);
+                        if (modal && !modal.classList.contains('hidden') && e.target === modal) {
+                            modal.classList.add('hidden');
+                            modal.setAttribute('aria-hidden', 'true');
+                            document.body.style.overflow = '';
+                        }
+                    });
                 }
             });
 
-            // Allow Enter key to trigger the blur event
-            bulkEmployeeIdInput.addEventListener('keypress', function (e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.blur();
+            // Escape key to close modals
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    const modals = ['importAttendanceModal', 'importResultsModal', 'exportAttendanceModal', 'bulkAddAttendanceModal', 'editAttendanceModal'];
+                    modals.forEach(modalId => {
+                        const modal = document.getElementById(modalId);
+                        if (modal && !modal.classList.contains('hidden')) {
+                            modal.classList.add('hidden');
+                            modal.setAttribute('aria-hidden', 'true');
+                            document.body.style.overflow = '';
+                        }
+                    });
                 }
             });
         }
 
-        autoFillEmployeeInfo();
-
         // ============================================
-        // MONTHLY DTR ENTRY FUNCTIONS
+        // MONTHLY DTR FUNCTIONS
         // ============================================
+        function initMonthlyDTR() {
+            const monthSelect = document.getElementById('month_select');
+            const yearSelect = document.getElementById('year_select');
 
-        const monthSelect = document.getElementById('month_select');
-        const yearSelect = document.getElementById('year_select');
-        const dailyTimeTable = document.getElementById('dailyTimeTable');
-        const hiddenStartDate = document.getElementById('hidden_start_date');
-        const hiddenEndDate = document.getElementById('hidden_end_date');
-        const periodFirstHalf = document.getElementById('period_first_half');
-        const periodSecondHalf = document.getElementById('period_second_half');
-        const periodFullMonth = document.getElementById('period_full_month');
+            if (monthSelect && yearSelect) {
+                monthSelect.addEventListener('change', generateMonthTable);
+                yearSelect.addEventListener('change', generateMonthTable);
+
+                const periodFirstHalf = document.getElementById('period_first_half');
+                const periodSecondHalf = document.getElementById('period_second_half');
+                const periodFullMonth = document.getElementById('period_full_month');
+
+                if (periodFirstHalf) periodFirstHalf.addEventListener('change', generateMonthTable);
+                if (periodSecondHalf) periodSecondHalf.addEventListener('change', generateMonthTable);
+                if (periodFullMonth) periodFullMonth.addEventListener('change', generateMonthTable);
+
+                updateMonthYearOptions();
+                generateMonthTable();
+            }
+        }
 
         function formatDate(date) {
             return date.toISOString().split('T')[0];
@@ -4511,7 +4183,16 @@ $departments = [
         }
 
         function generateMonthTable() {
-            if (!monthSelect || !yearSelect) return;
+            const monthSelect = document.getElementById('month_select');
+            const yearSelect = document.getElementById('year_select');
+            const dailyTimeTable = document.getElementById('dailyTimeTable');
+            const hiddenStartDate = document.getElementById('hidden_start_date');
+            const hiddenEndDate = document.getElementById('hidden_end_date');
+            const periodFirstHalf = document.getElementById('period_first_half');
+            const periodSecondHalf = document.getElementById('period_second_half');
+            const periodFullMonth = document.getElementById('period_full_month');
+
+            if (!monthSelect || !yearSelect || !dailyTimeTable) return;
 
             const month = parseInt(monthSelect.value);
             const year = parseInt(yearSelect.value);
@@ -4528,8 +4209,8 @@ $departments = [
             const startDate = new Date(year, month - 1, startDay);
             const endDate = new Date(year, month - 1, endDay);
 
-            hiddenStartDate.value = formatDate(startDate);
-            hiddenEndDate.value = formatDate(endDate);
+            if (hiddenStartDate) hiddenStartDate.value = formatDate(startDate);
+            if (hiddenEndDate) hiddenEndDate.value = formatDate(endDate);
 
             let tableHTML = '';
 
@@ -4561,60 +4242,90 @@ $departments = [
                 }
 
                 tableHTML += `
-                <tr class="${rowClass}">
-                    <td class="px-3 py-2 font-medium text-gray-900 text-center">${formattedDate}</td>
-                    <td class="px-3 py-2 text-gray-700 text-center">${dayName}</td>
-                    <td class="px-2 py-1 text-center">
-                        <input type="time" name="am_time_in[${dateString}]" 
-                               class="time-input border border-gray-300 rounded p-1 text-sm" 
-                               placeholder="--:-- --"
-                               data-day="${day}"
-                               ${isFuture ? 'disabled' : ''}>
-                    </td>
-                    <td class="px-2 py-1 text-center">
-                        <input type="time" name="am_time_out[${dateString}]" 
-                               class="time-input border border-gray-300 rounded p-1 text-sm" 
-                               placeholder="--:-- --"
-                               data-day="${day}"
-                               ${isFuture ? 'disabled' : ''}>
-                    </td>
-                    <td class="px-2 py-1 text-center">
-                        <input type="time" name="pm_time_in[${dateString}]" 
-                               class="time-input border border-gray-300 rounded p-1 text-sm" 
-                               placeholder="--:-- --"
-                               data-day="${day}"
-                               ${isFuture ? 'disabled' : ''}>
-                    </td>
-                    <td class="px-2 py-1 text-center">
-                        <input type="time" name="pm_time_out[${dateString}]" 
-                               class="time-input border border-gray-300 rounded p-1 text-sm" 
-                               placeholder="--:-- --"
-                               data-day="${day}"
-                               ${isFuture ? 'disabled' : ''}>
-                    </td>
-                    <td class="px-3 py-2 text-center text-sm ${rowClass ? 'text-gray-500' : 'text-green-600'}">
-                        ${status}
-                    </td>
-                </tr>
-            `;
+        <tr class="${rowClass}">
+            <td class="px-3 py-2 font-medium text-gray-900 text-center">${formattedDate}</td>
+            <td class="px-3 py-2 text-gray-700 text-center">${dayName}</td>
+            <td class="px-2 py-1 text-center">
+                <input type="time" name="am_time_in[${dateString}]" 
+                       class="time-input border border-gray-300 rounded p-1 text-sm" 
+                       placeholder="--:-- --"
+                       data-day="${day}"
+                       ${isFuture ? 'disabled' : ''}>
+            </td>
+            <td class="px-2 py-1 text-center">
+                <input type="time" name="am_time_out[${dateString}]" 
+                       class="time-input border border-gray-300 rounded p-1 text-sm" 
+                       placeholder="--:-- --"
+                       data-day="${day}"
+                       ${isFuture ? 'disabled' : ''}>
+            </td>
+            <td class="px-2 py-1 text-center">
+                <input type="time" name="pm_time_in[${dateString}]" 
+                       class="time-input border border-gray-300 rounded p-1 text-sm" 
+                       placeholder="--:-- --"
+                       data-day="${day}"
+                       ${isFuture ? 'disabled' : ''}>
+            </td>
+            <td class="px-2 py-1 text-center">
+                <input type="time" name="pm_time_out[${dateString}]" 
+                       class="time-input border border-gray-300 rounded p-1 text-sm" 
+                       placeholder="--:-- --"
+                       data-day="${day}"
+                       ${isFuture ? 'disabled' : ''}>
+            </td>
+            <td class="px-3 py-2 text-center text-sm ${rowClass ? 'text-gray-500' : 'text-green-600'}">
+                ${status}
+            </td>
+        </tr>
+        `;
             }
 
             dailyTimeTable.innerHTML = tableHTML;
         }
 
+        function updateMonthYearOptions() {
+            const monthSelect = document.getElementById('month_select');
+            const yearSelect = document.getElementById('year_select');
+
+            if (!monthSelect || !yearSelect) return;
+
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1;
+
+            if (yearSelect) {
+                Array.from(yearSelect.options).forEach(option => {
+                    const yearValue = parseInt(option.value);
+                    if (yearValue > currentYear) {
+                        option.disabled = true;
+                        option.style.color = '#999';
+                    }
+                });
+            }
+
+            if (monthSelect && parseInt(yearSelect.value) === currentYear) {
+                Array.from(monthSelect.options).forEach(option => {
+                    const monthValue = parseInt(option.value);
+                    if (monthValue > currentMonth) {
+                        option.disabled = true;
+                        option.style.color = '#999';
+                    }
+                });
+            }
+        }
+
         // ============================================
         // QUICK FILL FUNCTIONS
         // ============================================
-
-        window.fillStandardTimes = function () {
+        window.fillStandardTimes = function() {
             fillAllTimes('08:00', '12:00', '13:00', '17:00');
         };
 
-        window.fillEarlyTimes = function () {
+        window.fillEarlyTimes = function() {
             fillAllTimes('07:30', '12:00', '13:00', '17:30');
         };
 
-        window.fillLateTimes = function () {
+        window.fillLateTimes = function() {
             fillAllTimes('08:30', '12:00', '13:00', '17:30');
         };
 
@@ -4642,7 +4353,7 @@ $departments = [
             showNotification(`Filled ${count} work day(s) with: AM ${amIn}-${amOut}, PM ${pmIn}-${pmOut}`, 'success');
         }
 
-        window.clearAllTimes = function () {
+        window.clearAllTimes = function() {
             const timeInputs = document.querySelectorAll('#dailyTimeTable input[type="time"]:not(:disabled)');
             let count = 0;
 
@@ -4660,7 +4371,7 @@ $departments = [
             }
         };
 
-        window.markWeekendsAsLeave = function () {
+        window.markWeekendsAsLeave = function() {
             const rows = document.querySelectorAll('#dailyTimeTable tr.weekend-row, #dailyTimeTable tr.holiday-row');
             let count = 0;
 
@@ -4677,7 +4388,7 @@ $departments = [
             showNotification(`Cleared ${count} time fields from weekends/holidays`, 'success');
         };
 
-        window.applyTemplateFromImage = function () {
+        window.applyTemplateFromImage = function() {
             const sampleData = {
                 12: {
                     am_in: '07:45',
@@ -4791,75 +4502,122 @@ $departments = [
         };
 
         // ============================================
-        // ATTACH MONTHLY DTR EVENT LISTENERS
+        // AUTO-FILL EMPLOYEE INFO
         // ============================================
+        async function autoFillEmployeeInfo() {
+            const bulkEmployeeIdInput = document.getElementById('bulk_employee_id');
+            const bulkEmployeeNameInput = document.getElementById('bulk_employee_name');
+            const bulkDepartmentSelect = document.getElementById('bulk_department');
 
-        if (monthSelect) monthSelect.addEventListener('change', generateMonthTable);
-        if (yearSelect) yearSelect.addEventListener('change', generateMonthTable);
-        if (periodFirstHalf) periodFirstHalf.addEventListener('change', generateMonthTable);
-        if (periodSecondHalf) periodSecondHalf.addEventListener('change', generateMonthTable);
-        if (periodFullMonth) periodFullMonth.addEventListener('change', generateMonthTable);
-
-        function updateMonthYearOptions() {
-            const now = new Date();
-            const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth() + 1;
-
-            if (yearSelect) {
-                Array.from(yearSelect.options).forEach(option => {
-                    const yearValue = parseInt(option.value);
-                    if (yearValue > currentYear) {
-                        option.disabled = true;
-                        option.style.color = '#999';
-                    }
-                });
+            if (!bulkEmployeeIdInput || !bulkEmployeeNameInput || !bulkDepartmentSelect) {
+                return;
             }
 
-            if (monthSelect && parseInt(yearSelect.value) === currentYear) {
-                Array.from(monthSelect.options).forEach(option => {
-                    const monthValue = parseInt(option.value);
-                    if (monthValue > currentMonth) {
-                        option.disabled = true;
-                        option.style.color = '#999';
+            bulkEmployeeIdInput.addEventListener('input', function() {
+                if (this.value.trim() === '') {
+                    bulkEmployeeNameInput.value = '';
+                    bulkDepartmentSelect.value = '';
+                    this.classList.remove('border-red-500', 'ring-red-500');
+                }
+            });
+
+            bulkEmployeeIdInput.addEventListener('blur', async function() {
+                const employeeId = this.value.trim();
+
+                if (employeeId.length === 0) {
+                    return;
+                }
+
+                this.classList.add('opacity-75', 'bg-gray-100');
+                this.disabled = true;
+                this.classList.remove('border-red-500', 'ring-red-500');
+
+                try {
+                    const response = await fetch('get_employee_info.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: 'employee_id=' + encodeURIComponent(employeeId)
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        bulkEmployeeNameInput.value = data.employee.full_name || '';
+
+                        if (data.employee.department) {
+                            let found = false;
+                            for (let i = 0; i < bulkDepartmentSelect.options.length; i++) {
+                                if (bulkDepartmentSelect.options[i].value === data.employee.department) {
+                                    bulkDepartmentSelect.selectedIndex = i;
+                                    found = true;
+                                    break;
+                                }
+                            }
+
+                            if (!found) {
+                                for (let i = 0; i < bulkDepartmentSelect.options.length; i++) {
+                                    if (bulkDepartmentSelect.options[i].value.toLowerCase().includes(data.employee.department.toLowerCase()) ||
+                                        data.employee.department.toLowerCase().includes(bulkDepartmentSelect.options[i].value.toLowerCase())) {
+                                        bulkDepartmentSelect.selectedIndex = i;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        showNotification('Employee information loaded successfully!', 'success');
+                    } else {
+                        bulkEmployeeNameInput.value = '';
+                        bulkDepartmentSelect.value = '';
+                        this.classList.add('border-red-500', 'ring-red-500');
+                        showNotification(data.message || 'Employee ID not found. Please check and try again.', 'error');
                     }
-                });
-            }
+                } catch (error) {
+                    console.error('Error fetching employee info:', error);
+                    bulkEmployeeNameInput.value = '';
+                    bulkDepartmentSelect.value = '';
+                    this.classList.add('border-red-500', 'ring-red-500');
+                    showNotification('Error loading employee information. Please try again.', 'error');
+                } finally {
+                    this.classList.remove('opacity-75', 'bg-gray-100');
+                    this.disabled = false;
+                }
+            });
+
+            bulkEmployeeIdInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.blur();
+                }
+            });
         }
 
-        if (monthSelect && yearSelect) {
-            updateMonthYearOptions();
-            generateMonthTable();
-        }
+        autoFillEmployeeInfo();
 
         // ============================================
-        // IMPROVED XLSX IMPORT FUNCTIONALITY WITH REMOVE BUTTON
+        // IMPORT FUNCTIONALITY
         // ============================================
-
         function initImportFunctionality() {
-            // Tab switching
-            const xlsxTab = document.getElementById('xlsx-tab');
-            const xlsxPanel = document.getElementById('xlsx');
-
-            // File upload elements
             const xlsxFileInput = document.getElementById('xlsx_file');
             const xlsxFileInfo = document.getElementById('xlsxFileInfo');
             const xlsxFileName = document.getElementById('xlsxFileName');
             const xlsxFileSize = document.getElementById('xlsxFileSize');
             const removeXlsxFileBtn = document.getElementById('removeXlsxFile');
-            const sampleFileDisplay = document.getElementById('sampleFileDisplay');
             const importBtn = document.getElementById('importXlsxBtn');
             const importForm = document.getElementById('xlsxImportForm');
 
-            // Drag and drop functionality
             const dropZone = document.querySelector('label[for="xlsx_file"]');
 
             if (dropZone && xlsxFileInput) {
                 setupDragAndDrop(dropZone, xlsxFileInput);
             }
 
-            // File selection handler
             if (xlsxFileInput) {
-                xlsxFileInput.addEventListener('change', function (e) {
+                xlsxFileInput.addEventListener('change', function(e) {
                     const file = e.target.files[0];
                     if (file) {
                         handleFileSelection(file);
@@ -4869,28 +4627,99 @@ $departments = [
                 });
             }
 
-            // Remove file button handler
             if (removeXlsxFileBtn) {
-                removeXlsxFileBtn.addEventListener('click', function () {
+                removeXlsxFileBtn.addEventListener('click', function() {
                     removeSelectedFile();
                 });
             }
 
-            // Form submission handler
+            // Handle form submission with AJAX
             if (importForm) {
-                importForm.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    handleImportSubmission(e);
+                importForm.addEventListener('submit', function(e) {
+                    e.preventDefault(); // Prevent normal form submission
+
+                    // Validate employee selection
+                    const employeeIdHidden = document.getElementById('selected_employee_id_hidden');
+                    const manualId = document.getElementById('manual_employee_id');
+                    const employeeId = employeeIdHidden ? employeeIdHidden.value : '';
+                    const manualIdValue = manualId ? manualId.value.trim() : '';
+
+                    if (!employeeId && !manualIdValue) {
+                        showNotification('Please select an employee or enter an Employee ID', 'error');
+                        return false;
+                    }
+
+                    // If manual ID is entered, set it as the selected ID
+                    if (manualIdValue && employeeIdHidden) {
+                        employeeIdHidden.value = manualIdValue;
+                    }
+
+                    // Validate file
+                    if (!xlsxFileInput.files || xlsxFileInput.files.length === 0) {
+                        showNotification('Please select a file to upload', 'error');
+                        return false;
+                    }
+
+                    // Show loading state
+                    if (importBtn) {
+                        importBtn.disabled = true;
+                        importBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Importing...';
+                    }
+
+                    // Show progress container
+                    const progressContainer = document.getElementById('xlsxProgressContainer');
+                    if (progressContainer) {
+                        progressContainer.classList.remove('hidden');
+                    }
+
+                    // Create FormData and submit via AJAX
+                    const formData = new FormData(importForm);
+
+                    fetch('import_attendance_xlsx.php', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok');
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            // Hide progress
+                            if (progressContainer) {
+                                progressContainer.classList.add('hidden');
+                            }
+
+                            // Reset button
+                            if (importBtn) {
+                                importBtn.disabled = false;
+                                importBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>Import XLSX';
+                            }
+
+                            // Show results
+                            showImportResults(data);
+                        })
+                        .catch(error => {
+                            console.error('Import error:', error);
+
+                            // Hide progress
+                            if (progressContainer) {
+                                progressContainer.classList.add('hidden');
+                            }
+
+                            // Reset button
+                            if (importBtn) {
+                                importBtn.disabled = false;
+                                importBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>Import XLSX';
+                            }
+
+                            // Show error
+                            showNotification('Error during import: ' + error.message, 'error');
+                        });
                 });
             }
 
-            // Modal reset on close
-            const modal = document.getElementById('importAttendanceModal');
-            if (modal) {
-                observeModalClose(modal);
-            }
-
-            // Helper functions
             function setupDragAndDrop(dropZone, fileInput) {
                 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                     dropZone.addEventListener(eventName, preventDefaults, false);
@@ -4934,9 +4763,8 @@ $departments = [
             }
 
             function handleFileSelection(file) {
-                const maxSize = 10 * 1024 * 1024; // 10MB
+                const maxSize = 10 * 1024 * 1024;
 
-                // Validate file size
                 if (file.size > maxSize) {
                     showNotification('File size exceeds 10MB limit. Please choose a smaller file.', 'error');
                     xlsxFileInput.value = '';
@@ -4944,7 +4772,6 @@ $departments = [
                     return;
                 }
 
-                // Validate file type
                 const validTypes = ['.xlsx', '.xls', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
                 if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/)) {
                     showNotification('Please select a valid Excel file (.xlsx or .xls)', 'error');
@@ -4953,10 +4780,9 @@ $departments = [
                     return;
                 }
 
-                // Show file info
                 showFileInfo(file);
 
-                // Hide sample file display
+                const sampleFileDisplay = document.getElementById('sampleFileDisplay');
                 if (sampleFileDisplay) {
                     sampleFileDisplay.classList.add('hidden');
                 }
@@ -4966,7 +4792,6 @@ $departments = [
                 if (xlsxFileInfo && xlsxFileName && xlsxFileSize) {
                     xlsxFileName.textContent = file.name;
 
-                    // Format file size
                     let sizeText = '';
                     if (file.size < 1024) {
                         sizeText = file.size + ' bytes';
@@ -4981,20 +4806,20 @@ $departments = [
                 }
             }
 
-            function hideFileInfo() {
+            window.hideFileInfo = function() {
                 if (xlsxFileInfo) {
                     xlsxFileInfo.classList.add('hidden');
                 }
                 if (xlsxFileName) xlsxFileName.textContent = '';
                 if (xlsxFileSize) xlsxFileSize.textContent = '';
-            }
+            };
 
             function removeSelectedFile() {
                 if (xlsxFileInput) {
                     xlsxFileInput.value = '';
                     hideFileInfo();
 
-                    // Show sample file display again
+                    const sampleFileDisplay = document.getElementById('sampleFileDisplay');
                     if (sampleFileDisplay) {
                         sampleFileDisplay.classList.remove('hidden');
                     }
@@ -5002,394 +4827,331 @@ $departments = [
                     showNotification('File removed successfully', 'info');
                 }
             }
-
-            function handleImportSubmission(e) {
-                const fileInput = document.getElementById('xlsx_file');
-                const hasFile = fileInput.files && fileInput.files[0];
-                const sampleVisible = sampleFileDisplay && !sampleFileDisplay.classList.contains('hidden');
-
-                // Check if a file is selected OR the sample file is visible
-                if (!hasFile && !sampleVisible) {
-                    showNotification('Please select an XLSX file to import', 'error');
-                    return;
-                }
-
-                const progressContainer = document.getElementById('xlsxProgressContainer');
-                const progressBar = document.getElementById('xlsxProgressBar');
-                const progressPercent = document.getElementById('xlsxProgressPercent');
-                const statusMessage = document.getElementById('xlsxStatusMessage');
-
-                importBtn.disabled = true;
-                progressContainer.classList.remove('hidden');
-                progressBar.style.width = '0%';
-                progressPercent.textContent = '0%';
-                statusMessage.textContent = 'Uploading file...';
-
-                // If using sample file, simulate import
-                if (!hasFile && sampleVisible) {
-                    simulateSampleImport(progressContainer, progressBar, progressPercent, statusMessage);
-                    return;
-                }
-
-                // Regular file upload
-                const formData = new FormData();
-                formData.append('xlsx_file', fileInput.files[0]);
-
-                // Simulate progress
-                let progress = 0;
-                const interval = setInterval(() => {
-                    progress += 10;
-                    if (progress <= 90) {
-                        progressBar.style.width = progress + '%';
-                        progressPercent.textContent = progress + '%';
-                        if (progress === 30) {
-                            statusMessage.textContent = 'Processing file...';
-                        } else if (progress === 60) {
-                            statusMessage.textContent = 'Importing records...';
-                        }
-                    }
-                }, 300);
-
-                fetch('import_attendance_xlsx.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        clearInterval(interval);
-                        progressBar.style.width = '100%';
-                        progressPercent.textContent = '100%';
-
-                        setTimeout(() => {
-                            progressContainer.classList.add('hidden');
-                            importBtn.disabled = false;
-
-                            if (data.success) {
-                                showImportResults(data);
-                                // Reset form
-                                importForm.reset();
-                                hideFileInfo();
-                                if (sampleFileDisplay) {
-                                    sampleFileDisplay.classList.remove('hidden');
-                                }
-
-                                // Reload page after successful import
-                                setTimeout(() => {
-                                    location.reload();
-                                }, 3000);
-                            } else {
-                                showNotification(data.message || 'Import failed', 'error');
-                            }
-                        }, 500);
-                    })
-                    .catch(error => {
-                        clearInterval(interval);
-                        progressContainer.classList.add('hidden');
-                        importBtn.disabled = false;
-                        showNotification('Error importing file: ' + error.message, 'error');
-                    });
-            }
-
-            function simulateSampleImport(progressContainer, progressBar, progressPercent, statusMessage) {
-                let progress = 0;
-                const interval = setInterval(() => {
-                    progress += 20;
-                    if (progress <= 100) {
-                        progressBar.style.width = progress + '%';
-                        progressPercent.textContent = progress + '%';
-
-                        if (progress === 40) {
-                            statusMessage.textContent = 'Processing sample file...';
-                        } else if (progress === 60) {
-                            statusMessage.textContent = 'Importing attendance records...';
-                        } else if (progress === 80) {
-                            statusMessage.textContent = 'Calculating OT and undertime...';
-                        }
-                    }
-
-                    if (progress >= 100) {
-                        clearInterval(interval);
-
-                        setTimeout(() => {
-                            progressContainer.classList.add('hidden');
-                            importBtn.disabled = false;
-
-                            // Show success message
-                            const mockResult = {
-                                success: true,
-                                imported: 15,
-                                duplicates: 2,
-                                errors: 0,
-                                message: 'Successfully imported 15 attendance records from JANUARY (1).xlsx',
-                                records: [{
-                                    employee: 'Jorel Vicente',
-                                    date: '2024-01-15',
-                                    total_hours: 8
-                                },
-                                {
-                                    employee: 'Maylin Cajayon',
-                                    date: '2024-01-15',
-                                    total_hours: 8.5
-                                },
-                                {
-                                    employee: 'Juan Dela Cruz',
-                                    date: '2024-01-15',
-                                    total_hours: 8
-                                },
-                                {
-                                    employee: 'Maria Santos',
-                                    date: '2024-01-15',
-                                    total_hours: 8
-                                },
-                                {
-                                    employee: 'Pedro Reyes',
-                                    date: '2024-01-15',
-                                    total_hours: 7.5
-                                }
-                                ]
-                            };
-
-                            showImportResults(mockResult);
-
-                            // Hide sample file after import
-                            if (sampleFileDisplay) {
-                                sampleFileDisplay.classList.add('hidden');
-                            }
-
-                            // Reload page after successful import
-                            setTimeout(() => {
-                                location.reload();
-                            }, 3000);
-                        }, 500);
-                    }
-                }, 400);
-            }
-
-            function observeModalClose(modal) {
-                const observer = new MutationObserver(function (mutations) {
-                    mutations.forEach(function (mutation) {
-                        if (mutation.attributeName === 'class' && modal.classList.contains('hidden')) {
-                            // Modal closed - reset form
-                            if (importForm) {
-                                importForm.reset();
-                            }
-                            hideFileInfo();
-
-                            // Show sample file display
-                            if (sampleFileDisplay) {
-                                sampleFileDisplay.classList.remove('hidden');
-                            }
-
-                            // Reset progress
-                            const progressContainer = document.getElementById('xlsxProgressContainer');
-                            if (progressContainer) {
-                                progressContainer.classList.add('hidden');
-                            }
-                        }
-                    });
-                });
-
-                observer.observe(modal, {
-                    attributes: true
-                });
-            }
         }
 
-        // Global function to remove sample file
-        window.removeSampleFile = function () {
-            const sampleFileDisplay = document.getElementById('sampleFileDisplay');
-            const xlsxFileInput = document.getElementById('xlsx_file');
+        // ============================================
+        // SHOW IMPORT RESULTS FUNCTION
+        // ============================================
+        window.showImportResults = function(data) {
+            const modal = document.getElementById('importResultsModal');
+            const header = document.getElementById('importResultsHeader');
+            const content = document.getElementById('importResultsContent');
+            const reloadBtn = document.getElementById('reloadPageBtn');
 
-            if (sampleFileDisplay) {
-                sampleFileDisplay.classList.add('hidden');
+            if (!modal || !header || !content) {
+                // Fallback if modal elements don't exist
+                alert(`Import Results:\n\nSuccess: ${data.success}\nImported: ${data.imported || 0}\nDuplicates: ${data.duplicates || 0}\n${data.message || ''}`);
+
+                // Reload the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+                return;
             }
 
-            // Also clear any selected file
-            if (xlsxFileInput) {
-                xlsxFileInput.value = '';
-                const fileInfo = document.getElementById('xlsxFileInfo');
-                if (fileInfo) {
-                    fileInfo.classList.add('hidden');
-                }
+            header.className = `flex items-center justify-between p-5 border-b rounded-t ${data.success ? 'bg-green-600' : 'bg-red-600'} text-white`;
+
+            let html = `
+        <div class="text-center mb-4">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full ${data.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} mb-4">
+                <i class="fas ${data.success ? 'fa-check-circle' : 'fa-exclamation-circle'} text-3xl"></i>
+            </div>
+            <h4 class="text-xl font-semibold ${data.success ? 'text-green-600' : 'text-red-600'} mb-2">
+                ${data.success ? 'Import Successful!' : 'Import Failed'}
+            </h4>
+            <p class="text-gray-600">${data.message || ''}</p>
+        </div>
+        
+        <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="bg-green-50 p-3 rounded-lg text-center">
+                <div class="text-2xl font-bold text-green-600">${data.imported || 0}</div>
+                <div class="text-xs text-gray-600">Imported</div>
+            </div>
+            <div class="bg-yellow-50 p-3 rounded-lg text-center">
+                <div class="text-2xl font-bold text-yellow-600">${data.duplicates || 0}</div>
+                <div class="text-xs text-gray-600">Duplicates</div>
+            </div>
+            <div class="bg-red-50 p-3 rounded-lg text-center">
+                <div class="text-2xl font-bold text-red-600">${data.errors || 0}</div>
+                <div class="text-xs text-gray-600">Errors</div>
+            </div>
+        </div>
+    `;
+
+            // Show error messages if any
+            if (data.error_messages && data.error_messages.length > 0) {
+                html += `
+            <div class="mt-4">
+                <h5 class="text-sm font-semibold text-red-700 mb-2 flex items-center">
+                    <i class="fas fa-exclamation-triangle mr-2 text-red-600"></i>
+                    Errors
+                </h5>
+                <div class="max-h-32 overflow-y-auto bg-red-50 p-3 rounded-lg border border-red-200">
+                    <ul class="list-disc pl-4 text-xs text-red-600 space-y-1">
+                        ${data.error_messages.map(msg => `<li>${msg}</li>`).join('')}
+                    </ul>
+                </div>
+            </div>
+        `;
             }
 
-            showNotification('Sample file removed', 'info');
+            // Show imported records preview
+            if (data.records && data.records.length > 0) {
+                html += `
+            <div class="mt-4">
+                <h5 class="text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                    <i class="fas fa-check-circle mr-2 text-green-600"></i>
+                    Recently Imported (first ${Math.min(data.records.length, 10)} of ${data.records.length})
+                </h5>
+                <div class="max-h-40 overflow-y-auto bg-gray-50 p-3 rounded-lg">
+                    <table class="w-full text-xs">
+                        <thead class="text-gray-600 border-b border-gray-200">
+                            <tr>
+                                <th class="text-left pb-2">Date</th>
+                                <th class="text-left pb-2">AM In</th>
+                                <th class="text-left pb-2">AM Out</th>
+                                <th class="text-left pb-2">PM In</th>
+                                <th class="text-left pb-2">PM Out</th>
+                                <th class="text-left pb-2">Hours</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.records.slice(0, 10).map(rec => `
+                                <tr class="border-t border-gray-200">
+                                    <td class="py-1">${rec.date || ''}</td>
+                                    <td class="py-1">${rec.am_in ? rec.am_in.substring(0,5) : '--'}</td>
+                                    <td class="py-1">${rec.am_out ? rec.am_out.substring(0,5) : '--'}</td>
+                                    <td class="py-1">${rec.pm_in ? rec.pm_in.substring(0,5) : '--'}</td>
+                                    <td class="py-1">${rec.pm_out ? rec.pm_out.substring(0,5) : '--'}</td>
+                                    <td class="py-1 text-green-600">${rec.total_hours || 0}h</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+            }
+
+            content.innerHTML = html;
+
+            // Setup reload button
+            if (reloadBtn) {
+                // Remove existing event listeners
+                const newReloadBtn = reloadBtn.cloneNode(true);
+                reloadBtn.parentNode.replaceChild(newReloadBtn, reloadBtn);
+
+                newReloadBtn.onclick = function(e) {
+                    e.preventDefault();
+                    reloadPageAfterImport();
+                };
+            }
+
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+
+            // Close the import modal
+            const importModal = document.getElementById('importAttendanceModal');
+            if (importModal) {
+                importModal.classList.add('hidden');
+                importModal.setAttribute('aria-hidden', 'true');
+            }
+
+            // Reset the import form
+            const importForm = document.getElementById('xlsxImportForm');
+            if (importForm) importForm.reset();
+            hideFileInfo();
+
+            // Auto-reload after 5 seconds on success
+            if (data.success && data.imported > 0) {
+                setTimeout(() => {
+                    if (confirm('Import completed! Reload page to see the new records?')) {
+                        window.location.reload();
+                    }
+                }, 5000);
+            }
         };
 
+
         // ============================================
-        // EXPORT ATTENDANCE FUNCTIONS - IMPROVED FOR GLOBAL SELECTION
+        // IMPORT RESULTS MODAL FUNCTIONS
         // ============================================
 
-        const exportBtn = document.getElementById('exportBtn');
+        // Function to close modal and reload page
+        window.closeAndReloadImportResults = function() {
+            const modal = document.getElementById('importResultsModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
 
-        if (exportBtn) {
-            exportBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                openExportModal();
-            });
-        }
+                // Show loading notification
+                showNotification('Refreshing page...', 'info');
 
-        // Global Select All button
-        const globalSelectAllBtn = document.getElementById('globalSelectAllBtn');
-        if (globalSelectAllBtn) {
-            globalSelectAllBtn.addEventListener('click', function () {
-                selectAllEmployeesGlobally();
-            });
-        }
-
-        // Clear global selection
-        document.getElementById('clearGlobalSelection')?.addEventListener('click', function () {
-            clearGlobalSelection();
-        });
-
-        // Select All checkbox handler
-        const selectAllCheckbox = document.getElementById('selectAllEmployees');
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', function () {
-                // If using global selection, clear it first
-                if (isGlobalSelection) {
-                    clearGlobalSelection();
-                }
-
-                const checkboxes = document.querySelectorAll('.employee-checkbox:not(:disabled)');
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = this.checked;
-                });
-
-                updateSelectedEmployeesFromCheckboxes();
-            });
-        }
-
-        // Track checkbox changes
-        document.addEventListener('change', function (e) {
-            if (e.target.classList.contains('employee-checkbox')) {
-                // If using global selection, clear it
-                if (isGlobalSelection) {
-                    clearGlobalSelection();
-                }
-                updateSelectedEmployeesFromCheckboxes();
+                // Reload the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 300);
             }
-        });
+        };
 
-        // Function to select all employees with records across all pages
-        function selectAllEmployeesGlobally() {
-            // Show loading
-            showNotification('Loading all employees...', 'info');
+        // Function specifically for reload button
+        window.reloadPageAfterImport = function() {
+            const reloadBtn = document.getElementById('reloadPageBtn');
+            if (reloadBtn) {
+                reloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Reloading...';
+                reloadBtn.disabled = true;
+            }
 
-            // Get current filter values
-            const search = document.getElementById('global_search')?.value || '';
-            const department = document.getElementById('global_department')?.value || '';
-            const status = document.getElementById('global_status')?.value || '';
+            // Show notification
+            showNotification('Refreshing page to display updated records...', 'info');
 
-            // Build URL
-            const params = new URLSearchParams({
-                ajax_get_all_employees: true,
-                search: search,
-                department: department,
-                status_filter: status
-            });
+            // Reload after short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        };
 
-            fetch(`attendance.php?${params.toString()}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.employees.length > 0) {
-                        // Store global selection
-                        globalSelectedEmployees = data.employees;
-                        isGlobalSelection = true;
 
-                        // Clear page-level selections
-                        selectedEmployees = [];
-
-                        // Update UI
-                        updateGlobalSelectionUI();
-
-                        // Uncheck all page-level checkboxes
-                        document.querySelectorAll('.employee-checkbox').forEach(cb => {
-                            cb.checked = false;
-                        });
-                        updateSelectAllCheckbox();
-
-                        // Save to storage
-                        saveSelectionsToStorage();
-
-                        showNotification(`Selected ${data.employees.length} employees across all pages`, 'success');
-                    } else {
-                        showNotification('No employees with attendance records found.', 'info');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching all employees:', error);
-                    showNotification('Error selecting employees. Please try again.', 'error');
-                });
+        // ============================================
+        // SELECTION MANAGEMENT FUNCTIONS
+        // ============================================
+        function saveSelectionsToStorage() {
+            try {
+                sessionStorage.setItem('attendanceSelectedEmployees', JSON.stringify(selectedEmployees));
+                sessionStorage.setItem('attendanceGlobalSelected', JSON.stringify(globalSelectedEmployees));
+                sessionStorage.setItem('attendanceIsGlobalSelection', isGlobalSelection ? 'true' : 'false');
+            } catch (e) {
+                console.error('Error saving selections to storage:', e);
+            }
         }
 
-        // Update global selection UI
+        function loadSelectionsFromStorage() {
+            try {
+                const saved = sessionStorage.getItem('attendanceSelectedEmployees');
+                if (saved) selectedEmployees = JSON.parse(saved);
+
+                const savedGlobal = sessionStorage.getItem('attendanceGlobalSelected');
+                if (savedGlobal) globalSelectedEmployees = JSON.parse(savedGlobal);
+
+                const savedIsGlobal = sessionStorage.getItem('attendanceIsGlobalSelection');
+                if (savedIsGlobal) isGlobalSelection = savedIsGlobal === 'true';
+
+                setTimeout(() => {
+                    updateCheckboxesFromSelection();
+                    updateGlobalSelectionUI();
+                }, 100);
+            } catch (e) {
+                console.error('Error loading selections from storage:', e);
+            }
+        }
+
+        function updateCheckboxesFromSelection() {
+            const checkboxes = document.querySelectorAll('.employee-checkbox:not(:disabled)');
+            checkboxes.forEach(checkbox => {
+                const empId = checkbox.dataset.employeeId;
+                checkbox.checked = selectedEmployees.some(emp => emp.id === empId);
+            });
+            updateSelectAllCheckbox();
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAll = document.getElementById('selectAllEmployees');
+            if (!selectAll) return;
+
+            const checkboxes = document.querySelectorAll('.employee-checkbox:not(:disabled)');
+            const checkedCount = document.querySelectorAll('.employee-checkbox:checked:not(:disabled)').length;
+
+            selectAll.checked = checkedCount > 0 && checkedCount === checkboxes.length;
+            selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+        }
+
+        function updateSelectedEmployeesFromCheckboxes() {
+            const checkboxes = document.querySelectorAll('.employee-checkbox:checked:not(:disabled)');
+            const currentSelectionMap = new Map();
+
+            checkboxes.forEach(checkbox => {
+                currentSelectionMap.set(checkbox.dataset.employeeId, {
+                    id: checkbox.dataset.employeeId,
+                    name: checkbox.dataset.employeeName
+                });
+            });
+
+            if (!isGlobalSelection) {
+                const currentPageIds = new Set(Array.from(document.querySelectorAll('.employee-checkbox')).map(cb => cb.dataset.employeeId));
+
+                selectedEmployees.forEach(emp => {
+                    if (!currentPageIds.has(emp.id) && !currentSelectionMap.has(emp.id)) {
+                        currentSelectionMap.set(emp.id, emp);
+                    }
+                });
+            }
+
+            selectedEmployees = Array.from(currentSelectionMap.values());
+            saveSelectionsToStorage();
+            updateSelectAllCheckbox();
+            updateGlobalSelectionUI();
+        }
+
         function updateGlobalSelectionUI() {
             const selectionInfo = document.getElementById('globalSelectionInfo');
             const selectedCountSpan = document.getElementById('globalSelectedCount');
             const selectedNamesSpan = document.getElementById('globalSelectedNames');
             const exportBtn = document.getElementById('exportBtn');
 
-            console.log('Updating UI - Global:', globalSelectedEmployees.length, 'Page:', selectedEmployees.length, 'isGlobal:', isGlobalSelection);
-
             if (isGlobalSelection && globalSelectedEmployees.length > 0) {
                 selectedCountSpan.textContent = globalSelectedEmployees.length;
-
-                // Show first few names
                 const names = globalSelectedEmployees.slice(0, 3).map(e => e.name).join(', ');
                 const moreCount = globalSelectedEmployees.length > 3 ? ` and ${globalSelectedEmployees.length - 3} more` : '';
                 selectedNamesSpan.textContent = names + moreCount;
-
                 selectionInfo.classList.remove('hidden');
-
-                // Update export button with count
-                if (exportBtn) {
-                    exportBtn.innerHTML = `<i class="fas fa-download mr-2"></i>Export (${globalSelectedEmployees.length} selected across all pages)`;
-                }
+                if (exportBtn) exportBtn.innerHTML = `<i class="fas fa-download mr-2"></i>Export (${globalSelectedEmployees.length} selected across all pages)`;
             } else if (selectedEmployees.length > 0) {
                 selectionInfo.classList.remove('hidden');
                 selectedCountSpan.textContent = selectedEmployees.length;
                 selectedNamesSpan.textContent = '';
-
-                if (exportBtn) {
-                    exportBtn.innerHTML = `<i class="fas fa-download mr-2"></i>Export (${selectedEmployees.length} selected)`;
-                }
+                if (exportBtn) exportBtn.innerHTML = `<i class="fas fa-download mr-2"></i>Export (${selectedEmployees.length} selected)`;
             } else {
                 selectionInfo.classList.add('hidden');
-                if (exportBtn) {
-                    exportBtn.innerHTML = `<i class="fas fa-download mr-2"></i>Export`;
-                }
+                if (exportBtn) exportBtn.innerHTML = `<i class="fas fa-download mr-2"></i>Export`;
             }
         }
 
-        // Clear global selection
         function clearGlobalSelection() {
-            // Clear both global and page-level selections
             globalSelectedEmployees = [];
             selectedEmployees = [];
             isGlobalSelection = false;
 
-            // Uncheck all checkboxes
-            document.querySelectorAll('.employee-checkbox').forEach(cb => {
-                cb.checked = false;
-            });
-
-            // Update select all checkbox
+            document.querySelectorAll('.employee-checkbox').forEach(cb => cb.checked = false);
             updateSelectAllCheckbox();
 
-            // Clear from sessionStorage
             sessionStorage.removeItem('attendanceSelectedEmployees');
             sessionStorage.removeItem('attendanceGlobalSelected');
             sessionStorage.removeItem('attendanceIsGlobalSelection');
 
-            // Update UI
             updateGlobalSelectionUI();
-
             showNotification('Selection cleared', 'info');
         }
 
+        // ============================================
+        // EXPORT FUNCTIONALITY
+        // ============================================
+        function initExportFunctionality() {
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    openExportModal();
+                });
+            }
+
+            document.getElementById('export_from_date')?.addEventListener('change', checkExportRecords);
+            document.getElementById('export_to_date')?.addEventListener('change', checkExportRecords);
+            document.getElementById('export_department')?.addEventListener('change', checkExportRecords);
+        }
+
         function openExportModal() {
-            // Determine which employees to export
             let employeesToExport = [];
             let isGlobal = false;
 
@@ -5405,7 +5167,6 @@ $departments = [
                 return;
             }
 
-            // Reset modal
             document.getElementById('export_from_date').value = '';
             document.getElementById('export_to_date').value = '';
             document.getElementById('export_department').value = '';
@@ -5416,10 +5177,8 @@ $departments = [
             document.getElementById('exportSummary').classList.add('hidden');
             document.getElementById('exportError').classList.add('hidden');
 
-            // Update selected count
             document.getElementById('selectedCount').textContent = employeesToExport.length;
 
-            // Show/hide "across all pages" indicator
             const selectedFromAllPages = document.getElementById('selectedFromAllPages');
             if (isGlobal) {
                 selectedFromAllPages.classList.remove('hidden');
@@ -5427,11 +5186,9 @@ $departments = [
                 selectedFromAllPages.classList.add('hidden');
             }
 
-            // Show list of selected employees
             const selectedList = document.getElementById('selectedEmployeesList');
             if (employeesToExport.length <= 10) {
-                let listHtml = '<div class="font-medium mb-1">Selected employees:</div>';
-                listHtml += '<ul class="list-disc pl-4">';
+                let listHtml = '<div class="font-medium mb-1">Selected employees:</div><ul class="list-disc pl-4">';
                 employeesToExport.forEach(emp => {
                     listHtml += `<li>${emp.name} (${emp.id})</li>`;
                 });
@@ -5442,24 +5199,25 @@ $departments = [
                 selectedList.classList.add('hidden');
             }
 
-            // Store employee IDs
             const employeeIds = employeesToExport.map(e => e.id).join(',');
             document.getElementById('exportEmployeeIds').value = employeeIds;
             document.getElementById('exportIsGlobal').value = isGlobal ? '1' : '0';
 
-            // Show modal
             const modal = document.getElementById('exportAttendanceModal');
             modal.classList.remove('hidden');
             modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
 
-            // Check if there are records
             checkExportRecords();
         }
 
         function closeExportModal() {
             const modal = document.getElementById('exportAttendanceModal');
-            modal.classList.add('hidden');
-            modal.setAttribute('aria-hidden', 'true');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+            }
         }
 
         function checkExportRecords() {
@@ -5470,13 +5228,11 @@ $departments = [
 
             if (!employeeIds) return;
 
-            // Build URL
             let url = `check_export_records.php?employee_ids=${encodeURIComponent(employeeIds)}`;
             if (fromDate) url += `&from_date=${encodeURIComponent(fromDate)}`;
             if (toDate) url += `&to_date=${encodeURIComponent(toDate)}`;
             if (department) url += `&department=${encodeURIComponent(department)}`;
 
-            // Show loading
             document.getElementById('exportLoading').classList.remove('hidden');
             document.getElementById('exportError').classList.add('hidden');
 
@@ -5486,7 +5242,6 @@ $departments = [
                     document.getElementById('exportLoading').classList.add('hidden');
 
                     if (data.has_records) {
-                        // Show summary
                         const employeeCount = data.employee_count || globalSelectedEmployees.length || selectedEmployees.length;
                         let summaryText = `${employeeCount} employee(s) selected`;
                         if (fromDate && toDate) {
@@ -5496,16 +5251,13 @@ $departments = [
                         } else if (toDate) {
                             summaryText += ` up to ${formatDateDisplay(toDate)}`;
                         }
-                        if (department) {
-                            summaryText += ` in ${department} department`;
-                        }
+                        if (department) summaryText += ` in ${department} department`;
                         summaryText += `. Found ${data.record_count || 0} records. Ready to export.`;
 
                         document.getElementById('exportSummaryText').textContent = summaryText;
                         document.getElementById('exportSummary').classList.remove('hidden');
                         document.getElementById('proceedExportBtn').disabled = false;
                     } else {
-                        // Show error
                         document.getElementById('exportErrorMessage').textContent = data.message || 'No attendance records found for the selected criteria.';
                         document.getElementById('exportError').classList.remove('hidden');
                         document.getElementById('proceedExportBtn').disabled = true;
@@ -5539,21 +5291,16 @@ $departments = [
             const includeEmployeeInfo = document.getElementById('include_employee_info').checked ? '1' : '0';
             const formatTime12h = document.getElementById('format_time_12h').checked ? '1' : '0';
 
-            // Build URL
             let url = `export_multiple_attendance.php?employee_ids=${encodeURIComponent(employeeIds)}&format=${format}`;
             if (fromDate) url += `&from_date=${encodeURIComponent(fromDate)}`;
             if (toDate) url += `&to_date=${encodeURIComponent(toDate)}`;
             if (department) url += `&department=${encodeURIComponent(department)}`;
-            url += `&include_summary=${includeSummary}`;
-            url += `&include_employee_info=${includeEmployeeInfo}`;
-            url += `&format_time_12h=${formatTime12h}`;
+            url += `&include_summary=${includeSummary}&include_employee_info=${includeEmployeeInfo}&format_time_12h=${formatTime12h}`;
 
-            // Show loading
             const originalText = document.getElementById('proceedExportBtn').innerHTML;
             document.getElementById('proceedExportBtn').innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Exporting...';
             document.getElementById('proceedExportBtn').disabled = true;
 
-            // Create and click a hidden anchor tag
             const link = document.createElement('a');
             link.href = url;
             link.target = '_blank';
@@ -5561,7 +5308,6 @@ $departments = [
             link.click();
             document.body.removeChild(link);
 
-            // Restore button and close modal after delay
             setTimeout(() => {
                 document.getElementById('proceedExportBtn').innerHTML = originalText;
                 document.getElementById('proceedExportBtn').disabled = false;
@@ -5570,37 +5316,25 @@ $departments = [
             }, 1500);
         }
 
-        // Add event listeners for date/department changes
-        document.getElementById('export_from_date')?.addEventListener('change', checkExportRecords);
-        document.getElementById('export_to_date')?.addEventListener('change', checkExportRecords);
-        document.getElementById('export_department')?.addEventListener('change', checkExportRecords);
-
         // ============================================
         // GLOBAL SEARCH AND FILTER FUNCTIONS
         // ============================================
-
         const globalSearch = document.getElementById('global_search');
         const globalDepartment = document.getElementById('global_department');
         const globalStatus = document.getElementById('global_status');
 
         function performSearch() {
-            // Clear previous timeout
-            if (searchTimeout) {
-                clearTimeout(searchTimeout);
-            }
+            if (searchTimeout) clearTimeout(searchTimeout);
 
-            // Show loading spinner
             document.getElementById('loadingSpinner').classList.remove('hidden');
             document.getElementById('employeeTableContainer').classList.add('opacity-50');
 
-            // Get filter values
             const search = globalSearch ? globalSearch.value : '';
             const department = globalDepartment ? globalDepartment.value : '';
             const status = globalStatus ? globalStatus.value : '';
 
-            // Build URL with search params
             const params = new URLSearchParams({
-                ajax_search: true,
+                ajax_search: 'true',
                 search: search,
                 department: department,
                 status_filter: status,
@@ -5608,32 +5342,21 @@ $departments = [
                 per_page: recordsPerPage
             });
 
-            // Make AJAX request
             fetch(`attendance.php?${params.toString()}`)
                 .then(response => response.json())
                 .then(data => {
-                    // Update table with results (this will preserve selections because we're not clearing selectedEmployees)
                     updateEmployeeTable(data.employees);
+                    totalPages = data.pages || 1;
+                    document.getElementById('totalRecords').textContent = data.total || 0;
 
-                    // Update pagination info
-                    totalPages = data.pages;
-                    document.getElementById('totalRecords').textContent = data.total;
-                    document.getElementById('totalPages').textContent = data.pages;
-
-                    // Update showing info
                     const from = data.total > 0 ? ((currentPage - 1) * recordsPerPage) + 1 : 0;
                     const to = data.total > 0 ? Math.min(currentPage * recordsPerPage, data.total) : 0;
                     document.getElementById('showingFrom').textContent = from;
                     document.getElementById('showingTo').textContent = to;
 
-                    // Update pagination UI
-                    updatePaginationUI();
-
-                    // Hide loading spinner
                     document.getElementById('loadingSpinner').classList.add('hidden');
                     document.getElementById('employeeTableContainer').classList.remove('opacity-50');
 
-                    // Update URL without reloading
                     const url = new URL(window.location.href);
                     if (search) url.searchParams.set('search', search);
                     else url.searchParams.delete('search');
@@ -5643,17 +5366,39 @@ $departments = [
                     else url.searchParams.delete('status_filter');
                     url.searchParams.set('page', currentPage);
                     url.searchParams.set('per_page', recordsPerPage);
+                    url.searchParams.set('view', 'employees');
                     window.history.pushState({}, '', url.toString());
 
-                    // Update global selection UI (don't clear selections)
                     updateGlobalSelectionUI();
                 })
                 .catch(error => {
                     console.error('Search error:', error);
                     document.getElementById('loadingSpinner').classList.add('hidden');
                     document.getElementById('employeeTableContainer').classList.remove('opacity-50');
-                    showNotification('Error performing search. Please try again.', 'error');
+                    showNotification('Search completed but found no results', 'info');
                 });
+        }
+
+        if (globalSearch) {
+            globalSearch.addEventListener('input', function() {
+                currentPage = 1;
+                if (searchTimeout) clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(performSearch, 500);
+            });
+        }
+
+        if (globalDepartment) {
+            globalDepartment.addEventListener('change', function() {
+                currentPage = 1;
+                performSearch();
+            });
+        }
+
+        if (globalStatus) {
+            globalStatus.addEventListener('change', function() {
+                currentPage = 1;
+                performSearch();
+            });
         }
 
         function updateEmployeeTable(employees) {
@@ -5661,14 +5406,14 @@ $departments = [
 
             if (!employees || employees.length === 0) {
                 tbody.innerHTML = `
-                    <tr id="noResultsRow">
-                        <td colspan='10' class='text-center py-8 text-gray-500'>
-                            <i class='fas fa-users text-4xl mb-2 text-gray-300'></i>
-                            <p>No employees found matching your criteria.</p>
-                            <p class="mt-2 text-sm text-blue-600">Try clearing your search filters or adjusting your criteria.</p>
-                        </td>
-                    </tr>
-                `;
+            <tr id="noResultsRow">
+                <td colspan='10' class='text-center py-8 text-gray-500'>
+                    <i class='fas fa-users text-4xl mb-2 text-gray-300'></i>
+                    <p>No employees found matching your criteria.</p>
+                    <p class="mt-2 text-sm text-blue-600">Try clearing your search filters or adjusting your criteria.</p>
+                </td>
+            </tr>
+        `;
                 return;
             }
 
@@ -5676,16 +5421,16 @@ $departments = [
             employees.forEach(emp => {
                 const typeClass = emp.type === 'Permanent' ? 'bg-green-100 text-green-800' :
                     emp.type === 'Job Order' ? 'bg-blue-100 text-blue-800' :
-                        emp.type === 'Contractual' ? 'bg-purple-100 text-purple-800' :
-                            'bg-gray-100 text-gray-800';
+                    emp.type === 'Contractual' ? 'bg-purple-100 text-purple-800' :
+                    'bg-gray-100 text-gray-800';
 
                 const actionButton = emp.total_records > 0 ?
                     `<a href="?view_attendance=true&employee_id=${encodeURIComponent(emp.employee_id)}" class="action-btn view-btn" title="View Attendance Records">
-                        <i class="fas fa-eye mr-1"></i> View
-                    </a>` :
+                <i class="fas fa-eye mr-1"></i> View
+            </a>` :
                     `<button type="button" onclick="showAddAttendancePrompt('${encodeURIComponent(emp.employee_id)}', '${emp.full_name.replace(/'/g, "\\'")}')" class="action-btn bg-green-600 hover:bg-green-700 text-white border border-green-700" title="Add Attendance Records">
-                        <i class="fas fa-plus mr-1"></i> Add
-                    </button>`;
+                <i class="fas fa-plus mr-1"></i> Add
+            </button>`;
 
                 const lastDate = emp.last_date ? new Date(emp.last_date).toLocaleDateString('en-US', {
                     month: 'short',
@@ -5693,383 +5438,269 @@ $departments = [
                     year: 'numeric'
                 }) : 'No records';
 
-                // Check if this employee is selected
                 const isChecked = isGlobalSelection ?
                     globalSelectedEmployees.some(e => e.id === emp.employee_id) :
                     selectedEmployees.some(e => e.id === emp.employee_id);
 
                 html += `
-                <tr class="bg-white hover:bg-gray-50 transition-colors duration-150">
-                    <td class="px-4 py-3">
-                        <input type="checkbox" class="employee-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" 
-                               data-employee-id="${escapeHtml(emp.employee_id)}"
-                               data-employee-name="${escapeHtml(emp.full_name)}"
-                               ${emp.total_records > 0 ? '' : 'disabled'}
-                               ${isChecked ? 'checked' : ''}>
-                    </td>
-                    <td class="px-4 py-3 font-medium text-gray-900">${escapeHtml(emp.employee_id)}</td>
-                    <td class="px-4 py-3">
-                        <div class="font-medium text-gray-900">${escapeHtml(emp.full_name)}</div>
-                    </td>
-                    <td class="px-4 py-3 text-gray-700">${escapeHtml(emp.department)}</td>
-                    <td class="px-4 py-3">
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full ${typeClass}">
-                            ${escapeHtml(emp.type)}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3">
-                        ${emp.total_records > 0 ? `<span class="font-semibold text-gray-900">${emp.total_records}</span>` : '<span class="text-gray-400">0</span>'}
-                    </td>
-                    <td class="px-4 py-3">
-                        ${emp.present_days > 0 ? `<span class="font-semibold text-green-600">${emp.present_days}</span>` : '<span class="text-gray-400">0</span>'}
-                    </td>
-                    <td class="px-4 py-3">
-                        ${emp.total_hours > 0 ? `
-                            <span class="font-semibold text-blue-600">${Math.round(emp.total_hours * 10) / 10}h</span>
-                            ${emp.total_ot > 0 ? `<span class="text-xs text-orange-600 ml-1">(OT: ${Math.round(emp.total_ot * 10) / 10}h)</span>` : ''}
-                        ` : '<span class="text-gray-400">0h</span>'}
-                    </td>
-                    <td class="px-4 py-3 text-gray-700">${lastDate}</td>
-                    <td class="px-4 py-3 text-center">
-                        <div class="flex space-x-2 justify-center">
-                            ${actionButton}
-                        </div>
-                    </td>
-                </tr>
-                `;
+        <tr class="bg-white hover:bg-gray-50 transition-colors duration-150">
+            <td class="px-4 py-3">
+                <input type="checkbox" class="employee-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" 
+                       data-employee-id="${escapeHtml(emp.employee_id)}"
+                       data-employee-name="${escapeHtml(emp.full_name)}"
+                       ${emp.total_records > 0 ? '' : 'disabled'}
+                       ${isChecked ? 'checked' : ''}>
+            </td>
+            <td class="px-4 py-3 font-medium text-gray-900">${escapeHtml(emp.employee_id)}</td>
+            <td class="px-4 py-3"><div class="font-medium text-gray-900">${escapeHtml(emp.full_name)}</div></td>
+            <td class="px-4 py-3 text-gray-700">${escapeHtml(emp.department)}</td>
+            <td class="px-4 py-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${typeClass}">${escapeHtml(emp.type)}</span></td>
+            <td class="px-4 py-3">${emp.total_records > 0 ? `<span class="font-semibold text-gray-900">${emp.total_records}</span>` : '<span class="text-gray-400">0</span>'}</td>
+            <td class="px-4 py-3">${emp.present_days > 0 ? `<span class="font-semibold text-green-600">${emp.present_days}</span>` : '<span class="text-gray-400">0</span>'}</td>
+            <td class="px-4 py-3">${emp.total_hours > 0 ? `<span class="font-semibold text-blue-600">${Math.round(emp.total_hours * 10) / 10}h</span>${emp.total_ot > 0 ? `<span class="text-xs text-orange-600 ml-1">(OT: ${Math.round(emp.total_ot * 10) / 10}h)</span>` : ''}` : '<span class="text-gray-400">0h</span>'}</td>
+            <td class="px-4 py-3 text-gray-700">${lastDate}</td>
+            <td class="px-4 py-3 text-center"><div class="flex space-x-2 justify-center">${actionButton}</div></td>
+        </tr>
+        `;
             });
 
             tbody.innerHTML = html;
-
-            // Re-attach event listeners for checkboxes (they'll be handled by event delegation)
             updateSelectAllCheckbox();
         }
 
-        // Helper function to escape HTML
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
 
-        // Debounced search on input
-        if (globalSearch) {
-            globalSearch.addEventListener('input', function () {
-                currentPage = 1; // Reset to first page on new search
-                if (searchTimeout) clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(performSearch, 300);
-            });
-        }
-
-        // Filter changes
-        if (globalDepartment) {
-            globalDepartment.addEventListener('change', function () {
-                currentPage = 1;
-                performSearch();
-            });
-        }
-
-        if (globalStatus) {
-            globalStatus.addEventListener('change', function () {
-                currentPage = 1;
-                performSearch();
-            });
-        }
-
-        // Pagination functions
         // ============================================
-        // PAGINATION FUNCTIONS FOR EMPLOYEE SUMMARY
+        // UTILITY FUNCTIONS
         // ============================================
+        function updateDateTime() {
+            const now = new Date();
+            const dateOptions = {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            };
+            const timeOptions = {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            };
 
-        window.changePage = function (page) {
-            if (page < 1 || page > totalPages) return;
+            const dateElement = document.getElementById('current-date');
+            const timeElement = document.getElementById('current-time');
 
-            // Get current filter values
-            const search = document.getElementById('global_search')?.value || '';
-            const department = document.getElementById('global_department')?.value || '';
-            const status = document.getElementById('global_status')?.value || '';
+            if (dateElement) dateElement.textContent = now.toLocaleDateString('en-US', dateOptions);
+            if (timeElement) timeElement.textContent = now.toLocaleTimeString('en-US', timeOptions);
+        }
 
-            // Update URL with page parameter
-            const url = new URL(window.location.href);
-            url.searchParams.set('page', page);
-            url.searchParams.set('per_page', recordsPerPage);
+        window.showNotification = function(message, type = 'success') {
+            const existingNotifications = document.querySelectorAll('.custom-notification');
+            existingNotifications.forEach(notification => notification.remove());
 
-            if (search) url.searchParams.set('search', search);
-            else url.searchParams.delete('search');
+            const notification = document.createElement('div');
+            notification.className = `custom-notification fixed top-4 right-4 z-[9999] px-4 py-3 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'} transform transition-all duration-300 translate-y-0`;
 
-            if (department) url.searchParams.set('department', department);
-            else url.searchParams.delete('department');
+            let icon = type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
 
-            if (status) url.searchParams.set('status_filter', status);
-            else url.searchParams.delete('status_filter');
+            notification.innerHTML = `<div class="flex items-center"><i class="fas ${icon} mr-2"></i><span>${message}</span></div>`;
 
-            // Navigate to new page
-            window.location.href = url.toString();
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.transform = 'translateY(-100px)';
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
         };
 
-        window.changePerPage = function (perPage) {
-            recordsPerPage = parseInt(perPage);
-
-            // Update URL with new per_page value and reset to page 1
-            const url = new URL(window.location.href);
-            url.searchParams.set('per_page', recordsPerPage);
-            url.searchParams.set('page', 1);
-
-            // Preserve filters
-            const search = document.getElementById('global_search')?.value;
-            const department = document.getElementById('global_department')?.value;
-            const status = document.getElementById('global_status')?.value;
-
-            if (search) url.searchParams.set('search', search);
-            else url.searchParams.delete('search');
-
-            if (department) url.searchParams.set('department', department);
-            else url.searchParams.delete('department');
-
-            if (status) url.searchParams.set('status_filter', status);
-            else url.searchParams.delete('status_filter');
-
-            // Navigate to new page
-            window.location.href = url.toString();
-        };
-
-        function updatePaginationUI() {
-            const paginationNav = document.getElementById('paginationNav');
-            if (!paginationNav) return;
-
-            if (totalPages <= 1) {
-                paginationNav.innerHTML = '';
-                return;
-            }
-
-            let html = `
-                <button onclick="changePage(1)" ${currentPage <= 1 ? 'disabled' : ''} class="pagination-btn" title="First Page">
-                    <i class="fas fa-angle-double-left"></i>
-                </button>
-                <button onclick="changePage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} class="pagination-btn" title="Previous Page">
-                    <i class="fas fa-angle-left"></i>
-                </button>
-            `;
-
-            let startPage = Math.max(1, currentPage - 2);
-            let endPage = Math.min(totalPages, currentPage + 2);
-
-            if (startPage > 1) {
-                html += `<button onclick="changePage(1)" class="pagination-btn">1</button>`;
-                if (startPage > 2) {
-                    html += `<span class="pagination-ellipsis">...</span>`;
+        window.showAddAttendancePrompt = function(employeeId, employeeName) {
+            if (confirm(`No attendance records found for ${employeeName}. Would you like to add attendance records now?`)) {
+                const modal = document.getElementById('bulkAddAttendanceModal');
+                if (modal) {
+                    document.getElementById('bulk_employee_id').value = employeeId;
+                    setTimeout(() => {
+                        const event = new Event('blur', {
+                            bubbles: true
+                        });
+                        document.getElementById('bulk_employee_id').dispatchEvent(event);
+                    }, 100);
+                    modal.classList.remove('hidden');
+                    modal.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
                 }
             }
+        };
 
-            for (let i = startPage; i <= endPage; i++) {
-                const activeClass = i === currentPage ? 'active' : '';
-                html += `<button onclick="changePage(${i})" class="pagination-btn ${activeClass}">${i}</button>`;
-            }
+        // ============================================
+        // SIDEBAR TOGGLE
+        // ============================================
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebarContainer = document.getElementById('sidebar-container');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
 
-            if (endPage < totalPages) {
-                if (endPage < totalPages - 1) {
-                    html += `<span class="pagination-ellipsis">...</span>`;
-                }
-                html += `<button onclick="changePage(${totalPages})" class="pagination-btn">${totalPages}</button>`;
-            }
+        if (sidebarToggle && sidebarContainer && sidebarOverlay) {
+            sidebarToggle.addEventListener('click', function() {
+                sidebarContainer.classList.toggle('active');
+                sidebarOverlay.classList.toggle('active');
+                document.body.style.overflow = sidebarContainer.classList.contains('active') ? 'hidden' : '';
+            });
 
-            html += `
-                <button onclick="changePage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} class="pagination-btn" title="Next Page">
-                    <i class="fas fa-angle-right"></i>
-                </button>
-                <button onclick="changePage(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''} class="pagination-btn" title="Last Page">
-                    <i class="fas fa-angle-double-right"></i>
-                </button>
-            `;
-
-            paginationNav.innerHTML = html;
+            sidebarOverlay.addEventListener('click', function() {
+                sidebarContainer.classList.remove('active');
+                sidebarOverlay.classList.remove('active');
+                document.body.style.overflow = '';
+            });
         }
 
-        // Filter clear functions
-        window.clearSearch = function () {
-            if (globalSearch) {
-                globalSearch.value = '';
-                currentPage = 1;
-                performSearch();
-            }
-        };
+        // ============================================
+        // PAYROLL DROPDOWN TOGGLE
+        // ============================================
+        const payrollToggle = document.getElementById('payroll-toggle');
+        const payrollDropdown = document.getElementById('payroll-dropdown');
 
-        window.clearDepartment = function () {
-            if (globalDepartment) {
-                globalDepartment.value = '';
-                currentPage = 1;
-                performSearch();
-            }
-        };
+        if (payrollToggle && payrollDropdown) {
+            payrollToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                payrollDropdown.classList.toggle('show');
+                const chevron = this.querySelector('.chevron');
+                if (chevron) chevron.classList.toggle('rotate');
+            });
 
-        window.clearStatus = function () {
-            if (globalStatus) {
-                globalStatus.value = '';
-                currentPage = 1;
-                performSearch();
-            }
-        };
-
-        window.clearAllFilters = function () {
-            if (globalSearch) globalSearch.value = '';
-            if (globalDepartment) globalDepartment.value = '';
-            if (globalStatus) globalStatus.value = '';
-            currentPage = 1;
-            performSearch();
-        };
+            document.addEventListener('click', function(event) {
+                if (!payrollToggle.contains(event.target) && !payrollDropdown.contains(event.target)) {
+                    payrollDropdown.classList.remove('show');
+                    const chevron = payrollToggle.querySelector('.chevron');
+                    if (chevron) chevron.classList.remove('rotate');
+                }
+            });
+        }
 
         // ============================================
-        // EDIT ATTENDANCE FUNCTION
+        // EDIT ATTENDANCE FUNCTIONS
         // ============================================
-
-        window.editAttendance = function (attendanceId) {
+        window.editAttendance = function(attendanceId) {
             const modal = document.getElementById('editAttendanceModal');
+            if (!modal) return;
 
-            if (!modal) {
-                console.error('Edit modal not found');
-                return;
-            }
-
-            try {
-                const modalInstance = new Modal(modal);
-                modalInstance.show();
-            } catch (e) {
-                modal.classList.remove('hidden');
-                modal.setAttribute('aria-hidden', 'false');
-            }
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
 
             const editFormContent = document.getElementById('editFormContent');
             if (editFormContent) {
                 editFormContent.innerHTML = `
-                <div class="text-center py-8">
-                    <div class="spinner-border inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" role="status">
-                        <span class="sr-only">Loading...</span>
-                    </div>
-                    <p class="mt-2 text-gray-600">Loading record data...</p>
+            <div class="text-center py-8">
+                <div class="spinner-border inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" role="status">
+                    <span class="sr-only">Loading...</span>
                 </div>
-            `;
+                <p class="mt-2 text-gray-600">Loading record data...</p>
+            </div>
+        `;
             }
 
             fetch('get_attendance_record.php?id=' + attendanceId)
                 .then(response => response.json())
                 .then(data => {
-                    const editFormContent = document.getElementById('editFormContent');
-
                     if (data.success) {
                         const record = data.record;
-                        const dateValue = record.date;
-                        const amInValue = record.am_time_in || '';
-                        const amOutValue = record.am_time_out || '';
-                        const pmInValue = record.pm_time_in || '';
-                        const pmOutValue = record.pm_time_out || '';
+                        const redirectParams = '<?php echo isset($current_view_params) ? $current_view_params : ''; ?>' + '&status=edit_success';
 
-                        let redirectParams = '<?php echo $current_view_params; ?>';
-                        if (redirectParams) {
-                            redirectParams += '&status=edit_success';
-                        } else {
-                            redirectParams = '?status=edit_success';
-                        }
-
-                        const formHTML = `
-                        <form action="update_attendance.php" method="POST">
-                            <input type="hidden" name="attendance_id" value="${record.id}">
-                            <input type="hidden" name="redirect_params" value="${redirectParams}">
-                            
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label class="block mb-2 text-sm font-medium text-gray-900">Employee</label>
-                                    <input type="text" value="${record.employee_name}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" readonly>
-                                </div>
-                                <div>
-                                    <label class="block mb-2 text-sm font-medium text-gray-900">Date *</label>
-                                    <input type="date" name="date" value="${dateValue}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
-                                </div>
-                            </div>
-                            
-                            <div class="border-t pt-4 mb-4">
-                                <h6 class="text-lg font-semibold text-blue-600 mb-3">Morning Shift (AM)</h6>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block mb-2 text-sm font-medium text-gray-900">Time-in</label>
-                                        <input type="time" name="am_time_in" value="${amInValue}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-                                    </div>
-                                    <div>
-                                        <label class="block mb-2 text-sm font-medium text-gray-900">Time-out</label>
-                                        <input type="time" name="am_time_out" value="${amOutValue}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="border-t pt-4 mb-4">
-                                <h6 class="text-lg font-semibold text-blue-600 mb-3">Afternoon Shift (PM)</h6>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block mb-2 text-sm font-medium text-gray-900">Time-in</label>
-                                        <input type="time" name="pm_time_in" value="${pmInValue}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-                                    </div>
-                                    <div>
-                                        <label class="block mb-2 text-sm font-medium text-gray-900">Time-out</label>
-                                        <input type="time" name="pm_time_out" value="${pmOutValue}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="flex justify-end space-x-3 pt-4 border-t">
-                                <button type="submit" class="text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center flex items-center">
-                                    <i class="fas fa-save mr-2"></i>Update Record
-                                </button>
-                                <button type="button" class="text-gray-500 bg-white hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 border border-gray-300 close-edit-modal" onclick="closeEditModal()">
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    `;
-
-                        editFormContent.innerHTML = formHTML;
-                    } else {
                         editFormContent.innerHTML = `
-                        <div class="text-center py-8 text-red-600">
-                            <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
-                            <p>Error loading record: ${data.message || 'Record not found'}</p>
-                            <button type="button" class="mt-4 text-gray-500 bg-white hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 border border-gray-300 close-edit-modal" onclick="closeEditModal()">
-                                Close
+                    <form action="update_attendance.php" method="POST">
+                        <input type="hidden" name="attendance_id" value="${record.id}">
+                        <input type="hidden" name="redirect_params" value="${redirectParams}">
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium text-gray-900">Employee</label>
+                                <input type="text" value="${record.employee_name}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" readonly>
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-sm font-medium text-gray-900">Date *</label>
+                                <input type="date" name="date" value="${record.date}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t pt-4 mb-4">
+                            <h6 class="text-lg font-semibold text-blue-600 mb-3">Morning Shift (AM)</h6>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium text-gray-900">Time-in</label>
+                                    <input type="time" name="am_time_in" value="${record.am_time_in || ''}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                </div>
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium text-gray-900">Time-out</label>
+                                    <input type="time" name="am_time_out" value="${record.am_time_out || ''}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t pt-4 mb-4">
+                            <h6 class="text-lg font-semibold text-blue-600 mb-3">Afternoon Shift (PM)</h6>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium text-gray-900">Time-in</label>
+                                    <input type="time" name="pm_time_in" value="${record.pm_time_in || ''}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                </div>
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium text-gray-900">Time-out</label>
+                                    <input type="time" name="pm_time_out" value="${record.pm_time_out || ''}" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3 pt-4 border-t">
+                            <button type="submit" class="text-white bg-green-600 hover:bg-green-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center flex items-center">
+                                <i class="fas fa-save mr-2"></i>Update Record
+                            </button>
+                            <button type="button" class="text-gray-500 bg-white hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 border border-gray-300" onclick="closeEditModal()">
+                                Cancel
                             </button>
                         </div>
-                    `;
-                    }
-                })
-                .catch(error => {
-                    const editFormContent = document.getElementById('editFormContent');
-                    editFormContent.innerHTML = `
+                    </form>
+                `;
+                    } else {
+                        editFormContent.innerHTML = `
                     <div class="text-center py-8 text-red-600">
                         <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
-                        <p>Network error. Please try again.</p>
-                        <button type="button" class="mt-4 text-gray-500 bg-white hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 border border-gray-300 close-edit-modal" onclick="closeEditModal()">
+                        <p>Error loading record: ${data.message || 'Record not found'}</p>
+                        <button type="button" class="mt-4 text-gray-500 bg-white hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 border border-gray-300" onclick="closeEditModal()">
                             Close
                         </button>
                     </div>
                 `;
+                    }
+                })
+                .catch(error => {
+                    editFormContent.innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
+                    <p>Network error. Please try again.</p>
+                    <button type="button" class="mt-4 text-gray-500 bg-white hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 border border-gray-300" onclick="closeEditModal()">
+                        Close
+                    </button>
+                </div>
+            `;
                 });
         };
 
-        // ============================================
-        // CLOSE EDIT MODAL FUNCTION
-        // ============================================
-
-        window.closeEditModal = function () {
+        window.closeEditModal = function() {
             const modal = document.getElementById('editAttendanceModal');
             if (modal) {
-                try {
-                    const modalInstance = new Modal(modal);
-                    modalInstance.hide();
-                } catch (e) {
-                    modal.classList.add('hidden');
-                    modal.setAttribute('aria-hidden', 'true');
-                }
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
             }
         };
 
-        document.addEventListener('click', function (e) {
+        document.addEventListener('click', function(e) {
             if (e.target.classList.contains('close-edit-modal') ||
                 e.target.closest('.close-edit-modal') ||
                 (e.target.closest('button') && e.target.closest('button').hasAttribute('data-modal-hide') && e.target.closest('button').getAttribute('data-modal-hide') === 'editAttendanceModal')) {
@@ -6080,12 +5711,11 @@ $departments = [
         // ============================================
         // DELETE ATTENDANCE FUNCTION
         // ============================================
-
-        window.deleteAttendance = function (attendanceId, employeeName, date) {
+        window.deleteAttendance = function(attendanceId, employeeName, date) {
             if (confirm(`Are you sure you want to delete the attendance record for ${employeeName} on ${date}?`)) {
                 const form = document.createElement('form');
                 form.method = 'POST';
-                form.action = '<?php echo $_SERVER['PHP_SELF'] . $current_view_params; ?>';
+                form.action = '<?php echo $_SERVER['PHP_SELF'] . (isset($current_view_params) ? $current_view_params : ''); ?>';
 
                 const idInput = document.createElement('input');
                 idInput.type = 'hidden';
@@ -6101,7 +5731,6 @@ $departments = [
         // ============================================
         // FUTURE DATE VALIDATION
         // ============================================
-
         function validateFutureDates() {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -6109,7 +5738,7 @@ $departments = [
             const dateInputs = document.querySelectorAll('input[type="date"]');
             dateInputs.forEach(input => {
                 if (input.id === 'filter_from_date' || input.id === 'filter_to_date' || input.id === 'date' || input.id === 'edit_date') {
-                    input.addEventListener('change', function () {
+                    input.addEventListener('change', function() {
                         const selectedDate = new Date(this.value);
                         if (selectedDate > today) {
                             this.value = today.toISOString().split('T')[0];
@@ -6123,328 +5752,237 @@ $departments = [
         validateFutureDates();
 
         // ============================================
-        // SHOW NOTIFICATION FUNCTION
+        // FILTER FUNCTIONS
         // ============================================
-
-        window.showNotification = function (message, type = 'success') {
-            const notification = document.createElement('div');
-            notification.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' :
-                type === 'error' ? 'bg-red-500' :
-                    'bg-blue-500'
-                } transform transition-all duration-300 translate-y-0`;
-
-            let icon = 'fa-check-circle';
-            if (type === 'error') icon = 'fa-exclamation-circle';
-            if (type === 'info') icon = 'fa-info-circle';
-
-            notification.innerHTML = `
-                <div class="flex items-center">
-                    <i class="fas ${icon} mr-2"></i>
-                    <span>${message}</span>
-                </div>
-            `;
-
-            document.body.appendChild(notification);
-
-            setTimeout(() => {
-                notification.style.transform = 'translateY(-100px)';
-                notification.style.opacity = '0';
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 300);
-            }, 3000);
-        };
-
-        // ============================================
-        // SHOW IMPORT RESULTS FUNCTION
-        // ============================================
-
-        window.showImportResults = function (data) {
-            const modal = document.getElementById('importResultsModal');
-            const header = document.getElementById('importResultsHeader');
-            const content = document.getElementById('importResultsContent');
-
-            if (!modal || !header || !content) {
-                alert(`Import Results:\n\nSuccess: ${data.success}\nImported: ${data.imported || 0}\nDuplicates: ${data.duplicates || 0}\n${data.message || ''}`);
-                return;
-            }
-
-            header.className = `flex items-center justify-between p-5 border-b rounded-t ${data.success ? 'bg-green-600' : 'bg-red-600'
-                } text-white`;
-
-            let html = `
-                <div class="text-center mb-4">
-                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full ${data.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                } mb-4">
-                        <i class="fas ${data.success ? 'fa-check-circle' : 'fa-exclamation-circle'} text-3xl"></i>
-                    </div>
-                    <h4 class="text-xl font-semibold ${data.success ? 'text-green-600' : 'text-red-600'} mb-2">
-                        ${data.success ? 'Import Successful!' : 'Import Failed'}
-                    </h4>
-                    <p class="text-gray-600">${data.message || ''}</p>
-                </div>
-                
-                <div class="grid grid-cols-3 gap-4 mb-4">
-                    <div class="bg-green-50 p-3 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-green-600">${data.imported || 0}</div>
-                        <div class="text-xs text-gray-600">Imported</div>
-                    </div>
-                    <div class="bg-yellow-50 p-3 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-yellow-600">${data.duplicates || 0}</div>
-                        <div class="text-xs text-gray-600">Duplicates</div>
-                    </div>
-                    <div class="bg-red-50 p-3 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-red-600">${data.errors || 0}</div>
-                        <div class="text-xs text-gray-600">Errors</div>
-                    </div>
-                </div>
-            `;
-
-            if (data.records && data.records.length > 0) {
-                html += `
-                    <div class="mt-4">
-                        <h5 class="text-sm font-semibold text-gray-700 mb-2">Recently Imported:</h5>
-                        <div class="max-h-40 overflow-y-auto bg-gray-50 p-3 rounded-lg">
-                            <table class="w-full text-xs">
-                                <thead>
-                                    <tr class="text-gray-600">
-                                        <th class="text-left pb-2">Employee</th>
-                                        <th class="text-left pb-2">Date</th>
-                                        <th class="text-left pb-2">Hours</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.records.slice(0, 5).map(rec => `
-                                        <tr class="border-t border-gray-200">
-                                            <td class="py-1">${rec.employee || ''}</td>
-                                            <td class="py-1">${rec.date || ''}</td>
-                                            <td class="py-1 text-green-600">${rec.total_hours || 0}h</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                            ${data.records.length > 5 ? `<p class="text-xs text-gray-500 mt-2">... and ${data.records.length - 5} more records</p>` : ''}
-                        </div>
-                    </div>
-                `;
-            }
-
-            content.innerHTML = html;
-
-            try {
-                const modalInstance = new Modal(modal);
-                modalInstance.show();
-            } catch (e) {
-                modal.classList.remove('hidden');
-                modal.setAttribute('aria-hidden', 'false');
+        window.clearSearch = function() {
+            if (globalSearch) {
+                globalSearch.value = '';
+                currentPage = 1;
+                performSearch();
             }
         };
 
-        // ============================================
-        // KEYBOARD NAVIGATION
-        // ============================================
-
-        document.addEventListener('DOMContentLoaded', function () {
-            // Keyboard navigation for pagination
-            document.addEventListener('keydown', function (e) {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-                    return; // Don't interfere with form inputs
-                }
-
-                if (e.key === 'ArrowLeft' && currentPage > 1) {
-                    changePage(currentPage - 1);
-                } else if (e.key === 'ArrowRight' && currentPage < totalPages) {
-                    changePage(currentPage + 1);
-                }
-            });
-
-            // Auto-scroll to top when paginating
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.has('page')) {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
+        window.clearDepartment = function() {
+            if (globalDepartment) {
+                globalDepartment.value = '';
+                currentPage = 1;
+                performSearch();
             }
-        });
-    </script>
-    <script>
-        // ============================================
-        // MONTH AND YEAR FILTER FUNCTIONS
-        // ============================================
+        };
 
-        function applyMonthYearFilter() {
-            const month = document.getElementById('monthFilter').value;
-            const year = document.getElementById('yearFilter').value;
+        window.clearStatus = function() {
+            if (globalStatus) {
+                globalStatus.value = '';
+                currentPage = 1;
+                performSearch();
+            }
+        };
 
-            // Get current URL
+        window.clearAllFilters = function() {
+            if (globalSearch) globalSearch.value = '';
+            if (globalDepartment) globalDepartment.value = '';
+            if (globalStatus) globalStatus.value = '';
+            currentPage = 1;
+            performSearch();
+        };
+
+        window.changePage = function(page) {
+            if (page < 1 || page > totalPages) return;
+
+            const search = globalSearch ? globalSearch.value : '';
+            const department = globalDepartment ? globalDepartment.value : '';
+            const status = globalStatus ? globalStatus.value : '';
+
             const url = new URL(window.location.href);
+            url.searchParams.set('page', page);
+            url.searchParams.set('per_page', recordsPerPage);
 
-            // Update or remove month parameter
-            if (month) {
-                url.searchParams.set('month', month);
-            } else {
-                url.searchParams.delete('month');
-            }
-
-            // Update or remove year parameter
-            if (year) {
-                url.searchParams.set('year', year);
-            } else {
-                url.searchParams.delete('year');
-            }
-
-            // Make sure we keep view_attendance and employee_id
-            if (!url.searchParams.has('view_attendance')) {
-                url.searchParams.set('view_attendance', 'true');
-            }
-
-            // Get employee_id from current URL or from the page
-            let employeeId = url.searchParams.get('employee_id');
-            if (!employeeId) {
-                // Try to get from the page if not in URL
-                const urlParams = new URLSearchParams(window.location.search);
-                employeeId = urlParams.get('employee_id');
-                if (employeeId) {
-                    url.searchParams.set('employee_id', employeeId);
-                }
-            }
-
-            console.log('Applying filter with:', { month, year, employeeId });
-
-            // Reload with new filters
-            window.location.href = url.toString();
-        }
-
-        function clearMonthYearFilter() {
-            const url = new URL(window.location.href);
-
-            // Remove month and year parameters
-            url.searchParams.delete('month');
-            url.searchParams.delete('year');
-
-            // Make sure we keep view_attendance and employee_id
-            if (!url.searchParams.has('view_attendance')) {
-                url.searchParams.set('view_attendance', 'true');
-            }
-
-            // Get employee_id from current URL or from the page
-            let employeeId = url.searchParams.get('employee_id');
-            if (!employeeId) {
-                const urlParams = new URLSearchParams(window.location.search);
-                employeeId = urlParams.get('employee_id');
-                if (employeeId) {
-                    url.searchParams.set('employee_id', employeeId);
-                }
-            }
-
-            console.log('Clearing filters');
+            if (search) url.searchParams.set('search', search);
+            else url.searchParams.delete('search');
+            if (department) url.searchParams.set('department', department);
+            else url.searchParams.delete('department');
+            if (status) url.searchParams.set('status_filter', status);
+            else url.searchParams.delete('status_filter');
 
             window.location.href = url.toString();
-        }
+        };
 
-        // Add event listeners for Enter key
-        document.addEventListener('DOMContentLoaded', function () {
-            const monthFilter = document.getElementById('monthFilter');
-            const yearFilter = document.getElementById('yearFilter');
+        window.changePerPage = function(perPage) {
+            recordsPerPage = parseInt(perPage);
 
-            if (monthFilter) {
-                monthFilter.addEventListener('keypress', function (e) {
-                    if (e.key === 'Enter') {
-                        applyMonthYearFilter();
-                    }
-                });
-            }
+            const url = new URL(window.location.href);
+            url.searchParams.set('per_page', recordsPerPage);
+            url.searchParams.set('page', 1);
 
-            if (yearFilter) {
-                yearFilter.addEventListener('keypress', function (e) {
-                    if (e.key === 'Enter') {
-                        applyMonthYearFilter();
-                    }
-                });
-            }
-        });
+            const search = globalSearch ? globalSearch.value : '';
+            const department = globalDepartment ? globalDepartment.value : '';
+            const status = globalStatus ? globalStatus.value : '';
 
-        // Optional: Add this for debugging
-        console.log('Current URL params:', new URLSearchParams(window.location.search).toString());
-    </script>
-    <script>
+            if (search) url.searchParams.set('search', search);
+            else url.searchParams.delete('search');
+            if (department) url.searchParams.set('department', department);
+            else url.searchParams.delete('department');
+            if (status) url.searchParams.set('status_filter', status);
+            else url.searchParams.delete('status_filter');
+
+            window.location.href = url.toString();
+        };
+
         // ============================================
         // ATTENDANCE PAGINATION FUNCTIONS
         // ============================================
-
-        function changeAttendancePage(page) {
+        window.changeAttendancePage = function(page) {
             const url = new URL(window.location.href);
-
-            // Ensure page is at least 1 and an integer
             page = Math.max(1, parseInt(page) || 1);
-
             url.searchParams.set('att_page', page);
 
-            // Preserve existing filters
             const month = document.getElementById('monthFilter')?.value;
             const year = document.getElementById('yearFilter')?.value;
 
-            if (month) {
-                url.searchParams.set('month', month);
-            } else {
-                url.searchParams.delete('month');
-            }
+            if (month) url.searchParams.set('month', month);
+            else url.searchParams.delete('month');
+            if (year) url.searchParams.set('year', year);
+            else url.searchParams.delete('year');
 
-            if (year) {
-                url.searchParams.set('year', year);
-            } else {
-                url.searchParams.delete('year');
-            }
-
-            // Preserve per_page setting
             const perPage = document.getElementById('attPerPage')?.value;
-            if (perPage) {
-                url.searchParams.set('per_page', perPage);
-            }
+            if (perPage) url.searchParams.set('per_page', perPage);
 
-            // Make sure we keep view_attendance and employee_id
             url.searchParams.set('view_attendance', 'true');
-
             window.location.href = url.toString();
+        };
+
+        window.changeAttendancePerPage = function(perPage) {
+            const url = new URL(window.location.href);
+            perPage = parseInt(perPage) || 10;
+            const validValues = [10, 20, 50, 100];
+            if (!validValues.includes(perPage)) perPage = 10;
+
+            url.searchParams.set('per_page', perPage);
+            url.searchParams.set('att_page', '1');
+
+            const month = document.getElementById('monthFilter')?.value;
+            const year = document.getElementById('yearFilter')?.value;
+
+            if (month) url.searchParams.set('month', month);
+            else url.searchParams.delete('month');
+            if (year) url.searchParams.set('year', year);
+            else url.searchParams.delete('year');
+
+            url.searchParams.set('view_attendance', 'true');
+            window.location.href = url.toString();
+        };
+
+        // ============================================
+        // MONTH/YEAR FILTER FUNCTIONS
+        // ============================================
+        window.applyAttendanceFilter = function() {
+            const month = document.getElementById('monthFilter').value;
+            const year = document.getElementById('yearFilter').value;
+
+            const url = new URL(window.location.href);
+            if (month) url.searchParams.set('month', month);
+            else url.searchParams.delete('month');
+            if (year) url.searchParams.set('year', year);
+            else url.searchParams.delete('year');
+
+            url.searchParams.set('view_attendance', 'true');
+            window.location.href = url.toString();
+        };
+
+        window.clearAttendanceFilter = function() {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('month');
+            url.searchParams.delete('year');
+            url.searchParams.set('view_attendance', 'true');
+            window.location.href = url.toString();
+        };
+
+        // ============================================
+        // GLOBAL SELECT ALL BUTTON
+        // ============================================
+        const globalSelectAllBtn = document.getElementById('globalSelectAllBtn');
+        if (globalSelectAllBtn) {
+            globalSelectAllBtn.addEventListener('click', function() {
+                selectAllEmployeesGlobally();
+            });
         }
 
-        function changeAttendancePerPage(perPage) {
-    const url = new URL(window.location.href);
-    
-    // Validate perPage
-    perPage = parseInt(perPage) || 10; // Changed from 20 to 10
-    const validValues = [10, 20, 50, 100];
-    if (!validValues.includes(perPage)) {
-        perPage = 10; // Changed from 20 to 10
-    }
-    
-    url.searchParams.set('per_page', perPage);
-    url.searchParams.set('att_page', '1'); // Reset to first page
-    
-    // Preserve existing filters
-    const month = document.getElementById('monthFilter')?.value;
-    const year = document.getElementById('yearFilter')?.value;
-    
-    if (month) {
-        url.searchParams.set('month', month);
-    } else {
-        url.searchParams.delete('month');
-    }
-    
-    if (year) {
-        url.searchParams.set('year', year);
-    } else {
-        url.searchParams.delete('year');
-    }
-    
-    // Make sure we keep view_attendance and employee_id
-    url.searchParams.set('view_attendance', 'true');
-    
-    window.location.href = url.toString();
-}
+        function selectAllEmployeesGlobally() {
+            showNotification('Loading all employees...', 'info');
+
+            const search = document.getElementById('global_search')?.value || '';
+            const department = document.getElementById('global_department')?.value || '';
+            const status = document.getElementById('global_status')?.value || '';
+
+            const params = new URLSearchParams({
+                ajax_get_all_employees: true,
+                search: search,
+                department: department,
+                status_filter: status
+            });
+
+            fetch(`attendance.php?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.employees.length > 0) {
+                        globalSelectedEmployees = data.employees;
+                        isGlobalSelection = true;
+                        selectedEmployees = [];
+
+                        updateGlobalSelectionUI();
+
+                        document.querySelectorAll('.employee-checkbox').forEach(cb => cb.checked = false);
+                        updateSelectAllCheckbox();
+
+                        saveSelectionsToStorage();
+
+                        showNotification(`Selected ${data.employees.length} employees across all pages`, 'success');
+                    } else {
+                        showNotification('No employees with attendance records found.', 'info');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching all employees:', error);
+                    showNotification('Error selecting employees. Please try again.', 'error');
+                });
+        }
+
+        // ============================================
+        // SELECT ALL CHECKBOX HANDLER
+        // ============================================
+        const selectAllCheckbox = document.getElementById('selectAllEmployees');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                if (isGlobalSelection) clearGlobalSelection();
+
+                const checkboxes = document.querySelectorAll('.employee-checkbox:not(:disabled)');
+                checkboxes.forEach(checkbox => checkbox.checked = this.checked);
+
+                updateSelectedEmployeesFromCheckboxes();
+            });
+        }
+
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('employee-checkbox')) {
+                if (isGlobalSelection) clearGlobalSelection();
+                updateSelectedEmployeesFromCheckboxes();
+            }
+        });
+
+        // ============================================
+        // REMOVE SAMPLE FILE FUNCTION
+        // ============================================
+        window.removeSampleFile = function() {
+            const sampleFileDisplay = document.getElementById('sampleFileDisplay');
+            const xlsxFileInput = document.getElementById('xlsx_file');
+
+            if (sampleFileDisplay) sampleFileDisplay.classList.add('hidden');
+            if (xlsxFileInput) {
+                xlsxFileInput.value = '';
+                hideFileInfo();
+            }
+            showNotification('Sample file removed', 'info');
+        };
     </script>
 </body>
 

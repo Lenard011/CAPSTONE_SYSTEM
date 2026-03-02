@@ -2405,6 +2405,18 @@ $office_options = [
                 text-align: center;
             }
         }
+
+        .sidebar-item.logout {
+            color: #fecaca;
+            margin-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1rem;
+        }
+
+        .sidebar-item.logout:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fecaca;
+        }
     </style>
 </head>
 

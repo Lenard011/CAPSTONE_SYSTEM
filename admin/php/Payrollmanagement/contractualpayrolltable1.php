@@ -701,16 +701,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
                             <button type="button" class="action-btn view-btn" onclick="viewEmployeeDetails(<?php echo $employee['user_id']; ?>, '<?php echo $period; ?>', '<?php echo $cutoff; ?>')">
                                 <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
                             </button>
-                            <?php if (!$is_full_month_ajax && ($payroll_status == 'pending' || $payroll_status == 'draft')): ?>
-                                <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
-                                    <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
-                                </button>
-                            <?php endif; ?>
-                            <?php if ($payroll_id): ?>
-                                <button type="button" class="action-btn bg-purple-500 text-white hover:bg-purple-600" onclick="viewDeductions(<?php echo $payroll_id; ?>)">
-                                    <i class="fas fa-chart-pie"></i> <span class="hidden md:inline">Deductions</span>
-                                </button>
-                            <?php endif; ?>
                         </div>
                     </td>
                 </tr>
@@ -1933,36 +1923,42 @@ ob_end_flush();
     <style>
         :root {
             --primary: #1e40af;
-            --secondary: #1e3a8a;
-            --accent: #3b82f6;
-            --gradient-nav: linear-gradient(90deg, #1e3a8a 0%, #1e40af 100%);
+            --primary-dark: #1e3a8a;
+            --primary-light: #3b82f6;
+            --secondary: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark: #1f2937;
+            --light: #f8fafc;
+            --gradient-primary: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
         }
 
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Inter', sans-serif;
             background: #f8fafc;
+            color: var(--dark);
             min-height: 100vh;
             overflow-x: hidden;
-            color: #1f2937;
         }
 
-        /* NAVBAR - FIXED RESPONSIVE STYLES */
+        /* Navbar Styling - Matches Employee.php */
         .navbar {
-            background: var(--gradient-nav);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            background: var(--gradient-primary);
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            z-index: 1000;
             height: 70px;
-            backdrop-filter: blur(10px);
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
@@ -1979,16 +1975,33 @@ ob_end_flush();
             display: flex;
             align-items: center;
             gap: 1rem;
-            flex: 1;
         }
 
         .navbar-right {
             display: flex;
             align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
-        /* Logo and Brand */
+        .mobile-toggle {
+            display: none;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+        }
+
+        .mobile-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+
         .navbar-brand {
             display: flex;
             align-items: center;
@@ -1998,12 +2011,12 @@ ob_end_flush();
         }
 
         .navbar-brand:hover {
-            transform: scale(1.02);
+            transform: translateY(-2px);
         }
 
         .brand-logo {
-            width: 45px;
-            height: 45px;
+            width: 40px;
+            height: 40px;
             object-fit: contain;
             filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
         }
@@ -2014,51 +2027,44 @@ ob_end_flush();
         }
 
         .brand-title {
-            font-size: 1.4rem;
-            font-weight: 700;
+            font-size: 1.1rem;
+            font-weight: 800;
             color: white;
             line-height: 1.2;
-            letter-spacing: 0.5px;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            letter-spacing: -0.5px;
         }
 
         .brand-subtitle {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: rgba(255, 255, 255, 0.9);
             font-weight: 500;
-            letter-spacing: 0.3px;
         }
 
-        /* Date & Time Display */
         .datetime-container {
             display: flex;
-            align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
         .datetime-box {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 0.5rem;
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
             border-radius: 12px;
-            padding: 0.6rem 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.3s ease;
-            min-width: 180px;
         }
 
         .datetime-box:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.25);
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
 
         .datetime-icon {
-            font-size: 1.1rem;
             color: white;
-            opacity: 0.9;
+            font-size: 1rem;
         }
 
         .datetime-text {
@@ -2067,18 +2073,15 @@ ob_end_flush();
         }
 
         .datetime-label {
-            font-size: 0.75rem;
-            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.8);
             font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
 
         .datetime-value {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
+            font-weight: 700;
             color: white;
-            font-weight: 600;
-            line-height: 1.3;
         }
 
         /* Logout Button */
@@ -2104,190 +2107,277 @@ ob_end_flush();
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
 
-        /* Mobile Menu Toggle */
-        .mobile-toggle {
-            display: flex;
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            width: 40px;
-            height: 40px;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-            outline: none;
-        }
-
-        .mobile-toggle:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: scale(1.05);
-        }
-
-        .mobile-toggle i {
-            font-size: 1.25rem;
-            color: white;
-        }
-
-        @media (min-width: 1024px) {
-            .mobile-toggle {
-                display: none;
-            }
-        }
-
-        /* Sidebar Styles */
-        .sidebar-overlay {
+        /* Sidebar - Matches Employee.php */
+        .sidebar-container {
             position: fixed;
-            top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
+            top: 70px;
+            width: 260px;
+            height: calc(100vh - 70px);
+            background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
             z-index: 999;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar-overlay.active {
-            opacity: 1;
-            visibility: visible;
+            transition: transform 0.3s ease;
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
         }
 
         .sidebar {
-            position: fixed;
-            top: 70px;
-            left: -300px;
-            width: 250px;
-            height: calc(100vh - 70px);
-            background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
-            z-index: 1000;
-            transition: left 0.3s ease;
+            height: 100%;
+            padding: 1.5rem 0;
             display: flex;
             flex-direction: column;
-            overflow-y: auto;
-            overflow-x: hidden;
-        }
-
-        .sidebar.active {
-            left: 0;
-        }
-
-        @media (min-width: 1024px) {
-            .sidebar {
-                left: 0;
-                top: 70px;
-                height: calc(100vh - 70px);
-            }
-
-            .sidebar-overlay {
-                display: none !important;
-            }
-
-            main {
-                margin-left: 250px;
-            }
         }
 
         .sidebar-content {
             flex: 1;
-            padding: 1.5rem 1rem;
-            overflow-y: auto;
+            padding: 0 1rem;
         }
 
-        .sidebar-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.8rem;
-        }
-
-        /* Sidebar Menu Items */
         .sidebar-item {
             display: flex;
             align-items: center;
-            padding: 0.875rem 1rem;
-            color: white;
+            gap: 1rem;
+            padding: 0.9rem 1.25rem;
+            color: rgba(255, 255, 255, 0.85);
             text-decoration: none;
-            border-radius: 12px;
-            margin-bottom: 0.5rem;
             transition: all 0.3s ease;
-            cursor: pointer;
+            border-radius: 12px;
+            margin-bottom: 0.25rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 4px;
+            background: white;
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
+            border-radius: 0 4px 4px 0;
         }
 
         .sidebar-item:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            transform: translateX(4px);
+        }
+
+        .sidebar-item:hover::before {
+            transform: scaleY(1);
         }
 
         .sidebar-item.active {
-            background: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-item.active::before {
+            transform: scaleY(1);
         }
 
         .sidebar-item i {
-            width: 1.5rem;
+            font-size: 1.2rem;
+            width: 24px;
             text-align: center;
-            margin-right: 0.75rem;
-            font-size: 1.1rem;
         }
 
         .sidebar-item span {
+            font-size: 0.95rem;
+            font-weight: 600;
             flex: 1;
-            font-weight: 500;
-            font-size: 0.9rem;
         }
 
-        .sidebar-item .chevron {
-            transition: transform 0.3s ease;
-            font-size: 0.7rem;
-        }
-
-        .sidebar-item .chevron.rotated {
-            transform: rotate(180deg);
-        }
-
-        /* Dropdown Menu in Sidebar */
-        .submenu {
+        .sidebar-dropdown-menu {
             max-height: 0;
             overflow: hidden;
             transition: max-height 0.3s ease;
             margin-left: 2.5rem;
         }
 
-        .submenu.open {
+        .sidebar-dropdown-menu.open {
             max-height: 500px;
         }
 
-        .submenu-item {
+        .sidebar-dropdown-item {
             display: flex;
             align-items: center;
-            padding: 0.5rem 1rem;
+            padding: 0.7rem 1rem;
             color: rgba(255, 255, 255, 0.8);
             text-decoration: none;
             border-radius: 8px;
             margin-bottom: 0.25rem;
             transition: all 0.3s ease;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
         }
 
-        .submenu-item:hover {
-            background: rgba(255, 255, 255, 0.1);
+        .sidebar-dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.15);
             color: white;
             transform: translateX(5px);
         }
 
-        .submenu-item.active {
-            background: rgba(255, 255, 255, 0.2);
+        .sidebar-dropdown-item.active {
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+            font-weight: 600;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-dropdown-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 3px;
+            background: white;
+            border-radius: 0 3px 3px 0;
+        }
+
+        .sidebar-dropdown-item i {
+            font-size: 0.7rem;
+            margin-right: 0.75rem;
+            color: rgba(255, 255, 255, 0.7);
+            transition: color 0.3s ease;
+        }
+
+        .sidebar-dropdown-item:hover i,
+        .sidebar-dropdown-item.active i {
             color: white;
         }
 
-        .submenu-item i {
+        .chevron {
+            transition: transform 0.3s ease;
+        }
+
+        .chevron.rotated {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            color: white;
             font-size: 0.75rem;
-            margin-right: 0.5rem;
+        }
+
+        /* Overlay for mobile */
+        .overlay {
+            position: fixed;
+            top: 70px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 998;
+            display: none;
+        }
+
+        .overlay.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            margin-top: 70px;
+            padding: 1.5rem;
+            min-height: calc(100vh - 70px);
+            transition: margin-left 0.3s ease;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+            }
+
+            .sidebar-container {
+                transform: translateX(-100%);
+            }
+
+            .sidebar-container.active {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: flex;
+            }
+
+            .datetime-container {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .brand-text {
+                display: none;
+            }
+
+            .logout-btn span {
+                display: none;
+            }
+
+            .logout-btn {
+                padding: 0.5rem;
+                width: 40px;
+                height: 40px;
+                justify-content: center;
+            }
+
+            .main-content {
+                padding: 0.75rem;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .navbar {
+                height: 65px;
+            }
+
+            .sidebar-container {
+                top: 65px;
+                height: calc(100vh - 65px);
+            }
+
+            .main-content {
+                margin-top: 65px;
+            }
+
+            .mobile-toggle {
+                width: 36px;
+                height: 36px;
+            }
+
+            .brand-logo {
+                width: 40px;
+                height: 40px;
+            }
+
+            .logout-btn {
+                width: 36px;
+                height: 36px;
+            }
         }
 
         /* Mobile Brand Styling */
@@ -2315,33 +2405,33 @@ ob_end_flush();
             font-weight: 500;
         }
 
-        /* Main Content */
-        main {
-            margin-top: 70px;
-            padding: 1.5rem;
-            min-height: calc(100vh - 70px);
-            width: 100%;
-            transition: margin-left 0.3s ease;
-        }
+        @media (min-width: 769px) {
+            .mobile-brand {
+                display: none;
+            }
 
-        @media (min-width: 1024px) {
-            main {
-                margin-left: 250px;
-                width: calc(100% - 250px);
+            .brand-text {
+                display: flex;
             }
         }
 
-        @media (max-width: 768px) {
-            main {
-                padding: 1rem;
-            }
+        /* Card Styles */
+        .card {
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+            transition: all 0.3s ease;
         }
 
-        /* Table responsive design */
+        .card:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+
+        /* Table Styles */
         .table-container {
             overflow-x: auto;
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
             -webkit-overflow-scrolling: touch;
         }
 
@@ -2351,25 +2441,26 @@ ob_end_flush();
             border-collapse: collapse;
         }
 
-        .payroll-table th,
+        .payroll-table th {
+            background: #f8fafc;
+            padding: 0.75rem;
+            font-weight: 600;
+            color: #374151;
+            border: 1px solid #e5e7eb;
+            white-space: nowrap;
+        }
+
         .payroll-table td {
             padding: 0.75rem;
             border: 1px solid #e5e7eb;
             white-space: nowrap;
-            text-align: left;
-        }
-
-        .payroll-table th {
-            background-color: #f8fafc;
-            font-weight: 600;
-            color: #374151;
         }
 
         .payroll-table tbody tr:hover {
-            background-color: #f9fafb;
+            background: #f9fafb;
         }
 
-        /* Checkbox styling */
+        /* Checkbox Styling */
         .employee-checkbox {
             width: 18px;
             height: 18px;
@@ -2384,223 +2475,7 @@ ob_end_flush();
             accent-color: var(--primary);
         }
 
-        /* Print actions bar */
-        .print-actions {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-            padding: 0.5rem;
-            background-color: #f9fafb;
-            border-radius: 0.5rem;
-            border: 1px solid #e5e7eb;
-        }
-
-        .selected-count {
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--primary);
-            background-color: #eff6ff;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        /* Highlight rows with no attendance */
-        .payroll-row.no-attendance {
-            background-color: #fff3f3;
-        }
-
-        .payroll-row.no-attendance .gross-amount,
-        .payroll-row.no-attendance .net-amount {
-            color: #999;
-            font-style: italic;
-        }
-
-        /* Info badge for attendance rules */
-        .attendance-info-badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            background-color: #f3f4f6;
-            color: #4b5563;
-        }
-
-        .attendance-info-badge.warning {
-            background-color: #fee2e2;
-            color: #b91c1c;
-        }
-
-        .attendance-info-badge.success {
-            background-color: #d1fae5;
-            color: #065f46;
-        }
-
-        /* Action buttons */
-        .action-buttons {
-            display: flex;
-            gap: 0.25rem;
-            flex-wrap: wrap;
-        }
-
-        .action-btn {
-            padding: 0.375rem 0.5rem;
-            border-radius: 0.375rem;
-            font-size: 0.75rem;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .action-btn:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-        }
-
-        .action-btn.paid-btn {
-            background-color: #10b981;
-            color: white;
-        }
-
-        .action-btn.paid-btn:hover {
-            background-color: #059669;
-        }
-
-        .action-btn.view-btn {
-            background-color: #3b82f6;
-            color: white;
-        }
-
-        .action-btn.view-btn:hover {
-            background-color: #2563eb;
-        }
-
-        /* Card design */
-        .card {
-            background: white;
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .card:hover {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-
-        /* Breadcrumb styling */
-        .breadcrumb {
-            font-size: 0.8rem;
-            overflow-x: auto;
-            white-space: nowrap;
-            padding: 0.5rem 0;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .breadcrumb ol {
-            display: flex;
-            align-items: center;
-        }
-
-        /* Responsive utilities - NAVBAR SPECIFIC */
-        @media (max-width: 768px) {
-            .datetime-container {
-                display: none;
-            }
-
-            .logout-btn span {
-                display: none;
-            }
-
-            .logout-btn {
-                padding: 0.5rem;
-                width: 40px;
-                height: 40px;
-                justify-content: center;
-            }
-
-            .navbar-container {
-                padding: 0 1rem;
-            }
-
-            .brand-text {
-                display: none;
-            }
-
-            .mobile-brand {
-                display: flex;
-            }
-        }
-
-        @media (min-width: 769px) {
-            .mobile-brand {
-                display: none;
-            }
-
-            .brand-text {
-                display: flex;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .navbar {
-                height: 65px;
-            }
-
-            .sidebar {
-                top: 65px;
-                height: calc(100vh - 65px);
-            }
-
-            main {
-                margin-top: 65px;
-            }
-
-            .mobile-toggle {
-                width: 36px;
-                height: 36px;
-            }
-
-            .brand-logo {
-                width: 40px;
-                height: 40px;
-            }
-
-            .logout-btn {
-                width: 36px;
-                height: 36px;
-            }
-        }
-
-        /* Scrollbar Styling */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.4);
-        }
-
-        /* Input field styling */
+        /* Input Fields */
         .payroll-input {
             width: 100%;
             padding: 0.25rem 0.5rem;
@@ -2632,837 +2507,76 @@ ob_end_flush();
             border-color: #3b82f6;
         }
 
-        .payroll-input.editable:focus {
-            border-color: #3b82f6;
-        }
-
-        .payroll-input.error {
-            border-color: #ef4444;
-            background-color: #fef2f2;
-        }
-
-        /* Zero amount styling */
-        .zero-amount {
-            color: #9ca3af;
-            font-style: italic;
-        }
-
-        /* Full month disabled field styling */
-        .full-month-disabled {
-            background-color: #f0f0f0 !important;
-            color: #888 !important;
-            cursor: not-allowed !important;
-            border-color: #e0e0e0 !important;
-        }
-
-        .full-month-disabled:hover {
-            border-color: #e0e0e0 !important;
-        }
-
-        .full-month-disabled:focus {
-            outline: none !important;
-            box-shadow: none !important;
-            border-color: #e0e0e0 !important;
-        }
-
-        /* Alert messages */
-        .alert {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            animation: slideDown 0.3s ease;
-        }
-
-        @keyframes slideDown {
-            from {
-                transform: translateY(-100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .alert-success {
-            background-color: #d1fae5;
-            color: #065f46;
-            border: 1px solid #a7f3d0;
-        }
-
-        .alert-error {
-            background-color: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-        }
-
-        .alert-info {
-            background-color: #dbeafe;
-            color: #1e40af;
-            border: 1px solid #bfdbfe;
-        }
-
-        /* Notification */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            color: white;
-            font-weight: 500;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        /* Payroll period selector */
-        .period-selector {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            display: inline-block;
-        }
-
-        .status-pending {
-            background-color: #fef3c7;
-            color: #92400e;
-        }
-
-        .status-approved {
-            background-color: #d1fae5;
-            color: #065f46;
-        }
-
-        .status-paid {
-            background-color: #dbeafe;
-            color: #1e40af;
-        }
-
-        .status-cancelled {
-            background-color: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status-draft {
-            background-color: #e5e7eb;
-            color: #374151;
-        }
-
-        /* Modal styles */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 0.5rem;
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            animation: modalSlideIn 0.3s ease;
-        }
-
-        .modal-content.large {
-            max-width: 800px;
-        }
-
-        @keyframes modalSlideIn {
-            from {
-                transform: translateY(-50px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .modal-header {
-            padding: 1rem;
-            border-bottom: 1px solid #e5e7eb;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 0.5rem 0.5rem 0 0;
-        }
-
-        .modal-header h3 {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .modal-header button {
-            color: white;
-            opacity: 0.8;
-            transition: opacity 0.2s;
-        }
-
-        .modal-header button:hover {
-            opacity: 1;
-        }
-
-        .modal-body {
-            padding: 1.5rem;
-        }
-
-        .modal-footer {
-            padding: 1rem;
-            border-top: 1px solid #e5e7eb;
-            display: flex;
-            justify-content: flex-end;
-            gap: 0.5rem;
-        }
-
-        /* Employee details styles */
-        .detail-section {
-            margin-bottom: 1.5rem;
-        }
-
-        .detail-section h4 {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 0.75rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .detail-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.75rem;
-        }
-
-        .detail-item {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .detail-item.full-width {
-            grid-column: span 2;
-        }
-
-        .detail-label {
-            font-size: 0.75rem;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .detail-value {
-            font-size: 0.9rem;
-            font-weight: 500;
-            color: #1f2937;
-        }
-
-        .detail-value.highlight {
-            color: #059669;
-            font-weight: 600;
-        }
-
-        .attendance-summary {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .attendance-card {
-            flex: 1;
-            min-width: 120px;
-            padding: 1rem;
-            background: #f9fafb;
-            border-radius: 0.5rem;
-            text-align: center;
-        }
-
-        .attendance-card .value {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-
-        .attendance-card .label {
-            font-size: 0.8rem;
-            color: #6b7280;
-        }
-
-        .history-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-
-        .history-table th {
-            background: #f9fafb;
-            padding: 0.5rem;
-            text-align: left;
-            font-weight: 600;
-            color: #374151;
-        }
-
-        .history-table td {
-            padding: 0.5rem;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        /* Chart container */
-        .chart-container {
-            position: relative;
-            height: 300px;
-            width: 100%;
-        }
-
-        /* Tab navigation */
-        .tabs {
-            display: flex;
-            border-bottom: 1px solid #e5e7eb;
-            margin-bottom: 1rem;
-        }
-
-        .tab {
-            padding: 0.5rem 1rem;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s ease;
-        }
-
-        .tab:hover {
-            color: var(--primary);
-        }
-
-        .tab.active {
-            border-bottom-color: var(--primary);
-            color: var(--primary);
-            font-weight: 500;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* Loading spinner */
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid var(--primary);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* Tooltip */
-        .tooltip {
-            position: relative;
-            display: inline-block;
-        }
-
-        .tooltip .tooltip-text {
-            visibility: hidden;
-            width: 120px;
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            border-radius: 6px;
-            padding: 5px;
-            position: absolute;
-            z-index: 1;
-            bottom: 125%;
-            left: 50%;
-            margin-left: -60px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .tooltip:hover .tooltip-text {
-            visibility: visible;
-            opacity: 1;
-        }
-
-        /* Print button styles */
-        .print-btn {
-            background-color: #10b981;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .print-btn:hover {
-            background-color: #059669;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .print-btn:disabled {
-            background-color: #9ca3af;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .print-btn i {
-            font-size: 1rem;
-        }
-
-        /* Loading overlay */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.8);
-            z-index: 10000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .loading-overlay.active {
-            display: flex;
-        }
-
-        /* Cutoff selector styles */
-        .cutoff-selector {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .cutoff-btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid #e5e7eb;
-            background: white;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #4b5563;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .cutoff-btn:hover {
-            background: #f3f4f6;
-            border-color: #d1d5db;
-        }
-
-        .cutoff-btn.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        .cutoff-btn i {
-            margin-right: 0.25rem;
-        }
-
-        .cutoff-info {
-            font-size: 0.8rem;
-            color: #6b7280;
-            margin-top: 0.25rem;
-        }
-
-        /* Disabled field styling */
-        .disabled-field {
-            background-color: #f3f4f6;
-            color: #374151;
-            font-weight: 500;
-        }
-
-        /* Compensation header background */
-        .compensation-header {
-            background-color: #e6f3ff;
-        }
-
-        /* Deductions header background */
-        .deductions-header {
-            background-color: #fff3e6;
-        }
-
-        /* Days present indicator */
+        /* Days Present Badge */
         .days-present-badge {
-            background-color: #e0f2fe;
-            color: #0369a1;
+            display: inline-block;
             padding: 0.125rem 0.5rem;
             border-radius: 9999px;
             font-size: 0.7rem;
             font-weight: 600;
-            display: inline-block;
-            margin-top: 0.25rem;
+            margin-left: 0.25rem;
         }
 
         .days-present-badge.warning {
-            background-color: #fee2e2;
+            background: #fee2e2;
             color: #b91c1c;
         }
 
         .days-present-badge.success {
-            background-color: #d1fae5;
+            background: #d1fae5;
             color: #065f46;
         }
 
-        .days-present-badge.info {
-            background-color: #e0f2fe;
-            color: #0369a1;
-        }
-
-        /* Stats cards for attendance summary - NEW COMPACT STYLE */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        /* Action Buttons */
+        .action-buttons {
             display: flex;
-            align-items: center;
-            gap: 1rem;
-            transition: all 0.3s ease;
+            gap: 0.25rem;
         }
 
-        .stat-card:hover {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            transform: translateY(-2px);
-        }
-
-        .stat-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-        }
-
-        .stat-icon.blue {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .stat-icon.green {
-            background: #d1fae5;
-            color: #059669;
-        }
-
-        .stat-icon.purple {
-            background: #ede9fe;
-            color: #7c3aed;
-        }
-
-        .stat-icon.orange {
-            background: #ffedd5;
-            color: #ea580c;
-        }
-
-        .stat-content {
-            flex: 1;
-        }
-
-        .stat-label {
+        .action-btn {
+            padding: 0.375rem 0.5rem;
+            border-radius: 0.375rem;
             font-size: 0.75rem;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
-        }
-
-        .stat-value {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #1f2937;
-            line-height: 1.2;
-        }
-
-        .stat-desc {
-            font-size: 0.7rem;
-            color: #9ca3af;
-            margin-top: 0.25rem;
-        }
-
-        @media (max-width: 768px) {
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 0.75rem;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Auto-save indicator */
-        .auto-save-indicator {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #1e40af;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #3b82f6;
             color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 50px;
-            font-size: 0.875rem;
+        }
+
+        .action-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* Print Actions Bar */
+        .print-actions {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            z-index: 9999;
-            animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-            from {
-                transform: translateY(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .auto-save-indicator.saving {
-            background: #f59e0b;
-        }
-
-        .auto-save-indicator.saved {
-            background: #10b981;
-        }
-
-        .auto-save-indicator.error {
-            background: #ef4444;
-        }
-
-        /* Header action bar */
-        .header-action-bar {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        @media (min-width: 1024px) {
-            .header-action-bar {
-                flex-direction: row;
-                align-items: center;
-                justify-content: space-between;
-            }
-        }
-
-        .page-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #111827;
-            line-height: 1.2;
-        }
-
-        .page-subtitle {
-            font-size: 0.875rem;
-            color: #6b7280;
-            margin-top: 0.25rem;
-        }
-
-        .controls-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            width: 100%;
-        }
-
-        @media (min-width: 1024px) {
-            .controls-wrapper {
-                width: auto;
-                min-width: 400px;
-            }
-        }
-
-        .period-cutoff-wrapper {
-            background: white;
-            border: 1px solid #e5e7eb;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background: #f9fafb;
             border-radius: 0.5rem;
-            padding: 0.75rem;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
         }
 
-        .action-buttons-wrapper {
-            display: flex;
-            gap: 0.5rem;
-            justify-content: flex-end;
-        }
-
-        /* PAGINATION STYLES */
-        .pagination-container {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-            padding: 1rem;
-            background: white;
-            border-top: 1px solid #e5e7eb;
-        }
-
-        @media (min-width: 640px) {
-            .pagination-container {
-                flex-direction: row;
-            }
-        }
-
-        .pagination-info {
-            font-size: 0.875rem;
-            color: #6b7280;
-        }
-
-        .pagination-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .pagination-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 2.5rem;
-            height: 2.5rem;
-            padding: 0 0.5rem;
+        .selected-count {
             font-size: 0.875rem;
             font-weight: 500;
-            color: #4b5563;
-            background-color: white;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            transition: all 0.2s ease;
-            cursor: pointer;
-            text-decoration: none;
-        }
-
-        .pagination-btn:hover:not(:disabled):not(.active) {
-            background-color: #f3f4f6;
-            border-color: #9ca3af;
-            color: #374151;
-        }
-
-        .pagination-btn.active {
-            background-color: #3b82f6;
-            border-color: #3b82f6;
-            color: white;
-        }
-
-        .pagination-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .pagination-ellipsis {
-            border: none;
-            background: none;
-            cursor: default;
-            min-width: auto;
-            padding: 0 0.25rem;
-        }
-
-        .pagination-ellipsis:hover {
-            background: none;
-            transform: none;
-        }
-
-        /* Records per page selector */
-        .per-page-selector {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background-color: white;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
+            color: var(--primary);
+            background: #eff6ff;
             padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
         }
 
-        .per-page-selector select {
-            border: none;
-            background: transparent;
-            font-size: 0.875rem;
-            color: #374151;
-            outline: none;
-            cursor: pointer;
-            padding: 0.25rem 0;
-        }
-
-        .per-page-selector select:focus {
-            ring: none;
-        }
-
-        /* Search container */
+        /* Search Container */
         .search-container {
             position: relative;
-            width: 100%;
             max-width: 300px;
         }
 
@@ -3487,39 +2601,416 @@ ob_end_flush();
             top: 50%;
             transform: translateY(-50%);
             color: #9ca3af;
-            pointer-events: none;
         }
 
-        /* Table footer */
-        .table-footer {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+        /* Pagination */
+        .pagination-btn {
+            display: inline-flex;
             align-items: center;
-            gap: 1rem;
-            padding: 1rem;
-            background: #f9fafb;
-            border-top: 1px solid #e5e7eb;
+            justify-content: center;
+            min-width: 2.5rem;
+            height: 2.5rem;
+            padding: 0 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #4b5563;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
         }
 
-        @media (min-width: 768px) {
-            .table-footer {
-                flex-direction: row;
+        .pagination-btn:hover:not(:disabled):not(.active) {
+            background: #f3f4f6;
+            border-color: #9ca3af;
+            color: #374151;
+        }
+
+        .pagination-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Per Page Selector */
+        .per-page-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.25rem 0.75rem;
+        }
+
+        .per-page-selector select {
+            border: none;
+            background: transparent;
+            font-size: 0.875rem;
+            color: #374151;
+            outline: none;
+            cursor: pointer;
+            padding: 0.25rem 0;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+
+        /* Status Badges */
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-approved {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-paid {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1100;
+            padding: 1rem;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 18px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            animation: slideUp 0.3s ease;
+        }
+
+        .modal-content.large {
+            max-width: 1000px;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
             }
         }
 
-        /* Contractual specific colors */
-        .bg-contractual {
-            background-color: #e6f3ff;
+        .modal-header {
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+            padding: 1.25rem 1.5rem;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
-        .text-contractual {
+        .modal-header h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+        }
+
+        .close-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            max-height: calc(90vh - 80px);
+        }
+
+        /* Employee Details Modal Styles */
+        .attendance-summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .attendance-card {
+            flex: 1;
+            min-width: 120px;
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .attendance-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .attendance-card .label {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        /* Loading Spinner */
+        .loading-spinner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+
+        .spinner {
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 3px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 14px;
+            padding: 1.25rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-icon.blue {
+            background: #dbeafe;
             color: #1e40af;
+        }
+
+        .stat-icon.green {
+            background: #d1fae5;
+            color: #059669;
+        }
+
+        .stat-icon.purple {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+
+        .stat-icon.orange {
+            background: #ffedd5;
+            color: #ea580c;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #1f2937;
+            line-height: 1;
+        }
+
+        /* Auto-save Indicator */
+        .auto-save-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1e40af;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 9999;
+            animation: slideUp 0.3s ease;
+        }
+
+        .auto-save-indicator.saving {
+            background: #f59e0b;
+        }
+
+        .auto-save-indicator.saved {
+            background: #10b981;
+        }
+
+        .auto-save-indicator.error {
+            background: #ef4444;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+
+        .sidebar-item.logout {
+            color: #fecaca;
+            margin-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1rem;
+        }
+
+        .sidebar-item.logout:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fecaca;
         }
     </style>
 </head>
 
-<body class="bg-gray-50">
+<body>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
@@ -3531,26 +3022,28 @@ ob_end_flush();
         <span>Saving...</span>
     </div>
 
-    <!-- Navigation Header -->
+    <!-- Navigation Header - Matching Employee.php -->
     <nav class="navbar">
         <div class="navbar-container">
             <!-- Left Section -->
             <div class="navbar-left">
                 <!-- Mobile Menu Toggle -->
-                <button class="mobile-toggle" id="mobile-menu-toggle">
+                <button class="mobile-toggle" id="sidebar-toggle">
                     <i class="fas fa-bars"></i>
                 </button>
 
-                <!-- Logo and Brand (Desktop) -->
-                <a href="../dashboard.php" class="navbar-brand hidden lg:flex">
-                    <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
+                <!-- Logo and Brand -->
+                <a href="../dashboard.php" class="navbar-brand">
+                    <img class="brand-logo"
+                        src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" />
                     <div class="brand-text">
                         <span class="brand-title">HR Management System</span>
                         <span class="brand-subtitle">Paluan Occidental Mindoro</span>
                     </div>
                 </a>
 
-                <!-- Logo and Brand (Mobile) -->
+                <!-- Mobile Brand -->
                 <div class="mobile-brand lg:hidden">
                     <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
                     <div class="mobile-brand-text">
@@ -3563,7 +3056,7 @@ ob_end_flush();
             <!-- Right Section -->
             <div class="navbar-right">
                 <!-- Date & Time -->
-                <div class="datetime-container hidden md:flex">
+                <div class="datetime-container">
                     <div class="datetime-box">
                         <i class="datetime-icon fas fa-calendar-alt"></i>
                         <div class="datetime-text">
@@ -3590,308 +3083,267 @@ ob_end_flush();
         </div>
     </nav>
 
-    <!-- Sidebar Overlay for Mobile -->
-    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <!-- Mobile Overlay -->
+    <div class="overlay" id="overlay"></div>
 
-    <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-content">
-            <ul class="space-y-1">
+    <!-- Sidebar - Matching Employee.php with Contractual active -->
+    <div class="sidebar-container" id="sidebar-container">
+        <div class="sidebar">
+            <div class="sidebar-content">
                 <!-- Dashboard -->
-                <li>
-                    <a href="../dashboard.php" class="sidebar-item">
-                        <i class="fas fa-chart-line"></i>
-                        <span>Dashboard Analytics</span>
-                    </a>
-                </li>
+                <a href="../dashboard.php" class="sidebar-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard Analytics</span>
+                </a>
 
                 <!-- Employees -->
-                <li>
-                    <a href="../employees/Employee.php" class="sidebar-item">
-                        <i class="fas fa-users"></i>
-                        <span>Employees</span>
-                    </a>
-                </li>
+                <a href="../employees/Employee.php" class="sidebar-item">
+                    <i class="fas fa-users"></i>
+                    <span>Employees</span>
+                </a>
 
                 <!-- Attendance -->
-                <li>
-                    <a href="../attendance.php" class="sidebar-item">
-                        <i class="fas fa-calendar-check"></i>
-                        <span>Attendance</span>
-                    </a>
-                </li>
+                <a href="../attendance.php" class="sidebar-item">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>Attendance</span>
+                </a>
 
-                <!-- Payroll Dropdown -->
-                <li>
-                    <a href="#" class="sidebar-item active" id="payroll-toggle">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <span>Payroll</span>
-                        <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
+                <!-- Payroll - Active and Open -->
+                <a href="#" class="sidebar-item active" id="payroll-toggle">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Payroll</span>
+                    <i class="fas fa-chevron-down chevron rotated ml-auto"></i>
+                </a>
+                <div class="sidebar-dropdown-menu open" id="payroll-dropdown">
+                    <a href="contractualpayrolltable1.php" class="sidebar-dropdown-item active">
+                        <i class="fas fa-circle text-xs"></i>
+                        Contractual
                     </a>
-                    <div class="submenu" id="payroll-submenu">
-                        <a href="#" class="submenu-item active">
-                            <i class="fas fa-circle text-xs"></i>
-                            Contractual
-                        </a>
-                        <a href="joboerderpayrolltable1.php" class="submenu-item">
-                            <i class="fas fa-circle text-xs"></i>
-                            Job Order
-                        </a>
-                        <a href="permanentpayrolltable1.php" class="submenu-item">
-                            <i class="fas fa-circle text-xs"></i>
-                            Permanent
-                        </a>
-                    </div>
-                </li>
-
-                <!-- Salary -->
-                <li>
-                    <a href="../sallarypayheads.php" class="sidebar-item">
-                        <i class="fas fa-hand-holding-usd"></i>
-                        <span>Salary Structure</span>
+                    <a href="joboerderpayrolltable1.php" class="sidebar-dropdown-item">
+                        <i class="fas fa-circle text-xs"></i>
+                        Job Order
                     </a>
-                </li>
+                    <a href="permanentpayrolltable1.php" class="sidebar-dropdown-item">
+                        <i class="fas fa-circle text-xs"></i>
+                        Permanent
+                    </a>
+                </div>
 
                 <!-- Settings -->
-                <li>
-                    <a href="../settings.php" class="sidebar-item">
-                        <i class="fas fa-sliders-h"></i>
-                        <span>Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
+                <a href="../settings.php" class="sidebar-item">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Settings</span>
+                </a>
 
-        <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <div class="text-center text-white/60 text-sm">
-                <p>HRMS v2.0</p>
-                <p class="text-xs mt-1">© 2024 Paluan LGU</p>
+                <!-- Logout -->
+                <a href="?logout=true" class="sidebar-item logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="text-center text-white/60 text-sm">
+                    <p>HRMS v2.0</p>
+                    <p class="text-xs mt-1">© 2024 Paluan LGU</p>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Main Content -->
-    <main>
-        <!-- Alert Messages -->
-        <?php if ($success_message): ?>
-            <div class="alert alert-success mb-4">
-                <i class="fas fa-check-circle mr-2"></i> <?php echo htmlspecialchars($success_message); ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($info_message): ?>
-            <div class="alert alert-info mb-4">
-                <i class="fas fa-info-circle mr-2"></i> <?php echo htmlspecialchars($info_message); ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($error_message): ?>
-            <div class="alert alert-error mb-4">
-                <i class="fas fa-exclamation-circle mr-2"></i> <?php echo htmlspecialchars($error_message); ?>
-            </div>
-        <?php endif; ?>
-
-        <!-- Business Rules Info Banner -->
-        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <i class="fas fa-info-circle text-blue-400"></i>
-                </div>
-                <div class="ml-3">
-                    <p class="text-sm text-blue-700">
-                        <strong>Contractual Payroll Rules:</strong>
-                        Gross amount = days present × daily rate + other compensation.
-                        <span class="font-bold">Deductions include: Withholding Tax and SSS Contribution.</span>
-                        <?php if ($is_full_month): ?>
-                            You are viewing <strong>Full Month</strong>. All deduction fields are disabled.
-                            Please switch to First Half or Second Half to edit these values.
-                        <?php else: ?>
-                            You are viewing <strong><?php echo $current_cutoff['label']; ?></strong>.
-                            All deduction fields can be edited here.
-                        <?php endif; ?>
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Breadcrumb -->
-        <nav class="breadcrumb" aria-label="Breadcrumb">
-            <ol class="inline-flex items-center space-x-1 md:space-x-2">
-                <li class="inline-flex items-center">
-                    <a href="contractualpayrolltable1.php" class="inline-flex items-center text-sm font-medium text-primary-600 hover:text-primary-700">
-                        <i class="fas fa-home mr-2"></i> Contractual Payroll
-                    </a>
-                </li>
-                <li>
-                    <div class="flex items-center">
+    <main class="main-content">
+        <div class="bg-white rounded-xl shadow-lg p-4 md:p-6">
+            <!-- Breadcrumb Navigation -->
+            <nav class="flex mb-4 overflow-x-auto">
+                <ol class="inline-flex items-center space-x-1 md:space-x-2 rtl:space-x-reverse whitespace-nowrap">
+                    <li class="inline-flex items-center">
+                        <a href="contractualpayrolltable1.php"
+                            class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-600">
+                            <i class="fas fa-home mr-2"></i>Contractual Payroll
+                        </a>
+                    </li>
+                    <li>
                         <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-                        <a href="contractual_payroll_obligation.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">Payroll & Obligation Request</a>
-                    </div>
-                </li>
-            </ol>
-        </nav>
+                        <a href="contractual_payroll_obligation.php" class="ms-1 text-sm font-medium hover:text-blue-600 md:ms-2">Payroll & Obligation</a>
+                    </li>
+                </ol>
+            </nav>
 
-        <!-- Page Header with Title and Controls -->
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
-            <!-- Left side - Title (Compact) -->
-            <div class="flex items-center gap-3">
-                <div class="bg-blue-100 p-2 rounded-lg">
-                    <i class="fas fa-file-invoice text-blue-600 text-lg"></i>
+            <!-- Alert Messages -->
+            <?php if ($success_message): ?>
+                <div class="alert alert-success mb-4">
+                    <i class="fas fa-check-circle mr-2"></i> <?php echo htmlspecialchars($success_message); ?>
                 </div>
-                <div>
-                    <h1 class="text-xl font-bold text-gray-900">Contractual Payroll</h1>
-                    <p class="text-xs text-gray-500">Manage contractual employee payroll</p>
+            <?php endif; ?>
+
+            <?php if ($info_message): ?>
+                <div class="alert alert-info mb-4">
+                    <i class="fas fa-info-circle mr-2"></i> <?php echo htmlspecialchars($info_message); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($error_message): ?>
+                <div class="alert alert-error mb-4">
+                    <i class="fas fa-exclamation-circle mr-2"></i> <?php echo htmlspecialchars($error_message); ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- Business Rules Info Banner -->
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-info-circle text-blue-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-blue-700">
+                            <strong>Contractual Payroll Rules:</strong>
+                            Gross amount = days present × daily rate + other compensation.
+                            <span class="font-bold">Deductions include: Withholding Tax and SSS Contribution.</span>
+                            <?php if ($is_full_month): ?>
+                                You are viewing <strong>Full Month</strong>. All deduction fields are disabled.
+                                Please switch to First Half or Second Half to edit these values.
+                            <?php else: ?>
+                                You are viewing <strong><?php echo $current_cutoff['label']; ?></strong>.
+                                All deduction fields can be edited here.
+                            <?php endif; ?>
+                        </p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Right side - Controls (Compact) -->
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <!-- Period and Cutoff Group -->
-                <div class="flex flex-col sm:flex-row bg-white border border-gray-200 rounded-lg overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-gray-200">
-                    <!-- Period Dropdown -->
-                    <select id="payroll-period"
-                        class="px-3 py-2 text-sm border-0 focus:ring-0 bg-transparent min-w-[140px]">
-                        <?php
-                        for ($i = 0; $i < 12; $i++) {
-                            $date = date('Y-m', strtotime("-$i months"));
-                            $display = date('F Y', strtotime("-$i months"));
-                            $selected = ($date == $selected_period) ? 'selected' : '';
-                            echo "<option value=\"$date\" $selected>$display</option>";
-                        }
-                        ?>
-                    </select>
-
-                    <!-- Cutoff Buttons Group -->
-                    <div class="flex divide-x divide-gray-200">
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=full&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
-                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'full') ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
-                            Full
-                        </a>
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=first_half&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
-                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'first_half') ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
-                            1st Half
-                        </a>
-                        <a href="?period=<?php echo $selected_period; ?>&cutoff=second_half&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
-                            class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'second_half') ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
-                            2nd Half
-                        </a>
+            <!-- Page Header with Title and Controls -->
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                <!-- Left side - Title -->
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-100 p-2 rounded-lg">
+                        <i class="fas fa-file-invoice text-blue-600 text-lg"></i>
                     </div>
-
-                    <!-- Compact Info Badge -->
-                    <div class="hidden sm:flex items-center px-3 bg-gray-50">
-                        <span class="text-xs text-gray-600 whitespace-nowrap">
-                            <i class="fas fa-calendar text-gray-400 mr-1"></i>
-                            <?php echo date('M d', strtotime($current_cutoff['start'])); ?> -
-                            <?php echo date('d', strtotime($current_cutoff['end'])); ?>
-                            (<?php echo $current_cutoff['working_days']; ?>d)
-                        </span>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">Contractual Payroll</h1>
+                        <p class="text-xs text-gray-500">Manage contractual employee payroll</p>
                     </div>
                 </div>
 
-                <!-- Action Buttons Group -->
-                <div class="flex items-center gap-1">
-                    <?php if ($payroll_status == 'pending' || $payroll_status == 'draft'): ?>
-                        <button id="calculate-all-btn"
-                            class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1">
-                            <i class="fas fa-calculator"></i>
-                            <span class="hidden sm:inline">Calculate</span>
+                <!-- Right side - Controls -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <!-- Period and Cutoff Group -->
+                    <div class="flex flex-col sm:flex-row bg-white border border-gray-200 rounded-lg overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-gray-200">
+                        <!-- Period Dropdown -->
+                        <select id="payroll-period"
+                            class="px-3 py-2 text-sm border-0 focus:ring-0 bg-transparent min-w-[140px]">
+                            <?php
+                            for ($i = 0; $i < 12; $i++) {
+                                $date = date('Y-m', strtotime("-$i months"));
+                                $display = date('F Y', strtotime("-$i months"));
+                                $selected = ($date == $selected_period) ? 'selected' : '';
+                                echo "<option value=\"$date\" $selected>$display</option>";
+                            }
+                            ?>
+                        </select>
+
+                        <!-- Cutoff Buttons Group -->
+                        <div class="flex divide-x divide-gray-200">
+                            <a href="?period=<?php echo $selected_period; ?>&cutoff=full&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
+                                class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'full') ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
+                                Full
+                            </a>
+                            <a href="?period=<?php echo $selected_period; ?>&cutoff=first_half&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
+                                class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'first_half') ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
+                                1st Half
+                            </a>
+                            <a href="?period=<?php echo $selected_period; ?>&cutoff=second_half&page=1&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>"
+                                class="px-3 py-2 text-xs font-medium <?php echo ($selected_cutoff == 'second_half') ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'; ?>">
+                                2nd Half
+                            </a>
+                        </div>
+
+                        <!-- Compact Info Badge -->
+                        <div class="hidden sm:flex items-center px-3 bg-gray-50">
+                            <span class="text-xs text-gray-600 whitespace-nowrap">
+                                <i class="fas fa-calendar text-gray-400 mr-1"></i>
+                                <?php echo date('M d', strtotime($current_cutoff['start'])); ?> -
+                                <?php echo date('d', strtotime($current_cutoff['end'])); ?>
+                                (<?php echo $current_cutoff['working_days']; ?>d)
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons Group -->
+                    <div class="flex items-center gap-1">
+                        <!-- Print Button -->
+                        <button id="print-selected-btn" class="print-btn px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1" onclick="printSelectedPayslips()" disabled>
+                            <i class="fas fa-print"></i>
+                            <span class="hidden sm:inline">Print Payslips</span>
+                            <span id="selected-count-badge" class="ml-1 px-1.5 py-0.5 bg-white text-green-700 rounded-full text-xs font-bold hidden">0</span>
                         </button>
-                    <?php endif; ?>
-
-                    <!-- Print Button -->
-                    <button id="print-selected-btn" class="print-btn" onclick="printSelectedPayslips()" disabled>
-                        <i class="fas fa-print"></i>
-                        <span class="hidden sm:inline">Print Payslips</span>
-                        <span id="selected-count-badge" class="ml-1 px-1.5 py-0.5 bg-white text-green-700 rounded-full text-xs font-bold hidden">0</span>
-                    </button>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Print Actions Bar (Shows when items are selected) -->
-        <div id="print-actions-bar" class="print-actions hidden">
-            <span class="selected-count">
-                <i class="fas fa-check-circle"></i>
-                <span id="selected-count-text">0</span> employee(s) selected
-            </span>
-            <button onclick="clearSelections()" class="text-xs text-gray-600 hover:text-gray-800">
-                <i class="fas fa-times"></i> Clear
-            </button>
-        </div>
+            <!-- Mobile Info Bar (shows only on small screens) -->
+            <div class="sm:hidden flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg mb-3 text-xs text-blue-700">
+                <i class="fas fa-info-circle text-blue-500"></i>
+                <span class="truncate">
+                    <?php echo date('M d', strtotime($current_cutoff['start'])); ?> -
+                    <?php echo date('M d, Y', strtotime($current_cutoff['end'])); ?>
+                    (<?php echo $current_cutoff['working_days']; ?> days)
+                    <?php if ($is_full_month): ?>
+                        <span class="ml-1 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-[10px] font-medium">Read-Only Fields</span>
+                    <?php else: ?>
+                        <span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">Editable</span>
+                    <?php endif; ?>
+                </span>
+            </div>
 
-        <!-- Mobile Info Bar (shows only on small screens) -->
-        <div class="sm:hidden flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg mb-3 text-xs text-blue-700">
-            <i class="fas fa-info-circle text-blue-500"></i>
-            <span class="truncate">
-                <?php echo date('M d', strtotime($current_cutoff['start'])); ?> -
-                <?php echo date('M d, Y', strtotime($current_cutoff['end'])); ?>
-                (<?php echo $current_cutoff['working_days']; ?> days)
-                <?php if ($is_full_month): ?>
-                    <span class="ml-1 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-[10px] font-medium">Read-Only Fields</span>
-                <?php else: ?>
-                    <span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">Editable</span>
-                <?php endif; ?>
-            </span>
-        </div>
-
-        <!-- Stats Cards (Compact Design) -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon blue">
-                    <i class="fas fa-users"></i>
-                </div>
-                <div class="stat-content">
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <i class="fas fa-users"></i>
+                    </div>
                     <div class="stat-label">Total Employees</div>
                     <div class="stat-value"><?php echo $total_employees; ?></div>
-                    <div class="stat-desc">Active contractual</div>
                 </div>
-            </div>
 
-            <div class="stat-card">
-                <div class="stat-icon green">
-                    <i class="fas fa-calendar-check"></i>
-                </div>
-                <div class="stat-content">
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
                     <div class="stat-label">With Attendance</div>
                     <div class="stat-value"><?php echo $employees_with_attendance; ?></div>
-                    <div class="stat-desc"><?php echo $total_employees - $employees_with_attendance; ?> without</div>
                 </div>
-            </div>
 
-            <div class="stat-card">
-                <div class="stat-icon purple">
-                    <i class="fas fa-hand-holding-usd"></i>
-                </div>
-                <div class="stat-content">
+                <div class="stat-card">
+                    <div class="stat-icon purple">
+                        <i class="fas fa-hand-holding-usd"></i>
+                    </div>
                     <div class="stat-label">Total Deductions</div>
                     <div class="stat-value" id="total-deductions-display">₱<?php echo number_format($total_deductions, 2); ?></div>
-                    <div class="stat-desc">Withholding Tax + SSS</div>
                 </div>
-            </div>
 
-            <div class="stat-card">
-                <div class="stat-icon orange">
-                    <i class="fas fa-wallet"></i>
-                </div>
-                <div class="stat-content">
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <i class="fas fa-wallet"></i>
+                    </div>
                     <div class="stat-label">Net Amount</div>
                     <div class="stat-value" id="net-amount-display">₱<?php echo number_format($total_net_amount, 2); ?></div>
-                    <div class="stat-desc">Total take-home pay</div>
                 </div>
             </div>
-        </div>
 
-        <!-- Tabs Navigation -->
-        <div class="tabs">
-            <div class="tab active" data-tab="payroll">Payroll Details</div>
-            <div class="tab" data-tab="summary">Payroll Summary</div>
-        </div>
+            <!-- Print Actions Bar (Shows when items are selected) -->
+            <div id="print-actions-bar" class="print-actions hidden">
+                <span class="selected-count">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="selected-count-text">0</span> employee(s) selected
+                </span>
+                <button onclick="clearSelections()" class="text-xs text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-times"></i> Clear
+                </button>
+            </div>
 
-        <!-- Payroll Details Tab -->
-        <div class="tab-content active" id="tab-payroll">
-            <!-- Search Bar -->
-            <div class="mb-4 flex justify-between items-center">
+            <!-- Search Bar and Per Page Selector -->
+            <div class="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="search-container">
                     <i class="fas fa-search search-icon"></i>
                     <input type="text" id="search-employees" class="search-input" placeholder="Search employees..." value="<?php echo htmlspecialchars($search_term); ?>">
@@ -3945,7 +3397,7 @@ ob_end_flush();
                                     <th colspan="4" class="text-center compensation-header">Compensation</th>
                                     <th colspan="3" class="text-center deductions-header">Deductions</th>
                                     <th rowspan="2" class="min-w-[100px] bg-gray-100">Net Amount</th>
-                                    <th rowspan="2" class="min-w-[180px]">Actions</th>
+                                    <th rowspan="2" class="min-w-[90px]">Actions</th>
                                 </tr>
                                 <tr>
                                     <th class="min-w-[100px] compensation-header">Daily Rate</th>
@@ -4129,16 +3581,6 @@ ob_end_flush();
                                                     <button type="button" class="action-btn view-btn" onclick="viewEmployeeDetails(<?php echo $employee['user_id']; ?>, '<?php echo $selected_period; ?>', '<?php echo $selected_cutoff; ?>')">
                                                         <i class="fas fa-eye"></i> <span class="hidden md:inline">View</span>
                                                     </button>
-                                                    <?php if (!$is_full_month && ($payroll_status == 'pending' || $payroll_status == 'draft')): ?>
-                                                        <button type="button" class="action-btn bg-green-500 text-white hover:bg-green-600 calculate-row" onclick="calculateSingleRow(this)">
-                                                            <i class="fas fa-calculator"></i> <span class="hidden md:inline">Calc</span>
-                                                        </button>
-                                                    <?php endif; ?>
-                                                    <?php if ($payroll_id): ?>
-                                                        <button type="button" class="action-btn bg-purple-500 text-white hover:bg-purple-600" onclick="viewDeductions(<?php echo $payroll_id; ?>)">
-                                                            <i class="fas fa-chart-pie"></i> <span class="hidden md:inline">Deductions</span>
-                                                        </button>
-                                                    <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>
@@ -4213,14 +3655,10 @@ ob_end_flush();
                     </div>
                 </div>
 
-                <!-- Action Buttons -->
                 <?php if ($payroll_status == 'pending' || $payroll_status == 'draft'): ?>
-                    <div class="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+                    <div class="mt-6 flex justify-end">
                         <button type="submit" class="px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 flex items-center justify-center">
                             <i class="fas fa-save mr-2"></i> Save Payroll (<?php echo $current_cutoff['label']; ?>)
-                        </button>
-                        <button type="button" onclick="generateObligationRequest()" class="px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 flex items-center justify-center">
-                            Generate Obligation Request <i class="fas fa-arrow-right ml-2"></i>
                         </button>
                     </div>
                 <?php elseif ($payroll_status == 'approved'): ?>
@@ -4232,285 +3670,191 @@ ob_end_flush();
                 <?php endif; ?>
             </form>
         </div>
-
-        <!-- Payroll Summary Tab -->
-        <div class="tab-content" id="tab-summary">
-            <div class="card p-6">
-                <h2 class="text-xl font-bold mb-4">
-                    Payroll Summary for <?php echo date('F Y', strtotime($selected_period . '-01')); ?>
-                    (<?php echo $current_cutoff['label']; ?>)
-                </h2>
-
-                <?php if ($payroll_summary && ($payroll_summary['total_gross_amount'] > 0 || $payroll_summary['total_net_amount'] > 0)): ?>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <div class="summary-card">
-                                <h3 class="text-lg opacity-90">Total Net Amount</h3>
-                                <div class="amount">₱<?php echo number_format($payroll_summary['total_net_amount'] ?? 0, 2); ?></div>
-                            </div>
-
-                            <div class="mt-4 space-y-3">
-                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span class="font-medium">Total Employees:</span>
-                                    <span class="font-bold"><?php echo $payroll_summary['total_employees'] ?? 0; ?></span>
-                                </div>
-                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span class="font-medium">Total Days Present:</span>
-                                    <span class="font-bold"><?php echo number_format($payroll_summary['total_days_present'] ?? 0, 1); ?></span>
-                                </div>
-                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span class="font-medium">Total Monthly Salaries (Base):</span>
-                                    <span class="font-bold">₱<?php echo number_format($payroll_summary['total_monthly_salaries_wages'] ?? 0, 2); ?></span>
-                                </div>
-                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span class="font-medium">Total Other Compensation:</span>
-                                    <span class="font-bold">₱<?php echo number_format($payroll_summary['total_other_comp'] ?? 0, 2); ?></span>
-                                </div>
-                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span class="font-medium">Total Gross Amount:</span>
-                                    <span class="font-bold">₱<?php echo number_format($payroll_summary['total_gross_amount'] ?? 0, 2); ?></span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h3 class="text-lg font-semibold mb-3">Deductions Breakdown</h3>
-                            <div class="space-y-3">
-                                <div class="flex justify-between items-center p-3 bg-red-50 rounded">
-                                    <span class="font-medium">Withholding Tax:</span>
-                                    <span class="font-bold text-red-600">₱<?php echo number_format($payroll_summary['total_withholding_tax'] ?? 0, 2); ?></span>
-                                </div>
-                                <div class="flex justify-between items-center p-3 bg-blue-50 rounded">
-                                    <span class="font-medium">SSS Contribution:</span>
-                                    <span class="font-bold text-blue-600">₱<?php echo number_format($payroll_summary['total_sss'] ?? 0, 2); ?></span>
-                                </div>
-                                <div class="flex justify-between items-center p-3 bg-purple-50 rounded">
-                                    <span class="font-medium">Total Deductions:</span>
-                                    <span class="font-bold text-purple-600">₱<?php echo number_format($payroll_summary['total_deductions'] ?? 0, 2); ?></span>
-                                </div>
-                            </div>
-
-                            <div class="mt-6 chart-container">
-                                <canvas id="deductionsChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                <?php else: ?>
-                    <p class="text-gray-500 text-center py-8">No payroll summary available for this period and cutoff.</p>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Enhanced View Employee Modal -->
-        <div class="modal" id="viewEmployeeModal">
-            <div class="modal-content large">
-                <div class="modal-header">
-                    <h3 class="text-lg font-semibold">Employee Details</h3>
-                    <button onclick="closeModal('viewEmployeeModal')" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body" id="viewEmployeeModalBody">
-                    <!-- Content will be loaded dynamically -->
-                    <div class="text-center py-4">
-                        <div class="spinner mx-auto"></div>
-                        <p class="mt-2 text-gray-600">Loading employee details...</p>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="closeModal('viewEmployeeModal')" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                        Close
-                    </button>
-                    <button type="button" onclick="printEmployeeDetails()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-                        <i class="fas fa-print mr-2"></i> Print
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Approve Payroll Modal -->
-        <div class="modal" id="approveModal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 class="text-lg font-semibold">Approve Payroll</h3>
-                    <button onclick="closeModal('approveModal')" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <form action="?approve_payroll=1&period=<?php echo $selected_period; ?>&cutoff=<?php echo $selected_cutoff; ?>&page=<?php echo $current_page; ?>&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>" method="POST">
-                    <div class="modal-body">
-                        <p class="mb-4">Are you sure you want to approve the payroll for <?php echo date('F Y', strtotime($selected_period . '-01')); ?> (<?php echo $current_cutoff['label']; ?>)?</p>
-                        <p class="mb-4 text-sm text-gray-600">This action cannot be undone.</p>
-
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Approval Notes (Optional)</label>
-                            <textarea name="approval_notes" rows="3"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-                                placeholder="Enter any notes about this approval..."></textarea>
-                        </div>
-
-                        <div class="bg-yellow-50 p-3 rounded-lg">
-                            <p class="text-sm text-yellow-800">
-                                <i class="fas fa-info-circle mr-2"></i>
-                                Once approved, payroll data will be locked and cannot be edited.
-                            </p>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" onclick="closeModal('approveModal')" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                            Cancel
-                        </button>
-                        <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-                            Confirm Approval
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Payment Modal -->
-        <div class="modal" id="paymentModal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 class="text-lg font-semibold">Process Payment</h3>
-                    <button onclick="closeModal('paymentModal')" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <form action="" method="POST" id="paymentForm">
-                    <div class="modal-body">
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                            <select name="payment_method" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
-                                <option value="bank_transfer">Bank Transfer</option>
-                                <option value="check">Check</option>
-                                <option value="cash">Cash</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Reference Number</label>
-                            <input type="text" name="reference_number"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-                                placeholder="Enter reference number">
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Payment Notes</label>
-                            <textarea name="payment_notes" rows="3"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
-                                placeholder="Enter any notes about this payment..."></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <input type="hidden" name="payroll_id" id="payment_payroll_id">
-                        <button type="button" onclick="closeModal('paymentModal')" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                            Cancel
-                        </button>
-                        <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">
-                            Process Payment
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Deductions Detail Modal -->
-        <div class="modal" id="deductionsModal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 class="text-lg font-semibold">Deductions Details</h3>
-                    <button onclick="closeModal('deductionsModal')" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body" id="deductionsModalBody">
-                    <!-- Content will be loaded dynamically -->
-                </div>
-            </div>
-        </div>
     </main>
 
-    <!-- JavaScript - COMPLETE VERSION WITH FIXES FOR DUPLICATE ISSUES -->
+    <!-- View Employee Modal -->
+    <div class="modal-overlay" id="viewEmployeeModal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 class="text-lg font-semibold">Employee Details</h3>
+                <button class="close-button" id="closeViewModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="viewEmployeeModalBody">
+                <!-- Content will be loaded dynamically -->
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>Loading employee details...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Approve Payroll Modal -->
+    <div class="modal-overlay" id="approveModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="text-lg font-semibold">Approve Payroll</h3>
+                <button class="close-button" id="closeApproveModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form action="?approve_payroll=1&period=<?php echo $selected_period; ?>&cutoff=<?php echo $selected_cutoff; ?>&page=<?php echo $current_page; ?>&per_page=<?php echo $records_per_page; ?><?php echo !empty($search_term) ? '&search=' . urlencode($search_term) : ''; ?>" method="POST">
+                <div class="modal-body">
+                    <p class="mb-4">Are you sure you want to approve the payroll for <?php echo date('F Y', strtotime($selected_period . '-01')); ?> (<?php echo $current_cutoff['label']; ?>)?</p>
+                    <p class="mb-4 text-sm text-gray-600">This action cannot be undone.</p>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Approval Notes (Optional)</label>
+                        <textarea name="approval_notes" rows="3"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                            placeholder="Enter any notes about this approval..."></textarea>
+                    </div>
+
+                    <div class="bg-yellow-50 p-3 rounded-lg">
+                        <p class="text-sm text-yellow-800">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            Once approved, payroll data will be locked and cannot be edited.
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer p-4 border-t border-gray-200 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('approveModal')" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                        Confirm Approval
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
     <script>
         // ============================================
-        // FIXED JAVASCRIPT - MAINTAINS EXISTING FUNCTIONALITY
+        // SIDEBAR FUNCTIONALITY - Matching Employee.php
         // ============================================
-
-        // Initialize states
-        let sidebarOpen = false;
-        let payrollMenuOpen = true;
-        let activeSaves = 0;
-        let saveTimeout;
-        let searchTimeout;
-
-        // Pagination variables
-        let currentPage = <?php echo $current_page; ?>;
-        let totalPages = <?php echo $total_pages; ?>;
-        let recordsPerPage = <?php echo $records_per_page; ?>;
-        let totalEmployees = <?php echo $total_employees; ?>;
-        let searchTerm = '<?php echo addslashes($search_term); ?>';
-        let isLoading = false;
-
-        // Global selections storage - FIXED to handle duplicates properly
-        let selectedEmployeesMap = new Map(); // Store all selected employees across pages
-        const storageKey = `contractual_selected_<?php echo $selected_period; ?>_<?php echo $selected_cutoff; ?>`;
-
-        // DOM Ready
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, total employees:', totalEmployees);
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebarContainer = document.getElementById('sidebar-container');
+            const overlay = document.getElementById('overlay');
+            const payrollToggle = document.getElementById('payroll-toggle');
+            const payrollDropdown = document.getElementById('payroll-dropdown');
 
-            // Initialize sidebar
-            initSidebar();
-
-            // Initialize payroll dropdown
-            const payrollDropdown = document.getElementById('payroll-submenu');
-            const payrollChevron = document.getElementById('payroll-toggle')?.querySelector('.chevron');
-            if (payrollDropdown) {
+            // Ensure payroll dropdown is open by default on this page
+            if (payrollToggle && payrollDropdown) {
+                // Make sure dropdown is open and chevron is rotated
                 payrollDropdown.classList.add('open');
-                if (payrollChevron) payrollChevron.classList.add('rotated');
+                const chevron = payrollToggle.querySelector('.chevron');
+                if (chevron) {
+                    chevron.classList.add('rotated');
+                }
+
+                // Keep the toggle functionality but preserve open state
+                payrollToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Toggle the dropdown
+                    payrollDropdown.classList.toggle('open');
+
+                    // Toggle chevron rotation
+                    if (chevron) {
+                        chevron.classList.toggle('rotated');
+                    }
+                });
             }
 
-            // Set hidden cutoff value
-            const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
-            if (hiddenCutoff) {
-                hiddenCutoff.value = '<?php echo $selected_cutoff; ?>';
+            // Toggle sidebar
+            if (sidebarToggle && sidebarContainer && overlay) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebarContainer.classList.toggle('active');
+                    overlay.classList.toggle('active');
+                });
+
+                overlay.addEventListener('click', function() {
+                    sidebarContainer.classList.remove('active');
+                    overlay.classList.remove('active');
+                });
             }
 
-            // Load saved selections from storage
-            loadSelectionsFromStorage();
+            // Close sidebar on window resize if open
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024 && sidebarContainer.classList.contains('active')) {
+                    sidebarContainer.classList.remove('active');
+                    overlay.classList.remove('active');
+                }
+            });
 
-            // Initialize components
-            initAutoSave();
-            initSearch();
-            initPaginationEvents();
-            highlightRowsByAttendance();
+            // Initialize date/time
             updateDateTime();
             setInterval(updateDateTime, 1000);
 
-            // Initialize tabs
-            initTabs();
-
-            // Initialize pagination buttons on initial load
-            setupPaginationButtons();
-
-            // Initialize checkbox functionality
+            // Initialize other functionality
             initCheckboxHandlers();
-
-            // Sync checkboxes with stored selections
+            initAutoSave();
+            loadSelectionsFromStorage();
             syncCheckboxesWithSelections();
 
-            // Debug: Log current selections
-            setTimeout(() => {
-                console.log('Initial selections loaded:', selectedEmployeesMap.size);
-            }, 500);
+            // Modal close handlers
+            const closeViewModalBtn = document.getElementById('closeViewModalBtn');
+            if (closeViewModalBtn) {
+                closeViewModalBtn.addEventListener('click', function() {
+                    closeModal('viewEmployeeModal');
+                });
+            }
 
-            console.log('Page loaded with global selection across pages');
+            const closeApproveModalBtn = document.getElementById('closeApproveModalBtn');
+            if (closeApproveModalBtn) {
+                closeApproveModalBtn.addEventListener('click', function() {
+                    closeModal('approveModal');
+                });
+            }
+
+            // Click outside to close modals
+            window.addEventListener('click', function(e) {
+                if (e.target.classList.contains('modal-overlay')) {
+                    e.target.classList.remove('active');
+                    document.body.style.overflow = '';
+                }
+            });
         });
 
         // ============================================
-        // GLOBAL SELECTION FUNCTIONS - FIXED for duplicates
+        // DATE/TIME FUNCTIONS
         // ============================================
+        function updateDateTime() {
+            const now = new Date();
+            const optionsDate = {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            };
+            const dateString = now.toLocaleDateString('en-US', optionsDate);
+
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+
+            const timeString = `${hours}:${minutes}:${seconds} ${ampm}`;
+
+            document.getElementById('current-date').textContent = dateString;
+            document.getElementById('current-time').textContent = timeString;
+        }
+
+        // ============================================
+        // GLOBAL SELECTION FUNCTIONS
+        // ============================================
+        let selectedEmployeesMap = new Map();
+        const storageKey = `contractual_selected_<?php echo $selected_period; ?>_<?php echo $selected_cutoff; ?>`;
 
         function loadSelectionsFromStorage() {
             try {
@@ -4519,11 +3863,9 @@ ob_end_flush();
                     const selections = JSON.parse(saved);
                     selectedEmployeesMap.clear();
 
-                    // Convert array back to Map - filter out invalid entries and duplicates
                     const uniqueSelections = new Map();
                     selections.forEach(item => {
                         if (item && item.id && item.id !== 'undefined' && item.id !== '') {
-                            // Use Map to automatically handle duplicates (last one wins)
                             uniqueSelections.set(String(item.id), {
                                 id: String(item.id),
                                 name: item.name || 'Employee',
@@ -4532,12 +3874,7 @@ ob_end_flush();
                         }
                     });
 
-                    // Convert back to our map
                     selectedEmployeesMap = uniqueSelections;
-
-                    console.log(`Loaded ${selectedEmployeesMap.size} valid unique selections from storage`);
-                } else {
-                    console.log('No saved selections found');
                 }
             } catch (e) {
                 console.error('Error loading selections:', e);
@@ -4547,12 +3884,9 @@ ob_end_flush();
 
         function saveSelectionsToStorage() {
             try {
-                // Convert Map to array for storage - filter out invalid entries
                 const selections = Array.from(selectedEmployeesMap.values())
                     .filter(item => item && item.id && item.id !== 'undefined' && item.id !== '');
-
                 sessionStorage.setItem(storageKey, JSON.stringify(selections));
-                console.log(`Saved ${selections.length} unique selections to storage`);
             } catch (e) {
                 console.error('Error saving selections:', e);
             }
@@ -4565,7 +3899,6 @@ ob_end_flush();
             employeeCheckboxes.forEach(checkbox => {
                 const employeeId = String(checkbox.value);
 
-                // Skip if ID is invalid
                 if (!employeeId || employeeId === 'undefined' || employeeId === '') {
                     return;
                 }
@@ -4578,12 +3911,7 @@ ob_end_flush();
                 }
             });
 
-            console.log(`Synced ${syncedCount} checkboxes with selections`);
-
-            // Update select all checkbox state
             updateSelectAllCheckbox();
-
-            // Update UI based on selections
             updateSelectedUI();
         }
 
@@ -4617,24 +3945,18 @@ ob_end_flush();
             const selectedCountBadge = document.getElementById('selected-count-badge');
             const selectedCountText = document.getElementById('selected-count-text');
 
-            // Filter out any invalid entries before counting
             const validSelections = Array.from(selectedEmployeesMap.values())
                 .filter(item => item && item.id && item.id !== 'undefined' && item.id !== '');
 
             const count = validSelections.length;
 
-            // If we filtered out some invalid ones, update the map
             if (count !== selectedEmployeesMap.size) {
-                console.log(`Filtered out ${selectedEmployeesMap.size - count} invalid selections`);
                 selectedEmployeesMap.clear();
                 validSelections.forEach(item => {
                     selectedEmployeesMap.set(item.id, item);
                 });
             }
 
-            console.log(`Updating UI with ${count} unique selected employees`);
-
-            // Update print button
             if (printBtn) {
                 printBtn.disabled = count === 0;
                 if (count > 0) {
@@ -4646,7 +3968,6 @@ ob_end_flush();
                 }
             }
 
-            // Update badges
             if (selectedCountBadge) {
                 selectedCountBadge.textContent = count;
                 selectedCountBadge.classList.toggle('hidden', count === 0);
@@ -4660,42 +3981,31 @@ ob_end_flush();
                 printActionsBar.classList.toggle('hidden', count === 0);
             }
 
-            // Save to storage whenever selections change
             saveSelectionsToStorage();
         }
 
         // ============================================
-        // CHECKBOX HANDLERS - FIXED
+        // CHECKBOX HANDLERS
         // ============================================
-
         function initCheckboxHandlers() {
             const selectAllCheckbox = document.getElementById('select-all');
             const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
 
-            console.log(`Initializing checkbox handlers for ${employeeCheckboxes.length} checkboxes`);
-
-            // Individual checkbox change handler
             employeeCheckboxes.forEach(checkbox => {
-                // Remove existing listeners to avoid duplicates
                 checkbox.removeEventListener('change', handleCheckboxChange);
                 checkbox.addEventListener('change', handleCheckboxChange);
             });
 
-            // Select all on current page
             if (selectAllCheckbox) {
                 selectAllCheckbox.removeEventListener('change', handleSelectAllChange);
                 selectAllCheckbox.addEventListener('change', handleSelectAllChange);
             }
-
-            // Create "Select All Across All Pages" button if it doesn't exist
-            createSelectAllPagesButton();
         }
 
         function handleCheckboxChange(e) {
             const checkbox = e.currentTarget;
             const employeeId = String(checkbox.value);
 
-            // Skip if ID is invalid
             if (!employeeId || employeeId === 'undefined' || employeeId === '') {
                 checkbox.checked = false;
                 return;
@@ -4704,37 +4014,27 @@ ob_end_flush();
             const employeeName = checkbox.dataset.employeeName || 'Employee';
             const userId = checkbox.dataset.userId || '';
 
-            console.log(`Checkbox changed for ID: ${employeeId}, checked: ${checkbox.checked}`);
-
             if (checkbox.checked) {
-                // Add to global selections (Map ensures uniqueness)
                 selectedEmployeesMap.set(employeeId, {
                     id: employeeId,
                     name: employeeName,
                     user_id: userId
                 });
             } else {
-                // Remove from global selections
                 selectedEmployeesMap.delete(employeeId);
             }
 
-            // Update UI
             updateSelectAllCheckbox();
             updateSelectedUI();
-
-            console.log(`Current unique selections count: ${selectedEmployeesMap.size}`);
         }
 
         function handleSelectAllChange(e) {
             const isChecked = e.currentTarget.checked;
             const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
 
-            console.log(`Select all changed: ${isChecked}, affecting ${employeeCheckboxes.length} checkboxes`);
-
             employeeCheckboxes.forEach(checkbox => {
                 const employeeId = String(checkbox.value);
 
-                // Skip if ID is invalid
                 if (!employeeId || employeeId === 'undefined' || employeeId === '') {
                     checkbox.checked = false;
                     return;
@@ -4756,98 +4056,28 @@ ob_end_flush();
                 checkbox.checked = isChecked;
             });
 
-            console.log(`After select all, unique selections count: ${selectedEmployeesMap.size}`);
             updateSelectedUI();
         }
 
-        function createSelectAllPagesButton() {
-            // Check if button already exists
-            if (document.getElementById('select-all-pages-btn')) return;
+        window.clearSelections = function() {
+            selectedEmployeesMap.clear();
 
-            const searchContainer = document.querySelector('.mb-4.flex.justify-between.items-center');
-            if (!searchContainer) return;
+            const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
+            employeeCheckboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
 
-            const selectAllPagesBtn = document.createElement('button');
-            selectAllPagesBtn.id = 'select-all-pages-btn';
-            selectAllPagesBtn.className = 'ml-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1';
-            selectAllPagesBtn.innerHTML = '<i class="fas fa-check-double"></i> Select All (All Pages)';
-            selectAllPagesBtn.onclick = selectAllAcrossPages;
-
-            // Add to the right side of search container
-            const rightSide = document.createElement('div');
-            rightSide.className = 'flex items-center';
-            rightSide.appendChild(selectAllPagesBtn);
-
-            // Append after per-page selector
-            const perPageSelector = document.querySelector('.per-page-selector');
-            if (perPageSelector && perPageSelector.parentNode) {
-                perPageSelector.parentNode.appendChild(rightSide);
+            const selectAllCheckbox = document.getElementById('select-all');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
             }
-        }
 
-        async function selectAllAcrossPages() {
-            showLoading();
-
-            try {
-                // Get total count of employees (without pagination)
-                const response = await fetch(window.location.href, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: new URLSearchParams({
-                        'ajax_action': 'get_all_employees_for_selection',
-                        'period': document.getElementById('payroll-period').value,
-                        'cutoff': document.getElementById('hidden-payroll-cutoff').value,
-                        'search': searchTerm
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success && result.employees) {
-                    // Clear existing selections first
-                    selectedEmployeesMap.clear();
-
-                    // Add all employees to map (Map ensures uniqueness)
-                    result.employees.forEach(emp => {
-                        if (emp.employee_id) {
-                            selectedEmployeesMap.set(String(emp.employee_id), {
-                                id: String(emp.employee_id),
-                                name: emp.employee_name || 'Employee',
-                                user_id: emp.user_id || ''
-                            });
-                        }
-                    });
-
-                    // Update checkboxes on current page
-                    const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-                    employeeCheckboxes.forEach(checkbox => {
-                        const employeeId = String(checkbox.value);
-                        checkbox.checked = selectedEmployeesMap.has(employeeId);
-                    });
-
-                    // Update select all checkbox
-                    updateSelectAllCheckbox();
-
-                    // Update UI
-                    updateSelectedUI();
-
-                    console.log(`Selected ${selectedEmployeesMap.size} unique employees across all pages`);
-                    showNotification(`Selected ${selectedEmployeesMap.size} unique employees across all pages`, 'success');
-                } else {
-                    showNotification('No employees found to select', 'error');
-                }
-            } catch (error) {
-                console.error('Error selecting all employees:', error);
-                showNotification('Error selecting all employees', 'error');
-            } finally {
-                hideLoading();
-            }
-        }
+            updateSelectedUI();
+            saveSelectionsToStorage();
+        };
 
         window.printSelectedPayslips = function() {
-            // Filter out invalid selections
             const validSelections = Array.from(selectedEmployeesMap.values())
                 .filter(item => item && item.id && item.id !== 'undefined' && item.id !== '');
 
@@ -4856,57 +4086,27 @@ ob_end_flush();
                 return;
             }
 
-            // Get all selected employee IDs (unique)
             const employeeIds = validSelections.map(item => item.id).join(',');
             const period = document.getElementById('payroll-period').value;
             const cutoff = document.getElementById('hidden-payroll-cutoff').value;
 
-            console.log(`Printing ${validSelections.length} unique payslips with IDs:`, employeeIds);
-
-            // Open in new window/tab
             window.open(`print_multiple_payslips_contractual.php?employees=${encodeURIComponent(employeeIds)}&period=${encodeURIComponent(period)}&cutoff=${encodeURIComponent(cutoff)}`, '_blank');
         };
 
-        window.clearSelections = function() {
-            // Clear the map
-            selectedEmployeesMap.clear();
-
-            // Uncheck all checkboxes
-            const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-            employeeCheckboxes.forEach(checkbox => {
-                checkbox.checked = false;
-            });
-
-            // Update select all checkbox
-            const selectAllCheckbox = document.getElementById('select-all');
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = false;
-            }
-
-            // Update UI
-            updateSelectedUI();
-
-            // Clear from storage
-            saveSelectionsToStorage();
-
-            console.log('Selections cleared');
-            showNotification('All selections cleared', 'info');
-        };
-
         // ============================================
-        // PAGINATION FUNCTIONS - FIXED to preserve selections
+        // PAGINATION FUNCTIONS
         // ============================================
+        let currentPage = <?php echo $current_page; ?>;
+        let totalPages = <?php echo $total_pages; ?>;
+        let recordsPerPage = <?php echo $records_per_page; ?>;
+        let searchTerm = '<?php echo addslashes($search_term); ?>';
+        let searchTimeout;
 
         window.changePage = function(page) {
-            if (page < 1 || page > totalPages || isLoading) return;
+            if (page < 1 || page > totalPages) return;
 
-            console.log(`Changing to page ${page}, saving selections first`);
-
-            // Save current selections to storage before navigating
             saveSelectionsToStorage();
 
-            // Update URL and reload with new page
             const url = new URL(window.location.href);
             url.searchParams.set('page', page);
             url.searchParams.set('per_page', recordsPerPage);
@@ -4918,14 +4118,10 @@ ob_end_flush();
 
         window.changePerPage = function(perPage) {
             const newPerPage = parseInt(perPage);
-            if (isNaN(newPerPage) || newPerPage < 1 || isLoading) return;
+            if (isNaN(newPerPage) || newPerPage < 1) return;
 
-            console.log(`Changing per page to ${newPerPage}, saving selections first`);
-
-            // Save current selections to storage before navigating
             saveSelectionsToStorage();
 
-            // Update URL and reload with new per_page value
             const url = new URL(window.location.href);
             url.searchParams.set('per_page', newPerPage);
             url.searchParams.set('page', '1');
@@ -4936,42 +4132,52 @@ ob_end_flush();
         };
 
         // ============================================
-        // REST OF EXISTING FUNCTIONS (AUTO-SAVE, CALCULATIONS, MODALS, ETC.)
+        // SEARCH FUNCTION
         // ============================================
+        function initSearch() {
+            const searchInput = document.getElementById('search-employees');
+            if (searchInput) {
+                searchInput.value = searchTerm;
+                searchInput.addEventListener('input', function(e) {
+                    searchTerm = e.target.value.trim();
+                    if (searchTimeout) clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        saveSelectionsToStorage();
 
-        function setupPaginationButtons() {
-            document.querySelectorAll('.pagination-btn:not([disabled])').forEach(btn => {
-                btn.removeEventListener('click', handlePaginationClick);
-                btn.addEventListener('click', handlePaginationClick);
-            });
-        }
-
-        function handlePaginationClick(e) {
-            e.preventDefault();
-            const btn = e.currentTarget;
-
-            // Save selections before navigating
-            saveSelectionsToStorage();
-
-            const pageText = btn.textContent.trim();
-            const pageNum = parseInt(pageText);
-
-            if (!isNaN(pageNum) && pageText === pageNum.toString()) {
-                changePage(pageNum);
-            } else if (btn.innerHTML.includes('angle-double-left')) {
-                changePage(1);
-            } else if (btn.innerHTML.includes('angle-double-right')) {
-                changePage(totalPages);
-            } else if (btn.innerHTML.includes('angle-left') || btn.textContent.includes('Previous')) {
-                changePage(currentPage - 1);
-            } else if (btn.innerHTML.includes('angle-right') || btn.textContent.includes('Next')) {
-                changePage(currentPage + 1);
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('page', '1');
+                        if (searchTerm) {
+                            url.searchParams.set('search', searchTerm);
+                        } else {
+                            url.searchParams.delete('search');
+                        }
+                        window.location.href = url.toString();
+                    }, 500);
+                });
             }
         }
 
-        function initPaginationEvents() {
-            setupPaginationButtons();
+        initSearch();
+
+        // Period change handler
+        const periodSelect = document.getElementById('payroll-period');
+        if (periodSelect) {
+            periodSelect.addEventListener('change', function() {
+                saveSelectionsToStorage();
+
+                const period = this.value;
+                const url = new URL(window.location.href);
+                url.searchParams.set('period', period);
+                url.searchParams.set('page', '1');
+                window.location.href = url.toString();
+            });
         }
+
+        // ============================================
+        // AUTO-SAVE FUNCTIONALITY
+        // ============================================
+        let activeSaves = 0;
+        let saveTimeout;
 
         function initAutoSave() {
             document.querySelectorAll('.auto-save-field').forEach(field => {
@@ -4993,10 +4199,7 @@ ob_end_flush();
             const field = e.currentTarget;
             if (!field) return;
 
-            if (field.readonly || field.disabled) return;
-
-            // Additional check for full month - don't allow auto-save on disabled fields
-            if (field.classList.contains('full-month-disabled')) return;
+            if (field.readonly || field.disabled || field.classList.contains('full-month-disabled')) return;
 
             if (saveTimeout) clearTimeout(saveTimeout);
             saveTimeout = setTimeout(() => {
@@ -5014,13 +4217,9 @@ ob_end_flush();
             const fieldName = field.dataset.field;
             const value = parseFloat(field.value) || 0;
 
-            const periodSelect = document.getElementById('payroll-period');
-            const period = periodSelect ? periodSelect.value : '';
+            const period = document.getElementById('payroll-period').value;
+            const cutoff = document.getElementById('hidden-payroll-cutoff').value;
 
-            const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
-            const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
-
-            // Server-side check - don't allow saving for full month
             if (cutoff === 'full') {
                 showAutoSaveIndicator('error', 'Cannot edit in Full Month');
                 field.classList.add('error');
@@ -5042,7 +4241,7 @@ ob_end_flush();
                     return;
                 }
 
-                // First, calculate all values for this row
+                // Calculate row values
                 await calculateRow(row);
 
                 // Get all current values from the row after calculation
@@ -5064,7 +4263,6 @@ ob_end_flush();
                 const monthlySalary = monthlySalaryField ? parseFloat(monthlySalaryField.value) || 0 : 0;
                 const daysPresent = daysPresentField ? parseFloat(daysPresentField.value) || 0 : 0;
 
-                // Save all fields together using the save_deductions action which handles all fields
                 const formData = new FormData();
                 formData.append('ajax_action', 'save_deductions');
                 formData.append('employee_id', userId);
@@ -5079,8 +4277,6 @@ ob_end_flush();
                 formData.append('monthly_salary', monthlySalary);
                 formData.append('days_present', daysPresent);
 
-                console.log('Saving all fields for user:', userId);
-
                 const response = await fetch(window.location.href, {
                     method: 'POST',
                     body: formData,
@@ -5094,8 +4290,6 @@ ob_end_flush();
                 }
 
                 const responseText = await response.text();
-                console.log('Raw response:', responseText);
-
                 let result;
                 try {
                     result = JSON.parse(responseText);
@@ -5107,7 +4301,6 @@ ob_end_flush();
                 if (result.success) {
                     showAutoSaveIndicator('saved');
 
-                    // Update all fields with server values if returned
                     if (result.gross_amount !== undefined && grossAmountField) {
                         grossAmountField.value = result.gross_amount.toFixed(2);
                     }
@@ -5118,16 +4311,13 @@ ob_end_flush();
                         netAmountField.value = result.net_amount.toFixed(2);
                     }
 
-                    // Mark that this row has been saved to database
                     row.setAttribute('data-payroll-exists', '1');
                     if (result.id) {
                         row.setAttribute('data-payroll-id', result.id);
                     }
 
-                    // Recalculate totals
                     await calculateAll();
                 } else {
-                    console.error('Save failed:', result.error);
                     showAutoSaveIndicator('error', result.error || 'Save failed');
                     field.classList.add('error');
                     setTimeout(() => field.classList.remove('error'), 2000);
@@ -5163,7 +4353,6 @@ ob_end_flush();
                 indicator.className = 'auto-save-indicator error';
                 indicator.innerHTML = `<i class="fas fa-exclamation-circle"></i><span>${message || 'Save failed'}</span>`;
 
-                // Show error for 3 seconds then hide
                 setTimeout(() => {
                     if (activeSaves === 0) {
                         indicator.style.display = 'none';
@@ -5172,81 +4361,9 @@ ob_end_flush();
             }
         }
 
-        function initSearch() {
-            const searchInput = document.getElementById('search-employees');
-            if (searchInput) {
-                searchInput.value = searchTerm;
-                searchInput.addEventListener('input', function(e) {
-                    searchTerm = e.target.value.trim();
-                    if (searchTimeout) clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(() => {
-                        if (!isLoading) {
-                            // Save selections before searching
-                            saveSelectionsToStorage();
-
-                            const url = new URL(window.location.href);
-                            url.searchParams.set('page', '1');
-                            if (searchTerm) {
-                                url.searchParams.set('search', searchTerm);
-                            } else {
-                                url.searchParams.delete('search');
-                            }
-                            window.location.href = url.toString();
-                        }
-                    }, 500);
-                });
-            }
-        }
-
-        const periodSelect = document.getElementById('payroll-period');
-        if (periodSelect) {
-            periodSelect.addEventListener('change', function() {
-                // Save selections before changing period
-                saveSelectionsToStorage();
-
-                const period = this.value;
-                const url = new URL(window.location.href);
-                url.searchParams.set('period', period);
-                url.searchParams.set('page', '1');
-                window.location.href = url.toString();
-            });
-        }
-
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `fixed top-20 right-5 z-50 px-4 py-3 rounded-lg shadow-lg transition-all duration-300 transform translate-x-0 ${
-                type === 'success' ? 'bg-green-500' : 
-                type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-            } text-white`;
-            notification.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-                    <span>${message}</span>
-                </div>
-            `;
-
-            document.body.appendChild(notification);
-
-            setTimeout(() => {
-                notification.classList.add('opacity-0', 'translate-x-full');
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-
-        function showLoading() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.classList.add('active');
-        }
-
-        function hideLoading() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.classList.remove('active');
-        }
-
         async function calculateRow(row) {
             if (!row) return null;
 
-            // Safe element selection with null checks
             const otherCompField = row.querySelector('.other-comp');
             const withholdingTaxField = row.querySelector('.withholding-tax');
             const sssField = row.querySelector('.sss');
@@ -5329,169 +4446,23 @@ ob_end_flush();
                 }
             }
 
-            const totalMonthlySalariesEl = document.getElementById('total-monthly-salaries-wages');
-            const totalOtherCompEl = document.getElementById('total-other-comp');
-            const totalGrossAmountEl = document.getElementById('total-gross-amount');
-            const totalWithholdingTaxEl = document.getElementById('total-withholding-tax');
-            const totalSssEl = document.getElementById('total-sss');
-            const totalDeductionEl = document.getElementById('total-deduction');
-            const totalNetAmountEl = document.getElementById('total-net-amount');
-            const totalDeductionsDisplay = document.getElementById('total-deductions-display');
-            const netAmountDisplay = document.getElementById('net-amount-display');
-
-            if (totalMonthlySalariesEl) totalMonthlySalariesEl.textContent = '₱' + totalMonthlySalariesWages.toFixed(2);
-            if (totalOtherCompEl) totalOtherCompEl.textContent = '₱' + totalOtherComp.toFixed(2);
-            if (totalGrossAmountEl) totalGrossAmountEl.textContent = '₱' + totalGross.toFixed(2);
-            if (totalWithholdingTaxEl) totalWithholdingTaxEl.textContent = '₱' + totalWithholdingTax.toFixed(2);
-            if (totalSssEl) totalSssEl.textContent = '₱' + totalSss.toFixed(2);
-            if (totalDeductionEl) totalDeductionEl.textContent = '₱' + totalDeduction.toFixed(2);
-            if (totalNetAmountEl) totalNetAmountEl.textContent = '₱' + totalNetAmount.toFixed(2);
-
-            if (totalDeductionsDisplay) totalDeductionsDisplay.textContent = '₱' + totalDeduction.toFixed(2);
-            if (netAmountDisplay) netAmountDisplay.textContent = '₱' + totalNetAmount.toFixed(2);
-
-            highlightRowsByAttendance();
+            document.getElementById('total-monthly-salaries-wages').textContent = '₱' + totalMonthlySalariesWages.toFixed(2);
+            document.getElementById('total-other-comp').textContent = '₱' + totalOtherComp.toFixed(2);
+            document.getElementById('total-gross-amount').textContent = '₱' + totalGross.toFixed(2);
+            document.getElementById('total-withholding-tax').textContent = '₱' + totalWithholdingTax.toFixed(2);
+            document.getElementById('total-sss').textContent = '₱' + totalSss.toFixed(2);
+            document.getElementById('total-deduction').textContent = '₱' + totalDeduction.toFixed(2);
+            document.getElementById('total-net-amount').textContent = '₱' + totalNetAmount.toFixed(2);
+            document.getElementById('total-deductions-display').textContent = '₱' + totalDeduction.toFixed(2);
+            document.getElementById('net-amount-display').textContent = '₱' + totalNetAmount.toFixed(2);
         }
 
-        function calculateSingleRowHandler(e) {
-            e.preventDefault();
-            const button = e.currentTarget;
-            const row = button.closest('.payroll-row');
-            if (row) {
-                calculateRow(row).then(() => calculateAll());
-            }
-        }
-
-        window.calculateSingleRow = calculateSingleRowHandler;
-
-        const calculateAllBtn = document.getElementById('calculate-all-btn');
-        if (calculateAllBtn) {
-            calculateAllBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                calculateAll();
-            });
-        }
-
-        function initTabs() {
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    const tabId = this.dataset.tab;
-
-                    // Remove active class from all tabs
-                    document.querySelectorAll('.tab').forEach(t => {
-                        t.classList.remove('active');
-                    });
-
-                    // Add active class to clicked tab
-                    this.classList.add('active');
-
-                    // Hide all tab contents
-                    document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.remove('active');
-                    });
-
-                    // Show selected tab content
-                    const tabContent = document.getElementById('tab-' + tabId);
-                    if (tabContent) {
-                        tabContent.classList.add('active');
-                    }
-
-                    // If summary tab is selected and we have data, initialize chart
-                    if (tabId === 'summary') {
-                        setTimeout(() => {
-                            initDeductionsChart();
-                        }, 100);
-                    }
-                });
-            });
-        }
-
-        function initDeductionsChart() {
-            const canvas = document.getElementById('deductionsChart');
-            if (!canvas) return;
-
-            // Get data from the page
-            const withholdingTax = parseFloat('<?php echo $payroll_summary["total_withholding_tax"] ?? 0; ?>');
-            const sss = parseFloat('<?php echo $payroll_summary["total_sss"] ?? 0; ?>');
-
-            if (withholdingTax === 0 && sss === 0) return;
-
-            // Destroy existing chart if any
-            if (window.deductionsChartInstance) {
-                window.deductionsChartInstance.destroy();
-            }
-
-            window.deductionsChartInstance = new Chart(canvas, {
-                type: 'pie',
-                data: {
-                    labels: ['Withholding Tax', 'SSS Contribution'],
-                    datasets: [{
-                        data: [withholdingTax, sss],
-                        backgroundColor: ['#ef4444', '#3b82f6'],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    let value = context.raw || 0;
-                                    let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                    let percentage = ((value / total) * 100).toFixed(1);
-                                    return `${label}: ₱${value.toFixed(2)} (${percentage}%)`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        function highlightRowsByAttendance() {
-            document.querySelectorAll('.payroll-row').forEach(row => {
-                const daysPresentInput = row.querySelector('.hidden-days-present');
-                if (daysPresentInput) {
-                    const daysPresent = parseFloat(daysPresentInput.value) || 0;
-                    if (daysPresent <= 0) {
-                        row.classList.add('no-attendance');
-                    } else {
-                        row.classList.remove('no-attendance');
-                    }
-                }
-            });
-        }
-
-        function updateDateTime() {
-            const now = new Date();
-            const dateString = now.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-            const timeString = now.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            });
-
-            const dateElement = document.getElementById('current-date');
-            const timeElement = document.getElementById('current-time');
-
-            if (dateElement) dateElement.textContent = dateString;
-            if (timeElement) timeElement.textContent = timeString;
-        }
-
+        // ============================================
+        // EMPLOYEE DETAILS MODAL
+        // ============================================
         window.viewEmployeeDetails = async function(employeeId, period, cutoff) {
             showLoading();
+
             try {
                 const formData = new FormData();
                 formData.append('ajax_action', 'get_employee_details');
@@ -5507,9 +4478,12 @@ ob_end_flush();
 
                 if (result.success) {
                     displayEmployeeDetails(result);
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to load employee details'));
                 }
             } catch (error) {
                 console.error('Error:', error);
+                alert('Error loading employee details');
             } finally {
                 hideLoading();
             }
@@ -5634,6 +4608,9 @@ ob_end_flush();
             openModal('viewEmployeeModal');
         }
 
+        // ============================================
+        // MODAL FUNCTIONS
+        // ============================================
         function openModal(modalId) {
             const modal = document.getElementById(modalId);
             if (modal) {
@@ -5650,160 +4627,22 @@ ob_end_flush();
             }
         };
 
-        window.addEventListener('click', function(e) {
-            if (e.target.classList && e.target.classList.contains('modal')) {
-                e.target.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        });
-
         window.showApproveModal = function() {
             openModal('approveModal');
         };
 
-        window.showPaymentModal = function(payrollId) {
-            const paymentPayrollId = document.getElementById('payment_payroll_id');
-            if (paymentPayrollId) {
-                paymentPayrollId.value = payrollId;
-            }
-            openModal('paymentModal');
-        };
-
-        window.viewDeductions = function(payrollId) {
-            if (!payrollId) return;
-            fetch(`get_deductions_contractual.php?payroll_id=${payrollId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        let html = '<div class="space-y-3">';
-                        data.deductions.forEach(ded => {
-                            html += `
-                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
-                            <span class="font-medium">${ded.deduction_type}:</span>
-                            <span class="font-bold">₱${parseFloat(ded.deduction_amount).toFixed(2)}</span>
-                        </div>
-                    `;
-                        });
-                        html += '</div>';
-
-                        const deductionsModalBody = document.getElementById('deductionsModalBody');
-                        if (deductionsModalBody) {
-                            deductionsModalBody.innerHTML = html;
-                        }
-
-                        openModal('deductionsModal');
-                    }
-                })
-                .catch(error => console.error('Error:', error));
-        };
-
-        window.generateObligationRequest = function() {
-            const periodSelect = document.getElementById('payroll-period');
-            const period = periodSelect ? periodSelect.value : '';
-
-            const hiddenCutoff = document.getElementById('hidden-payroll-cutoff');
-            const cutoff = hiddenCutoff ? hiddenCutoff.value : '';
-
-            window.location.href = `contractualobligationrequest.php?period=${period}&cutoff=${cutoff}`;
-        };
-
-        function printEmployeeDetails() {
-            const modalBody = document.getElementById('viewEmployeeModalBody');
-            if (!modalBody) return;
-
-            const modalContent = modalBody.innerHTML;
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-        <html>
-        <head>
-            <title>Employee Details</title>
-            <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-            <style>
-                body { padding: 20px; font-family: Arial, sans-serif; }
-                .detail-section { margin-bottom: 20px; }
-                .attendance-summary { display: flex; gap: 10px; margin-bottom: 10px; }
-                .attendance-card { flex: 1; padding: 10px; background: #f5f5f5; border-radius: 5px; text-align: center; }
-            </style>
-        </head>
-        <body>
-            <h1 class="text-2xl font-bold mb-4">Employee Details</h1>
-            ${modalContent}
-        </body>
-        </html>
-    `);
-            printWindow.document.close();
-            printWindow.print();
+        // ============================================
+        // LOADING FUNCTIONS
+        // ============================================
+        function showLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.add('active');
         }
 
-        function initSidebar() {
-            const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-            const sidebarOverlay = document.getElementById('sidebar-overlay');
-            const payrollToggle = document.getElementById('payroll-toggle');
-
-            if (mobileMenuToggle) {
-                mobileMenuToggle.addEventListener('click', toggleSidebar);
-            }
-
-            if (sidebarOverlay) {
-                sidebarOverlay.addEventListener('click', closeSidebar);
-            }
-
-            if (payrollToggle) {
-                payrollToggle.addEventListener('click', togglePayrollDropdown);
-            }
-
-            document.querySelectorAll('.sidebar-item, .submenu-item').forEach(item => {
-                item.addEventListener('click', function(e) {
-                    if (window.innerWidth < 1024) closeSidebar();
-                });
-            });
-
-            window.addEventListener('resize', function() {
-                if (window.innerWidth >= 1024) closeSidebar();
-            });
-        }
-
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebar-overlay');
-
-            sidebarOpen = !sidebarOpen;
-
-            if (sidebar) sidebar.classList.toggle('active');
-            if (overlay) overlay.classList.toggle('active');
-
-            if (window.innerWidth < 1024) {
-                document.body.style.overflow = sidebarOpen ? 'hidden' : '';
-            }
-        }
-
-        function closeSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebar-overlay');
-
-            if (sidebar) sidebar.classList.remove('active');
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
             if (overlay) overlay.classList.remove('active');
-
-            sidebarOpen = false;
-            document.body.style.overflow = '';
         }
-
-        function togglePayrollDropdown(e) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const dropdown = document.getElementById('payroll-submenu');
-            const chevron = this.querySelector('.chevron');
-
-            payrollMenuOpen = !payrollMenuOpen;
-
-            if (dropdown) dropdown.classList.toggle('open');
-            if (chevron) chevron.classList.toggle('rotated');
-        }
-
-        window.addEventListener('popstate', function() {
-            window.location.reload();
-        });
     </script>
 </body>
 

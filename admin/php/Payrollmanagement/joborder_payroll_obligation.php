@@ -660,56 +660,42 @@ try {
     <style>
         :root {
             --primary: #1e40af;
-            --secondary: #1e3a8a;
-            --accent: #3b82f6;
-            --gradient-nav: linear-gradient(90deg, #1e3a8a 0%, #1e40af 100%);
+            --primary-dark: #1e3a8a;
+            --primary-light: #3b82f6;
+            --secondary: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark: #1f2937;
+            --light: #f8fafc;
+            --gradient-primary: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
         }
 
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Inter', sans-serif;
             background: #f8fafc;
+            color: var(--dark);
             min-height: 100vh;
             overflow-x: hidden;
-            color: #1f2937;
         }
 
-        /* Scrollbar Styling */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.4);
-        }
-
-        /* NAVBAR STYLES */
+        /* Navbar Styling - Matching contractualpayrolltable1.php */
         .navbar {
-            background: var(--gradient-nav);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            background: var(--gradient-primary);
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            z-index: 1000;
             height: 70px;
-            backdrop-filter: blur(10px);
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
@@ -726,16 +712,33 @@ try {
             display: flex;
             align-items: center;
             gap: 1rem;
-            flex: 1;
         }
 
         .navbar-right {
             display: flex;
             align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
-        /* Logo and Brand */
+        .mobile-toggle {
+            display: none;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+        }
+
+        .mobile-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.05);
+        }
+
         .navbar-brand {
             display: flex;
             align-items: center;
@@ -745,12 +748,12 @@ try {
         }
 
         .navbar-brand:hover {
-            transform: scale(1.02);
+            transform: translateY(-2px);
         }
 
         .brand-logo {
-            width: 45px;
-            height: 45px;
+            width: 40px;
+            height: 40px;
             object-fit: contain;
             filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
         }
@@ -761,51 +764,44 @@ try {
         }
 
         .brand-title {
-            font-size: 1.4rem;
-            font-weight: 700;
+            font-size: 1.1rem;
+            font-weight: 800;
             color: white;
             line-height: 1.2;
-            letter-spacing: 0.5px;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            letter-spacing: -0.5px;
         }
 
         .brand-subtitle {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: rgba(255, 255, 255, 0.9);
             font-weight: 500;
-            letter-spacing: 0.3px;
         }
 
-        /* Date & Time Display */
         .datetime-container {
             display: flex;
-            align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
         .datetime-box {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 0.5rem;
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
             border-radius: 12px;
-            padding: 0.6rem 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.3s ease;
-            min-width: 180px;
         }
 
         .datetime-box:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.25);
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
 
         .datetime-icon {
-            font-size: 1.1rem;
             color: white;
-            opacity: 0.9;
+            font-size: 1rem;
         }
 
         .datetime-text {
@@ -814,18 +810,15 @@ try {
         }
 
         .datetime-label {
-            font-size: 0.75rem;
-            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.8);
             font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
 
         .datetime-value {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
+            font-weight: 700;
             color: white;
-            font-weight: 600;
-            line-height: 1.3;
         }
 
         /* Logout Button */
@@ -851,190 +844,277 @@ try {
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
 
-        /* Mobile Menu Toggle */
-        .mobile-toggle {
-            display: flex;
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            width: 40px;
-            height: 40px;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-            outline: none;
-        }
-
-        .mobile-toggle:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: scale(1.05);
-        }
-
-        .mobile-toggle i {
-            font-size: 1.25rem;
-            color: white;
-        }
-
-        @media (min-width: 1024px) {
-            .mobile-toggle {
-                display: none;
-            }
-        }
-
-        /* Sidebar Styles */
-        .sidebar-overlay {
+        /* Sidebar - Matching contractualpayrolltable1.php */
+        .sidebar-container {
             position: fixed;
-            top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
+            top: 70px;
+            width: 260px;
+            height: calc(100vh - 70px);
+            background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
             z-index: 999;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar-overlay.active {
-            opacity: 1;
-            visibility: visible;
+            transition: transform 0.3s ease;
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
         }
 
         .sidebar {
-            position: fixed;
-            top: 70px;
-            left: -300px;
-            width: 250px;
-            height: calc(100vh - 70px);
-            background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
-            z-index: 1000;
-            transition: left 0.3s ease;
+            height: 100%;
+            padding: 1.5rem 0;
             display: flex;
             flex-direction: column;
-            overflow-y: auto;
-            overflow-x: hidden;
-        }
-
-        .sidebar.active {
-            left: 0;
-        }
-
-        @media (min-width: 1024px) {
-            .sidebar {
-                left: 0;
-                top: 70px;
-                height: calc(100vh - 70px);
-            }
-
-            .sidebar-overlay {
-                display: none !important;
-            }
-
-            main {
-                margin-left: 250px;
-            }
         }
 
         .sidebar-content {
             flex: 1;
-            padding: 1.5rem 1rem;
-            overflow-y: auto;
+            padding: 0 1rem;
         }
 
-        .sidebar-footer {
-            padding: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.8rem;
-        }
-
-        /* Sidebar Menu Items */
         .sidebar-item {
             display: flex;
             align-items: center;
-            padding: 0.875rem 1rem;
-            color: white;
+            gap: 1rem;
+            padding: 0.9rem 1.25rem;
+            color: rgba(255, 255, 255, 0.85);
             text-decoration: none;
-            border-radius: 12px;
-            margin-bottom: 0.5rem;
             transition: all 0.3s ease;
-            cursor: pointer;
+            border-radius: 12px;
+            margin-bottom: 0.25rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 4px;
+            background: white;
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
+            border-radius: 0 4px 4px 0;
         }
 
         .sidebar-item:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            transform: translateX(4px);
+        }
+
+        .sidebar-item:hover::before {
+            transform: scaleY(1);
         }
 
         .sidebar-item.active {
-            background: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-item.active::before {
+            transform: scaleY(1);
         }
 
         .sidebar-item i {
-            width: 1.5rem;
+            font-size: 1.2rem;
+            width: 24px;
             text-align: center;
-            margin-right: 0.75rem;
-            font-size: 1.1rem;
         }
 
         .sidebar-item span {
+            font-size: 0.95rem;
+            font-weight: 600;
             flex: 1;
-            font-weight: 500;
-            font-size: 0.9rem;
         }
 
-        .sidebar-item .chevron {
-            transition: transform 0.3s ease;
-            font-size: 0.7rem;
-        }
-
-        .sidebar-item .chevron.rotated {
-            transform: rotate(180deg);
-        }
-
-        /* Dropdown Menu in Sidebar */
-        .submenu {
+        .sidebar-dropdown-menu {
             max-height: 0;
             overflow: hidden;
             transition: max-height 0.3s ease;
             margin-left: 2.5rem;
         }
 
-        .submenu.open {
+        .sidebar-dropdown-menu.open {
             max-height: 500px;
         }
 
-        .submenu-item {
+        .sidebar-dropdown-item {
             display: flex;
             align-items: center;
-            padding: 0.5rem 1rem;
+            padding: 0.7rem 1rem;
             color: rgba(255, 255, 255, 0.8);
             text-decoration: none;
             border-radius: 8px;
             margin-bottom: 0.25rem;
             transition: all 0.3s ease;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
         }
 
-        .submenu-item:hover {
-            background: rgba(255, 255, 255, 0.1);
+        .sidebar-dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.15);
             color: white;
             transform: translateX(5px);
         }
 
-        .submenu-item.active {
-            background: rgba(255, 255, 255, 0.2);
+        .sidebar-dropdown-item.active {
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+            font-weight: 600;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-dropdown-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 3px;
+            background: white;
+            border-radius: 0 3px 3px 0;
+        }
+
+        .sidebar-dropdown-item i {
+            font-size: 0.7rem;
+            margin-right: 0.75rem;
+            color: rgba(255, 255, 255, 0.7);
+            transition: color 0.3s ease;
+        }
+
+        .sidebar-dropdown-item:hover i,
+        .sidebar-dropdown-item.active i {
             color: white;
         }
 
-        .submenu-item i {
+        .chevron {
+            transition: transform 0.3s ease;
+        }
+
+        .chevron.rotated {
+            transform: rotate(180deg);
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            color: white;
             font-size: 0.75rem;
-            margin-right: 0.5rem;
+        }
+
+        /* Overlay for mobile */
+        .overlay {
+            position: fixed;
+            top: 70px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 998;
+            display: none;
+        }
+
+        .overlay.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            margin-top: 70px;
+            padding: 1.5rem;
+            min-height: calc(100vh - 70px);
+            transition: margin-left 0.3s ease;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+            }
+
+            .sidebar-container {
+                transform: translateX(-100%);
+            }
+
+            .sidebar-container.active {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: flex;
+            }
+
+            .datetime-container {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .brand-text {
+                display: none;
+            }
+
+            .logout-btn span {
+                display: none;
+            }
+
+            .logout-btn {
+                padding: 0.5rem;
+                width: 40px;
+                height: 40px;
+                justify-content: center;
+            }
+
+            .main-content {
+                padding: 0.75rem;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .navbar {
+                height: 65px;
+            }
+
+            .sidebar-container {
+                top: 65px;
+                height: calc(100vh - 65px);
+            }
+
+            .main-content {
+                margin-top: 65px;
+            }
+
+            .mobile-toggle {
+                width: 36px;
+                height: 36px;
+            }
+
+            .brand-logo {
+                width: 40px;
+                height: 40px;
+            }
+
+            .logout-btn {
+                width: 36px;
+                height: 36px;
+            }
         }
 
         /* Mobile Brand Styling */
@@ -1062,29 +1142,37 @@ try {
             font-weight: 500;
         }
 
-        /* Main Content */
-        main {
-            margin-top: 70px;
-            padding: 1.5rem;
-            min-height: calc(100vh - 70px);
-            width: 100%;
-            transition: margin-left 0.3s ease;
-        }
+        @media (min-width: 769px) {
+            .mobile-brand {
+                display: none;
+            }
 
-        @media (min-width: 1024px) {
-            main {
-                margin-left: 250px;
-                width: calc(100% - 250px);
+            .brand-text {
+                display: flex;
             }
         }
 
-        @media (max-width: 768px) {
-            main {
-                padding: 1rem;
-            }
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
         }
 
-        /* Payroll Table Styles - EXACTLY MATCHING CONTRACTUAL VERSION */
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+
+        /* Payroll Table Styles */
         .payroll-section {
             width: 100%;
             max-width: 100%;
@@ -1258,7 +1346,7 @@ try {
             table-layout: fixed;
         }
 
-        /* Define exact column widths for 100% fit on landscape - MATCHING CONTRACTUAL VERSION */
+        /* Define exact column widths for 100% fit on landscape */
         .payroll-table th:nth-child(1) {
             width: 3%;
         }
@@ -1724,7 +1812,7 @@ try {
                 height: 65px;
             }
 
-            .sidebar {
+            .sidebar-container {
                 top: 65px;
                 height: calc(100vh - 65px);
             }
@@ -1802,7 +1890,7 @@ try {
             cursor: not-allowed;
         }
 
-        /* Print Styles - EXACTLY MATCHING CONTRACTUAL VERSION */
+        /* Print Styles */
         @media print {
             .print-hide {
                 display: none !important;
@@ -1987,26 +2075,49 @@ try {
                 display: none;
             }
         }
+
+        .sidebar-item.logout {
+            color: #fecaca;
+            margin-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1rem;
+        }
+
+        .sidebar-item.logout:hover {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fecaca;
+        }
     </style>
 </head>
 
 <body class="bg-gray-50">
-    <!-- Navigation Header -->
-    <nav class="navbar print-hide">
+    <!-- Loading Overlay (Optional - can be added if needed) -->
+    <!-- <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div> -->
+
+    <!-- Navigation Header - Matching contractualpayrolltable1.php -->
+    <nav class="navbar">
         <div class="navbar-container">
+            <!-- Left Section -->
             <div class="navbar-left">
-                <button class="mobile-toggle" id="mobile-menu-toggle">
+                <!-- Mobile Menu Toggle -->
+                <button class="mobile-toggle" id="sidebar-toggle">
                     <i class="fas fa-bars"></i>
                 </button>
 
-                <a href="../dashboard.php" class="navbar-brand hidden lg:flex">
-                    <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
+                <!-- Logo and Brand -->
+                <a href="../dashboard.php" class="navbar-brand">
+                    <img class="brand-logo"
+                        src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png"
+                        alt="Logo" />
                     <div class="brand-text">
                         <span class="brand-title">HR Management System</span>
                         <span class="brand-subtitle">Paluan Occidental Mindoro</span>
                     </div>
                 </a>
 
+                <!-- Mobile Brand -->
                 <div class="mobile-brand lg:hidden">
                     <img class="brand-logo" src="https://cdn-ilebokm.nitrocdn.com/LDIERXKvnOnyQiQIfOmrlCQetXbgMMSd/assets/images/optimized/rev-c086d95/occidentalmindoro.gov.ph/wp-content/uploads/2022/07/Paluan-removebg-preview-1-1-1.png" alt="Logo" />
                     <div class="mobile-brand-text">
@@ -2016,8 +2127,10 @@ try {
                 </div>
             </div>
 
+            <!-- Right Section -->
             <div class="navbar-right">
-                <div class="datetime-container hidden md:flex">
+                <!-- Date & Time -->
+                <div class="datetime-container">
                     <div class="datetime-box">
                         <i class="datetime-icon fas fa-calendar-alt"></i>
                         <div class="datetime-text">
@@ -2035,6 +2148,7 @@ try {
                     </div>
                 </div>
 
+                <!-- Logout Button -->
                 <a href="?logout=true" class="logout-btn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
@@ -2043,83 +2157,70 @@ try {
         </div>
     </nav>
 
-    <!-- Sidebar Overlay for Mobile -->
-    <div class="sidebar-overlay print-hide" id="sidebar-overlay"></div>
+    <!-- Mobile Overlay -->
+    <div class="overlay" id="overlay"></div>
 
-    <!-- Sidebar -->
-    <div class="sidebar print-hide" id="sidebar">
-        <div class="sidebar-content">
-            <ul class="space-y-1">
+    <!-- Sidebar - Matching contractualpayrolltable1.php with Job Order active -->
+    <div class="sidebar-container" id="sidebar-container">
+        <div class="sidebar">
+            <div class="sidebar-content">
                 <!-- Dashboard -->
-                <li>
-                    <a href="../dashboard.php" class="sidebar-item">
-                        <i class="fas fa-chart-line"></i>
-                        <span>Dashboard Analytics</span>
-                    </a>
-                </li>
+                <a href="../dashboard.php" class="sidebar-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard Analytics</span>
+                </a>
 
                 <!-- Employees -->
-                <li>
-                    <a href="../employees/Employee.php" class="sidebar-item">
-                        <i class="fas fa-users"></i>
-                        <span>Employees</span>
-                    </a>
-                </li>
+                <a href="../employees/Employee.php" class="sidebar-item">
+                    <i class="fas fa-users"></i>
+                    <span>Employees</span>
+                </a>
 
                 <!-- Attendance -->
-                <li>
-                    <a href="../attendance.php" class="sidebar-item">
-                        <i class="fas fa-calendar-check"></i>
-                        <span>Attendance</span>
-                    </a>
-                </li>
+                <a href="../attendance.php" class="sidebar-item">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>Attendance</span>
+                </a>
 
-                <!-- Payroll Dropdown -->
-                <li>
-                    <a href="#" class="sidebar-item active" id="payroll-toggle">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <span>Payroll</span>
-                        <i class="fas fa-chevron-down chevron text-xs ml-auto"></i>
+                <!-- Payroll - Active and Open -->
+                <a href="#" class="sidebar-item active" id="payroll-toggle">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Payroll</span>
+                    <i class="fas fa-chevron-down chevron rotated ml-auto"></i>
+                </a>
+                <div class="sidebar-dropdown-menu open" id="payroll-dropdown">
+                    <a href="contractualpayrolltable1.php" class="sidebar-dropdown-item">
+                        <i class="fas fa-circle text-xs"></i>
+                        Contractual
                     </a>
-                    <div class="submenu" id="payroll-submenu">
-                        <a href="../Payrollmanagement/contractualpayrolltable1.php" class="submenu-item">
-                            <i class="fas fa-circle text-xs"></i>
-                            Contractual
-                        </a>
-                        <a href="../Payrollmanagement/joboerderpayrolltable1.php" class="submenu-item active">
-                            <i class="fas fa-circle text-xs"></i>
-                            Job Order
-                        </a>
-                        <a href="../Payrollmanagement/permanentpayrolltable1.php" class="submenu-item">
-                            <i class="fas fa-circle text-xs"></i>
-                            Permanent
-                        </a>
-                    </div>
-                </li>
-
-                <!-- Salary -->
-                <li>
-                    <a href="../sallarypayheads.php" class="sidebar-item">
-                        <i class="fas fa-hand-holding-usd"></i>
-                        <span>Salary Structure</span>
+                    <a href="joborderpayrolltable1.php" class="sidebar-dropdown-item active">
+                        <i class="fas fa-circle text-xs"></i>
+                        Job Order
                     </a>
-                </li>
+                    <a href="permanentpayrolltable1.php" class="sidebar-dropdown-item">
+                        <i class="fas fa-circle text-xs"></i>
+                        Permanent
+                    </a>
+                </div>
 
                 <!-- Settings -->
-                <li>
-                    <a href="../settings.php" class="sidebar-item">
-                        <i class="fas fa-sliders-h"></i>
-                        <span>Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
+                <a href="../settings.php" class="sidebar-item">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Settings</span>
+                </a>
 
-        <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <div class="text-center text-white/60 text-sm">
-                <p>HRMS v2.0</p>
-                <p class="text-xs mt-1">© 2024 Paluan LGU</p>
+                <!-- Logout -->
+                <a href="?logout=true" class="sidebar-item logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="text-center text-white/60 text-sm">
+                    <p>HRMS v2.0</p>
+                    <p class="text-xs mt-1">© 2024 Paluan LGU</p>
+                </div>
             </div>
         </div>
     </div>
@@ -2129,7 +2230,7 @@ try {
             <nav class="mt-4 flex" aria-label="Breadcrumb">
                 <ol class="inline-flex items-center space-x-1 md:space-x-2">
                     <li class="inline-flex items-center">
-                        <a href="joboerderpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
+                        <a href="joborderpayrolltable1.php" class="ml-1 text-sm font-medium text-gray-700 hover:text-primary-600 md:ml-2">
                             <i class="fas fa-home mr-2"></i> Job Order Payroll
                         </a>
                     </li>
@@ -2655,25 +2756,88 @@ try {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // ============================================
+            // SIDEBAR FUNCTIONALITY - Matching contractualpayrolltable1.php
+            // ============================================
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebarContainer = document.getElementById('sidebar-container');
+            const overlay = document.getElementById('overlay');
+            const payrollToggle = document.getElementById('payroll-toggle');
+            const payrollDropdown = document.getElementById('payroll-dropdown');
+
+            // Ensure payroll dropdown is open by default on this page
+            if (payrollToggle && payrollDropdown) {
+                // Make sure dropdown is open and chevron is rotated
+                payrollDropdown.classList.add('open');
+                const chevron = payrollToggle.querySelector('.chevron');
+                if (chevron) {
+                    chevron.classList.add('rotated');
+                }
+
+                // Keep the toggle functionality but preserve open state
+                payrollToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Toggle the dropdown
+                    payrollDropdown.classList.toggle('open');
+
+                    // Toggle chevron rotation
+                    if (chevron) {
+                        chevron.classList.toggle('rotated');
+                    }
+                });
+            }
+
+            // Toggle sidebar
+            if (sidebarToggle && sidebarContainer && overlay) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebarContainer.classList.toggle('active');
+                    overlay.classList.toggle('active');
+                    document.body.style.overflow = sidebarContainer.classList.contains('active') ? 'hidden' : '';
+                });
+
+                overlay.addEventListener('click', function() {
+                    sidebarContainer.classList.remove('active');
+                    overlay.classList.remove('active');
+                    document.body.style.overflow = '';
+                });
+            }
+
+            // Close sidebar on window resize if open
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024 && sidebarContainer.classList.contains('active')) {
+                    sidebarContainer.classList.remove('active');
+                    overlay.classList.remove('active');
+                }
+            });
+
+            // ============================================
+            // DATE/TIME FUNCTIONS
+            // ============================================
             function updateDateTime() {
                 const now = new Date();
-                const dateOptions = {
+                const optionsDate = {
                     weekday: 'long',
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                 };
-                const timeOptions = {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                };
+                const dateString = now.toLocaleDateString('en-US', optionsDate);
 
-                const dateElement = document.getElementById('current-date');
-                const timeElement = document.getElementById('current-time');
+                let hours = now.getHours();
+                let minutes = now.getMinutes();
+                let seconds = now.getSeconds();
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12;
+                minutes = minutes < 10 ? '0' + minutes : minutes;
+                seconds = seconds < 10 ? '0' + seconds : seconds;
 
-                if (dateElement) dateElement.textContent = now.toLocaleDateString('en-US', dateOptions);
-                if (timeElement) timeElement.textContent = now.toLocaleTimeString('en-US', timeOptions);
+                const timeString = `${hours}:${minutes}:${seconds} ${ampm}`;
+
+                document.getElementById('current-date').textContent = dateString;
+                document.getElementById('current-time').textContent = timeString;
             }
 
             updateDateTime();
@@ -2687,42 +2851,6 @@ try {
                     url.searchParams.set('period', period);
                     url.searchParams.set('page', '1');
                     window.location.href = url.toString();
-                });
-            }
-
-            // Sidebar functionality
-            const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-            const sidebar = document.getElementById('sidebar');
-            const sidebarOverlay = document.getElementById('sidebar-overlay');
-
-            if (mobileMenuToggle && sidebar && sidebarOverlay) {
-                mobileMenuToggle.addEventListener('click', function() {
-                    sidebar.classList.toggle('active');
-                    sidebarOverlay.classList.toggle('active');
-                    document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : '';
-                });
-
-                sidebarOverlay.addEventListener('click', function() {
-                    sidebar.classList.remove('active');
-                    sidebarOverlay.classList.remove('active');
-                    document.body.style.overflow = '';
-                });
-            }
-
-            // Payroll dropdown functionality
-            const payrollToggle = document.getElementById('payroll-toggle');
-            const payrollDropdown = document.getElementById('payroll-submenu');
-
-            if (payrollToggle && payrollDropdown) {
-                payrollDropdown.classList.add('open');
-                const chevron = payrollToggle.querySelector('.chevron');
-                if (chevron) chevron.classList.add('rotated');
-
-                payrollToggle.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    payrollDropdown.classList.toggle('open');
-                    const chevron = this.querySelector('.chevron');
-                    if (chevron) chevron.classList.toggle('rotated');
                 });
             }
 

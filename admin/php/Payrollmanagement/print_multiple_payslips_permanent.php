@@ -37,7 +37,7 @@ if (empty($employee_ids)) {
     echo "<script>
         alert('No employees selected for printing.');
         window.close();
-        window.location.href = document.referrer || 'joborderpayrolltable1.php?period=$period&cutoff=$cutoff';
+        window.location.href = document.referrer || 'permanentpayrolltable1.php?period=$period&cutoff=$cutoff';
     </script>";
     exit();
 }
@@ -56,7 +56,7 @@ function getWorkingDays($start_date, $end_date)
 
     while ($current <= $end) {
         $day_of_week = date('N', $current);
-        if ($day_of_week <= 5) {
+        if ($day_of_week <= 5) { // Monday to Friday
             $working_days++;
         }
         $current = strtotime('+1 day', $current);
@@ -87,179 +87,280 @@ $cutoff_ranges = [
 
 $current_cutoff = $cutoff_ranges[$cutoff];
 
+/**
+ * Function to get employee's payroll data from permanent table
+ */
+function getEmployeePayrollData($pdo, $employee_id, $period, $cutoff, $default_amount_accrued = 0)
+{
+    $data = [
+        'monthly_salary' => 0,
+        'amount_accrued' => $default_amount_accrued,
+        'other_comp' => 0,
+        'gross_amount' => $default_amount_accrued,
+        'withholding_tax' => 0,
+        'pagibig_loan_mpl' => 0,
+        'corso_loan' => 0,
+        'policy_loan' => 0,
+        'philhealth_ps' => 0,
+        'uef_retirement' => 0,
+        'emergency_loan' => 0,
+        'gfal' => 0,
+        'lbp_loan' => 0,
+        'mpl' => 0,
+        'mpl_lite' => 0,
+        'sss_contribution' => 0,
+        'pagibig_cont' => 0,
+        'state_ins_gs' => 0,
+        'total_deductions' => 0,
+        'amount_due' => $default_amount_accrued,
+        'net_amount' => $default_amount_accrued,
+        'days_present' => 0,
+        'status' => 'draft'
+    ];
+
+    try {
+        if ($cutoff == 'full') {
+            // For full month, get data from both halves and sum them
+            $stmt = $pdo->prepare("
+                SELECT 
+                    COALESCE(SUM(monthly_salary), 0) as monthly_salary,
+                    COALESCE(SUM(amount_accrued), 0) as amount_accrued,
+                    COALESCE(SUM(other_comp), 0) as other_comp,
+                    COALESCE(SUM(gross_amount), 0) as gross_amount,
+                    COALESCE(SUM(withholding_tax), 0) as withholding_tax,
+                    COALESCE(SUM(pagibig_loan_mpl), 0) as pagibig_loan_mpl,
+                    COALESCE(SUM(corso_loan), 0) as corso_loan,
+                    COALESCE(SUM(policy_loan), 0) as policy_loan,
+                    COALESCE(SUM(philhealth_ps), 0) as philhealth_ps,
+                    COALESCE(SUM(uef_retirement), 0) as uef_retirement,
+                    COALESCE(SUM(emergency_loan), 0) as emergency_loan,
+                    COALESCE(SUM(gfal), 0) as gfal,
+                    COALESCE(SUM(lbp_loan), 0) as lbp_loan,
+                    COALESCE(SUM(mpl), 0) as mpl,
+                    COALESCE(SUM(mpl_lite), 0) as mpl_lite,
+                    COALESCE(SUM(sss_contribution), 0) as sss_contribution,
+                    COALESCE(SUM(pagibig_cont), 0) as pagibig_cont,
+                    COALESCE(SUM(state_ins_gs), 0) as state_ins_gs,
+                    COALESCE(SUM(total_deductions), 0) as total_deductions,
+                    COALESCE(SUM(amount_due), 0) as amount_due,
+                    COALESCE(SUM(net_amount), 0) as net_amount,
+                    COALESCE(SUM(days_present), 0) as days_present,
+                    COUNT(DISTINCT id) as record_count,
+                    GROUP_CONCAT(DISTINCT status) as statuses
+                FROM payroll_history_permanent 
+                WHERE employee_id = ? 
+                    AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
+            ");
+            $stmt->execute([$employee_id, $period]);
+            $result = $stmt->fetch();
+
+            if ($result && $result['record_count'] > 0) {
+                $data['monthly_salary'] = floatval($result['monthly_salary'] ?? 0);
+                $data['amount_accrued'] = floatval($result['amount_accrued'] ?? 0);
+                $data['other_comp'] = floatval($result['other_comp'] ?? 0);
+                $data['gross_amount'] = floatval($result['gross_amount'] ?? 0);
+                $data['withholding_tax'] = floatval($result['withholding_tax'] ?? 0);
+                $data['pagibig_loan_mpl'] = floatval($result['pagibig_loan_mpl'] ?? 0);
+                $data['corso_loan'] = floatval($result['corso_loan'] ?? 0);
+                $data['policy_loan'] = floatval($result['policy_loan'] ?? 0);
+                $data['philhealth_ps'] = floatval($result['philhealth_ps'] ?? 0);
+                $data['uef_retirement'] = floatval($result['uef_retirement'] ?? 0);
+                $data['emergency_loan'] = floatval($result['emergency_loan'] ?? 0);
+                $data['gfal'] = floatval($result['gfal'] ?? 0);
+                $data['lbp_loan'] = floatval($result['lbp_loan'] ?? 0);
+                $data['mpl'] = floatval($result['mpl'] ?? 0);
+                $data['mpl_lite'] = floatval($result['mpl_lite'] ?? 0);
+                $data['sss_contribution'] = floatval($result['sss_contribution'] ?? 0);
+                $data['pagibig_cont'] = floatval($result['pagibig_cont'] ?? 0);
+                $data['state_ins_gs'] = floatval($result['state_ins_gs'] ?? 0);
+                $data['total_deductions'] = floatval($result['total_deductions'] ?? 0);
+                $data['amount_due'] = floatval($result['amount_due'] ?? 0);
+                $data['net_amount'] = floatval($result['net_amount'] ?? 0);
+                $data['days_present'] = floatval($result['days_present'] ?? 0);
+
+                // Determine overall status
+                $statuses = explode(',', $result['statuses']);
+                if (in_array('approved', $statuses)) {
+                    $data['status'] = 'approved';
+                } elseif (in_array('paid', $statuses)) {
+                    $data['status'] = 'paid';
+                } elseif (in_array('pending', $statuses)) {
+                    $data['status'] = 'pending';
+                } else {
+                    $data['status'] = 'draft';
+                }
+            }
+        } else {
+            // For specific half, get just that half's data
+            $stmt = $pdo->prepare("
+                SELECT monthly_salary, amount_accrued, other_comp, gross_amount,
+                       withholding_tax, pagibig_loan_mpl, corso_loan, policy_loan,
+                       philhealth_ps, uef_retirement, emergency_loan, gfal,
+                       lbp_loan, mpl, mpl_lite, sss_contribution,
+                       pagibig_cont, state_ins_gs,
+                       total_deductions, amount_due, net_amount, days_present, status
+                FROM payroll_history_permanent 
+                WHERE employee_id = ? 
+                    AND payroll_period = ? AND payroll_cutoff = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$employee_id, $period, $cutoff]);
+            $result = $stmt->fetch();
+
+            if ($result) {
+                $data['monthly_salary'] = floatval($result['monthly_salary'] ?? 0);
+                $data['amount_accrued'] = floatval($result['amount_accrued'] ?? 0);
+                $data['other_comp'] = floatval($result['other_comp'] ?? 0);
+                $data['gross_amount'] = floatval($result['gross_amount'] ?? 0);
+                $data['withholding_tax'] = floatval($result['withholding_tax'] ?? 0);
+                $data['pagibig_loan_mpl'] = floatval($result['pagibig_loan_mpl'] ?? 0);
+                $data['corso_loan'] = floatval($result['corso_loan'] ?? 0);
+                $data['policy_loan'] = floatval($result['policy_loan'] ?? 0);
+                $data['philhealth_ps'] = floatval($result['philhealth_ps'] ?? 0);
+                $data['uef_retirement'] = floatval($result['uef_retirement'] ?? 0);
+                $data['emergency_loan'] = floatval($result['emergency_loan'] ?? 0);
+                $data['gfal'] = floatval($result['gfal'] ?? 0);
+                $data['lbp_loan'] = floatval($result['lbp_loan'] ?? 0);
+                $data['mpl'] = floatval($result['mpl'] ?? 0);
+                $data['mpl_lite'] = floatval($result['mpl_lite'] ?? 0);
+                $data['sss_contribution'] = floatval($result['sss_contribution'] ?? 0);
+                $data['pagibig_cont'] = floatval($result['pagibig_cont'] ?? 0);
+                $data['state_ins_gs'] = floatval($result['state_ins_gs'] ?? 0);
+                $data['total_deductions'] = floatval($result['total_deductions'] ?? 0);
+                $data['amount_due'] = floatval($result['amount_due'] ?? 0);
+                $data['net_amount'] = floatval($result['net_amount'] ?? 0);
+                $data['days_present'] = floatval($result['days_present'] ?? 0);
+                $data['status'] = $result['status'] ?? 'pending';
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching payroll data: " . $e->getMessage());
+    }
+
+    return $data;
+}
+
 // Fetch selected employees
 $employees_data = [];
 $employee_ids_array = explode(',', $employee_ids);
 
 if (!empty($employee_ids_array)) {
-    $placeholders = implode(',', array_fill(0, count($employee_ids_array), '?'));
-
+    // First, try to get employees by employee_id (string)
     try {
+        $placeholders = implode(',', array_fill(0, count($employee_ids_array), '?'));
+
         $sql = "
             SELECT 
                 id as user_id, 
                 employee_id, 
-                employee_name as full_name,
-                occupation as position, 
+                full_name,
+                position, 
                 office as department,
-                rate_per_day,
-                sss_contribution,
-                ctc_number,
-                ctc_date,
-                place_of_issue,
+                monthly_salary,
                 mobile_number,
                 email_address,
                 joining_date,
                 eligibility
-            FROM job_order 
-            WHERE employee_id IN ($placeholders) AND (is_archived = 0 OR is_archived IS NULL)
+            FROM permanent 
+            WHERE employee_id IN ($placeholders) AND (status = 'Active' OR status IS NULL)
         ";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($employee_ids_array);
         $employees = $stmt->fetchAll();
+
+        // If no employees found, try by id (numeric)
+        if (empty($employees)) {
+            // Convert to integers for ID lookup
+            $numeric_ids = array_filter($employee_ids_array, 'is_numeric');
+            if (!empty($numeric_ids)) {
+                $id_placeholders = implode(',', array_fill(0, count($numeric_ids), '?'));
+                $sql = "
+                    SELECT 
+                        id as user_id, 
+                        employee_id, 
+                        full_name,
+                        position, 
+                        office as department,
+                        monthly_salary,
+                        mobile_number,
+                        email_address,
+                        joining_date,
+                        eligibility
+                    FROM permanent 
+                    WHERE id IN ($id_placeholders) AND (status = 'Active' OR status IS NULL)
+                ";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($numeric_ids);
+                $employees = $stmt->fetchAll();
+            }
+        }
 
         // Get attendance and payroll data for each employee
         foreach ($employees as &$employee) {
             // Get attendance for the cutoff period
             $attendance_days = 0;
             try {
-                $attendance_stmt = $pdo->prepare("
-                    SELECT 
-                        SUM(CASE 
-                            WHEN total_hours >= 8 THEN 1
-                            WHEN total_hours >= 4 THEN 0.5
-                            ELSE 0
-                        END) as attendance_days
-                    FROM attendance 
-                    WHERE employee_id = ? 
-                        AND date BETWEEN ? AND ?
-                        AND total_hours > 0
-                ");
-                $attendance_stmt->execute([
-                    $employee['employee_id'],
-                    $current_cutoff['start'],
-                    $current_cutoff['end']
-                ]);
-                $attendance = $attendance_stmt->fetch();
-                $attendance_days = floatval($attendance['attendance_days'] ?? 0);
+                $table_check = $pdo->query("SHOW TABLES LIKE 'attendance'");
+                if ($table_check->rowCount() > 0) {
+                    $attendance_stmt = $pdo->prepare("
+                        SELECT 
+                            SUM(CASE 
+                                WHEN total_hours >= 8 THEN 1
+                                WHEN total_hours >= 4 THEN 0.5
+                                ELSE 0
+                            END) as attendance_days
+                        FROM attendance 
+                        WHERE employee_id = ? 
+                            AND date BETWEEN ? AND ?
+                            AND total_hours > 0
+                    ");
+                    $attendance_stmt->execute([
+                        $employee['employee_id'],
+                        $current_cutoff['start'],
+                        $current_cutoff['end']
+                    ]);
+                    $attendance = $attendance_stmt->fetch();
+                    $attendance_days = floatval($attendance['attendance_days'] ?? 0);
+                }
             } catch (Exception $e) {
                 error_log("Attendance fetch error: " . $e->getMessage());
             }
 
             $employee['days_present'] = $attendance_days;
 
-            // Get payroll data from payroll_history_joborder table
-            if ($cutoff == 'full') {
-                // For full month, get data from both halves and sum them
-                $payroll_stmt = $pdo->prepare("
-                    SELECT 
-                        SUM(other_comp) as other_comp,
-                        SUM(withholding_tax) as withholding_tax,
-                        SUM(sss) as sss,
-                        SUM(philhealth) as philhealth,
-                        SUM(pagibig) as pagibig,
-                        SUM(total_deductions) as total_deductions,
-                        SUM(gross_amount) as gross_amount,
-                        SUM(net_amount) as net_amount,
-                        SUM(days_present) as days_present,
-                        COUNT(*) as record_count,
-                        GROUP_CONCAT(DISTINCT status) as statuses
-                    FROM payroll_history_joborder 
-                    WHERE employee_id = ? 
-                        AND payroll_period = ? AND payroll_cutoff IN ('first_half', 'second_half')
-                ");
-                $payroll_stmt->execute([$employee['employee_id'], $period]);
-                $payroll_data = $payroll_stmt->fetch();
+            // Calculate prorated salary based on attendance
+            $monthly_salary = floatval($employee['monthly_salary'] ?? 0);
+            $prorated_salary = ($monthly_salary / 22) * $attendance_days;
 
-                if ($payroll_data && $payroll_data['record_count'] > 0) {
-                    $employee['other_comp'] = floatval($payroll_data['other_comp'] ?? 0);
-                    $employee['withholding_tax'] = floatval($payroll_data['withholding_tax'] ?? 0);
-                    $employee['sss'] = floatval($payroll_data['sss'] ?? 0);
-                    $employee['philhealth'] = floatval($payroll_data['philhealth'] ?? 0);
-                    $employee['pagibig'] = floatval($payroll_data['pagibig'] ?? 0);
-                    $employee['total_deductions'] = floatval($payroll_data['total_deductions'] ?? 0);
-                    $employee['gross_amount'] = floatval($payroll_data['gross_amount'] ?? 0);
-                    $employee['net_amount'] = floatval($payroll_data['net_amount'] ?? 0);
+            // Get payroll data from payroll_history_permanent table
+            $payroll_data = getEmployeePayrollData($pdo, $employee['employee_id'], $period, $cutoff, $prorated_salary);
 
-                    // Determine overall status
-                    $statuses = explode(',', $payroll_data['statuses']);
-                    if (in_array('approved', $statuses)) {
-                        $employee['payroll_status'] = 'approved';
-                    } elseif (in_array('paid', $statuses)) {
-                        $employee['payroll_status'] = 'paid';
-                    } elseif (in_array('pending', $statuses)) {
-                        $employee['payroll_status'] = 'pending';
-                    } else {
-                        $employee['payroll_status'] = 'draft';
-                    }
-                } else {
-                    // Calculate based on attendance
-                    $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
-                    $prorated_salary = $rate_per_day * $attendance_days;
+            // Set all payroll fields (use payroll_data if available, otherwise use calculated values)
+            $employee['monthly_salary_db'] = floatval($employee['monthly_salary'] ?? 0);
+            $employee['amount_accrued'] = $payroll_data['amount_accrued'] > 0 ? $payroll_data['amount_accrued'] : $prorated_salary;
+            $employee['other_comp'] = $payroll_data['other_comp'];
+            $employee['gross_amount'] = $payroll_data['gross_amount'] > 0 ? $payroll_data['gross_amount'] : ($prorated_salary + $payroll_data['other_comp']);
+            $employee['withholding_tax'] = $payroll_data['withholding_tax'];
+            $employee['pagibig_loan_mpl'] = $payroll_data['pagibig_loan_mpl'];
+            $employee['corso_loan'] = $payroll_data['corso_loan'];
+            $employee['policy_loan'] = $payroll_data['policy_loan'];
+            $employee['philhealth_ps'] = $payroll_data['philhealth_ps'];
+            $employee['uef_retirement'] = $payroll_data['uef_retirement'];
+            $employee['emergency_loan'] = $payroll_data['emergency_loan'];
+            $employee['gfal'] = $payroll_data['gfal'];
+            $employee['lbp_loan'] = $payroll_data['lbp_loan'];
+            $employee['mpl'] = $payroll_data['mpl'];
+            $employee['mpl_lite'] = $payroll_data['mpl_lite'];
+            $employee['sss_contribution'] = $payroll_data['sss_contribution'];
+            $employee['pagibig_cont'] = $payroll_data['pagibig_cont'];
+            $employee['state_ins_gs'] = $payroll_data['state_ins_gs'];
+            $employee['total_deductions'] = $payroll_data['total_deductions'];
+            $employee['amount_due'] = $payroll_data['amount_due'] > 0 ? $payroll_data['amount_due'] : ($employee['gross_amount'] - $employee['total_deductions']);
+            $employee['net_amount'] = $payroll_data['net_amount'] > 0 ? $payroll_data['net_amount'] : $employee['amount_due'];
+            $employee['payroll_status'] = $payroll_data['status'];
 
-                    $employee['other_comp'] = 0;
-                    $employee['withholding_tax'] = 0;
-                    $employee['sss'] = 0;
-                    $employee['philhealth'] = 0;
-                    $employee['pagibig'] = 0;
-                    $employee['total_deductions'] = 0;
-                    $employee['gross_amount'] = $prorated_salary;
-                    $employee['net_amount'] = $prorated_salary;
-                    $employee['payroll_status'] = 'draft';
-                }
-            } else {
-                // For specific half, get just that half's data
-                $payroll_stmt = $pdo->prepare("
-                    SELECT other_comp, withholding_tax, sss, philhealth, pagibig, 
-                        total_deductions, gross_amount, net_amount, days_present, status
-                    FROM payroll_history_joborder 
-                    WHERE employee_id = ? 
-                        AND payroll_period = ? AND payroll_cutoff = ?
-                ");
-                $payroll_stmt->execute([$employee['employee_id'], $period, $cutoff]);
-                $payroll_data = $payroll_stmt->fetch();
-
-                if ($payroll_data) {
-                    $employee['other_comp'] = floatval($payroll_data['other_comp'] ?? 0);
-                    $employee['withholding_tax'] = floatval($payroll_data['withholding_tax'] ?? 0);
-                    $employee['sss'] = floatval($payroll_data['sss'] ?? 0);
-                    $employee['philhealth'] = floatval($payroll_data['philhealth'] ?? 0);
-                    $employee['pagibig'] = floatval($payroll_data['pagibig'] ?? 0);
-                    $employee['total_deductions'] = floatval($payroll_data['total_deductions'] ?? 0);
-                    $employee['gross_amount'] = floatval($payroll_data['gross_amount'] ?? 0);
-                    $employee['net_amount'] = floatval($payroll_data['net_amount'] ?? 0);
-                    $employee['payroll_status'] = $payroll_data['status'] ?? 'pending';
-                } else {
-                    // Calculate based on attendance
-                    $rate_per_day = floatval($employee['rate_per_day'] ?? 0);
-                    $prorated_salary = $rate_per_day * $attendance_days;
-
-                    $employee['other_comp'] = 0;
-                    $employee['withholding_tax'] = 0;
-                    $employee['sss'] = 0;
-                    $employee['philhealth'] = 0;
-                    $employee['pagibig'] = 0;
-                    $employee['total_deductions'] = 0;
-                    $employee['gross_amount'] = $prorated_salary;
-                    $employee['net_amount'] = $prorated_salary;
-                    $employee['payroll_status'] = 'draft';
-                }
-            }
-
-            // Calculate monthly salary from rate_per_day
-            $employee['monthly_salary'] = floatval($employee['rate_per_day'] ?? 0) * 22;
-
-            // Calculate total deductions if needed
-            if (
-                $employee['total_deductions'] == 0 &&
-                ($employee['withholding_tax'] > 0 || $employee['sss'] > 0 ||
-                    $employee['philhealth'] > 0 || $employee['pagibig'] > 0)
-            ) {
-                $employee['total_deductions'] = $employee['withholding_tax'] +
-                    $employee['sss'] +
-                    $employee['philhealth'] +
-                    $employee['pagibig'];
-            }
+            // Calculate daily rate
+            $employee['daily_rate'] = $monthly_salary / 22;
 
             $employees_data[] = $employee;
         }
@@ -267,18 +368,12 @@ if (!empty($employee_ids_array)) {
         error_log("Error fetching employees: " . $e->getMessage());
         $_SESSION['error_message'] = "Error fetching employee data: " . $e->getMessage();
         echo "<script>
-            alert('Error fetching employee data.');
+            alert('Error fetching employee data: " . addslashes($e->getMessage()) . "');
             window.close();
-            window.location.href = document.referrer || 'joborderpayrolltable1.php?period=$period&cutoff=$cutoff';
+            window.location.href = document.referrer || 'permanentpayrolltable1.php?period=$period&cutoff=$cutoff';
         </script>";
         exit();
     }
-}
-
-// Debug: Check if we have data
-error_log("Number of employees fetched: " . count($employees_data));
-foreach ($employees_data as $emp) {
-    error_log("Employee: " . $emp['employee_id'] . " - Gross: " . ($emp['gross_amount'] ?? 0) . " - Net: " . ($emp['net_amount'] ?? 0));
 }
 
 // Get company info
@@ -362,6 +457,9 @@ function convertNumberToWords($number)
         return 'NUMBER TOO LARGE';
     }
 }
+
+// Determine if we have multiple employees
+$has_multiple_employees = count($employees_data) > 1;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -369,8 +467,9 @@ function convertNumberToWords($number)
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiple Job Order Payslips - <?php echo $company_name; ?></title>
+    <title>Multiple Permanent Payslips - <?php echo $company_name; ?></title>
     <style>
+        /* ===== SCREEN STYLES ===== */
         * {
             margin: 0;
             padding: 0;
@@ -378,7 +477,7 @@ function convertNumberToWords($number)
         }
 
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: 'Arial', 'Helvetica', sans-serif;
             background: #f0f2f5;
             padding: 20px;
         }
@@ -405,6 +504,7 @@ function convertNumberToWords($number)
             page-break-after: always;
         }
 
+        /* HEADER */
         .payslip-header {
             background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
             color: white;
@@ -452,6 +552,19 @@ function convertNumberToWords($number)
             opacity: 0.9;
         }
 
+        .permanent-badge {
+            display: inline-block;
+            background: #fbbf24;
+            color: #1e3a8a;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 5px;
+        }
+
+        /* EMPLOYEE INFO */
         .employee-info {
             padding: 12px 15px;
             border-bottom: 1px solid #e5e7eb;
@@ -484,9 +597,10 @@ function convertNumberToWords($number)
             margin-top: 2px;
         }
 
+        /* ATTENDANCE SUMMARY */
         .attendance-summary {
             padding: 10px 15px;
-            background: #f0fdf4;
+            background: #eff6ff;
             border-bottom: 1px solid #e5e7eb;
             margin-bottom: 12px;
         }
@@ -504,7 +618,7 @@ function convertNumberToWords($number)
         .attendance-box .value {
             font-size: 18px;
             font-weight: 700;
-            color: #166534;
+            color: #1e40af;
         }
 
         .attendance-box .label {
@@ -513,6 +627,7 @@ function convertNumberToWords($number)
             margin-top: 2px;
         }
 
+        /* SALARY TABLE */
         .salary-table {
             width: 100%;
             border-collapse: collapse;
@@ -548,22 +663,24 @@ function convertNumberToWords($number)
         }
 
         .salary-table .grand-total {
-            background: #f0fdf4;
+            background: #eff6ff;
             font-weight: 700;
             font-size: 12px;
         }
 
+        /* DEDUCTIONS SECTION */
         .deductions-title {
             font-size: 12px;
             font-weight: 600;
-            color: #166534;
+            color: #1e40af;
             margin-bottom: 4px;
         }
 
+        /* NET PAY */
         .net-pay {
             margin: 12px 0;
             padding: 8px 15px;
-            background: #dcfce7;
+            background: #dbeafe;
             border-radius: 3px;
             display: flex;
             justify-content: space-between;
@@ -573,13 +690,14 @@ function convertNumberToWords($number)
         }
 
         .net-pay-label {
-            color: #166534;
+            color: #1e40af;
         }
 
         .net-pay-amount {
             color: #059669;
         }
 
+        /* AMOUNT IN WORDS */
         .amount-words {
             padding: 0 15px 8px;
             font-size: 9px;
@@ -587,6 +705,7 @@ function convertNumberToWords($number)
             font-style: italic;
         }
 
+        /* SIGNATURE AREA */
         .signature-area {
             display: flex;
             justify-content: space-between;
@@ -610,6 +729,7 @@ function convertNumberToWords($number)
             color: #6b7280;
         }
 
+        /* FOOTER */
         .payslip-footer {
             padding: 6px 15px;
             border-top: 1px solid #e5e7eb;
@@ -619,6 +739,7 @@ function convertNumberToWords($number)
             color: #6b7280;
         }
 
+        /* PRINT CONTROLS - Screen only */
         .print-controls {
             position: fixed;
             bottom: 20px;
@@ -643,7 +764,7 @@ function convertNumberToWords($number)
         }
 
         .print-btn.print {
-            background: #166534;
+            background: #1e40af;
             color: white;
         }
 
@@ -652,26 +773,12 @@ function convertNumberToWords($number)
             color: white;
         }
 
-        .text-center {
-            text-align: center;
-        }
-
-        .joborder-badge {
-            display: inline-block;
-            background: #166534;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 8px;
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-left: 5px;
-        }
-
+        /* ===== PRINT STYLES ===== */
         @media print {
             @page {
                 size: portrait;
                 margin: 0;
+                /* No margins - we control padding in .payslip */
             }
 
             body {
@@ -695,6 +802,7 @@ function convertNumberToWords($number)
                 border: none;
                 margin: 0;
                 padding: 0.25in;
+                /* Same padding as screen */
                 border-radius: 0;
                 background: white;
             }
@@ -708,6 +816,7 @@ function convertNumberToWords($number)
                 page-break-after: auto;
             }
 
+            /* Preserve all colors */
             .payslip-header,
             .attendance-summary,
             .grand-total,
@@ -717,6 +826,7 @@ function convertNumberToWords($number)
                 print-color-adjust: exact;
             }
 
+            /* Ensure tables don't break across pages */
             .salary-table {
                 page-break-inside: avoid;
             }
@@ -745,7 +855,7 @@ function convertNumberToWords($number)
                             <p><?php echo $company_address; ?></p>
                         </div>
                         <div class="payslip-title">
-                            <h3>JOB ORDER PAYSLIP <span class="joborder-badge">JOB ORDER</span></h3>
+                            <h3>PERMANENT PAYSLIP <span class="permanent-badge">PERMANENT</span></h3>
                             <p class="period"><?php echo $current_cutoff['label']; ?> - <?php echo date('F Y', strtotime($period . '-01')); ?></p>
                         </div>
                     </div>
@@ -798,7 +908,7 @@ function convertNumberToWords($number)
                         </div>
                     </div>
 
-                    <!-- Salary Details -->
+                    <!-- Salary Table -->
                     <table class="salary-table">
                         <thead>
                             <tr>
@@ -808,20 +918,20 @@ function convertNumberToWords($number)
                         </thead>
                         <tbody>
                             <tr>
-                                <td>Daily Rate</td>
-                                <td class="amount"><?php echo formatCurrency($employee['rate_per_day'] ?? 0); ?></td>
+                                <td>Monthly Salary</td>
+                                <td class="amount"><?php echo formatCurrency($employee['monthly_salary_db'] ?? 0); ?></td>
                             </tr>
                             <tr>
-                                <td>Monthly Salary (22 days)</td>
-                                <td class="amount"><?php echo formatCurrency($employee['monthly_salary'] ?? 0); ?></td>
+                                <td>Daily Rate (22 days)</td>
+                                <td class="amount"><?php echo formatCurrency(($employee['monthly_salary_db'] ?? 0) / 22); ?></td>
                             </tr>
                             <tr>
                                 <td>Days Present</td>
                                 <td class="amount"><?php echo number_format($employee['days_present'] ?? 0, 1); ?> days</td>
                             </tr>
                             <tr>
-                                <td>Prorated Salary</td>
-                                <td class="amount"><?php echo formatCurrency(($employee['rate_per_day'] ?? 0) * ($employee['days_present'] ?? 0)); ?></td>
+                                <td>Amount Accrued</td>
+                                <td class="amount"><?php echo formatCurrency($employee['amount_accrued'] ?? 0); ?></td>
                             </tr>
                             <?php if (isset($employee['other_comp']) && $employee['other_comp'] > 0): ?>
                                 <tr>
@@ -834,18 +944,30 @@ function convertNumberToWords($number)
                                 <td class="amount"><strong><?php echo formatCurrency($employee['gross_amount'] ?? 0); ?></strong></td>
                             </tr>
 
-                            <!-- Deductions -->
+                            <!-- Deductions Section Header -->
                             <tr>
                                 <td colspan="2" style="padding: 8px 0 4px;">
                                     <div class="deductions-title">DEDUCTIONS</div>
                                 </td>
                             </tr>
+
+                            <!-- Deduction Rows -->
                             <?php
                             $deduction_rows = [
                                 'withholding_tax' => 'Withholding Tax',
-                                'sss' => 'SSS Contribution',
-                                'philhealth' => 'PhilHealth Contribution',
-                                'pagibig' => 'Pag-IBIG Contribution'
+                                'pagibig_loan_mpl' => 'PAG-IBIG LOAN - MPL',
+                                'corso_loan' => 'Corso Loan',
+                                'policy_loan' => 'Policy Loan',
+                                'philhealth_ps' => 'PhilHealth P.S.',
+                                'uef_retirement' => 'UEF / Retirement',
+                                'emergency_loan' => 'Emergency Loan',
+                                'gfal' => 'GFAL',
+                                'lbp_loan' => 'LBP Loan',
+                                'mpl' => 'MPL',
+                                'mpl_lite' => 'MPL Lite',
+                                'sss_contribution' => 'SSS Contribution',
+                                'pagibig_cont' => 'PAG-IBIG CONT.',
+                                'state_ins_gs' => 'STATE INS. G.S.'
                             ];
 
                             $has_deductions = false;
@@ -897,17 +1019,6 @@ function convertNumberToWords($number)
                         ?>
                     </div>
 
-                    <!-- CTC Information (if available) -->
-                    <?php if (!empty($employee['ctc_number'])): ?>
-                        <div style="padding: 0 15px 8px;">
-                            <p style="font-size: 8px; color: #6b7280;">
-                                <strong>CTC #:</strong> <?php echo htmlspecialchars($employee['ctc_number']); ?> |
-                                <strong>Issued at:</strong> <?php echo htmlspecialchars($employee['place_of_issue']); ?> |
-                                <strong>Date:</strong> <?php echo !empty($employee['ctc_date']) ? date('F d, Y', strtotime($employee['ctc_date'])) : 'N/A'; ?>
-                            </p>
-                        </div>
-                    <?php endif; ?>
-
                     <!-- Signature Area -->
                     <div class="signature-area">
                         <div class="signature-box">
@@ -953,7 +1064,7 @@ function convertNumberToWords($number)
                 if (document.referrer) {
                     window.location.href = document.referrer;
                 } else {
-                    window.location.href = 'joborderpayrolltable1.php?period=<?php echo $period; ?>&cutoff=<?php echo $cutoff; ?>';
+                    window.location.href = 'permanentpayrolltable1.php?period=<?php echo $period; ?>&cutoff=<?php echo $cutoff; ?>';
                 }
             }, 100);
         }

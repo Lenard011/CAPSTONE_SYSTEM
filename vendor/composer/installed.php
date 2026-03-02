@@ -3,7 +3,7 @@
         'name' => 'hrms/capstone-system',
         'pretty_version' => 'dev-master',
         'version' => 'dev-master',
-        'reference' => '30b0d892d1e6c8f10c373394b78f0af7f4d1c648',
+        'reference' => '06a68f68f743d9553b61ac21b240d71a33f4a829',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -31,7 +31,7 @@
         'hrms/capstone-system' => array(
             'pretty_version' => 'dev-master',
             'version' => 'dev-master',
-            'reference' => '30b0d892d1e6c8f10c373394b78f0af7f4d1c648',
+            'reference' => '06a68f68f743d9553b61ac21b240d71a33f4a829',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
