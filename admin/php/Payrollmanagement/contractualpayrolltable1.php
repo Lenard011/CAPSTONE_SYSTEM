@@ -3007,6 +3007,63 @@ ob_end_flush();
             background: rgba(239, 68, 68, 0.15);
             color: #fecaca;
         }
+
+        /* Pagination Styles - Fixed */
+        .table-footer {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        @media (min-width: 640px) {
+            .table-footer {
+                flex-direction: row;
+            }
+        }
+
+        #pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+
+        #pagination-controls button {
+            min-width: 2rem;
+            height: 2rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border-radius: 0.375rem;
+            transition: all 0.2s ease;
+        }
+
+        #pagination-controls button.active {
+            background-color: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        #pagination-controls button.active:hover {
+            background-color: #1d4ed8;
+        }
+
+        #pagination-controls span {
+            min-width: 2rem;
+            height: 2rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
     </style>
 </head>
 
@@ -3606,49 +3663,79 @@ ob_end_flush();
                     </div>
 
                     <!-- Table Footer with Pagination -->
-                    <div class="table-footer" id="pagination-container">
+                    <div class="table-footer flex flex-col sm:flex-row justify-between items-center gap-4" id="pagination-container">
                         <div class="text-sm text-gray-600">
                             Showing <span class="font-medium" id="showing-from"><?php echo $offset + 1; ?></span> to
                             <span class="font-medium" id="showing-to"><?php echo min($offset + $records_per_page, $total_employees); ?></span> of
                             <span class="font-medium" id="total-employees"><?php echo $total_employees; ?></span> employees
                         </div>
 
-                        <div class="pagination-controls" id="pagination-controls">
-                            <button type="button" class="pagination-btn" onclick="changePage(1)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> title="First Page">
+                        <div class="flex items-center gap-2" id="pagination-controls">
+                            <!-- First Page -->
+                            <button type="button"
+                                class="w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onclick="changePage(1)"
+                                <?php echo $current_page <= 1 ? 'disabled' : ''; ?>
+                                title="First Page">
                                 <i class="fas fa-angle-double-left"></i>
                             </button>
-                            <button type="button" class="pagination-btn" onclick="changePage(<?php echo $current_page - 1; ?>)" <?php echo $current_page <= 1 ? 'disabled' : ''; ?> title="Previous Page">
+
+                            <!-- Previous Page -->
+                            <button type="button"
+                                class="w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onclick="changePage(<?php echo $current_page - 1; ?>)"
+                                <?php echo $current_page <= 1 ? 'disabled' : ''; ?>
+                                title="Previous Page">
                                 <i class="fas fa-angle-left"></i>
                             </button>
 
+                            <!-- Page Numbers -->
                             <?php
                             $start_page = max(1, $current_page - 2);
                             $end_page = min($total_pages, $current_page + 2);
 
+                            // First page with ellipsis
                             if ($start_page > 1) {
-                                echo '<button type="button" class="pagination-btn" onclick="changePage(1)">1</button>';
+                                echo '<button type="button" class="w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50" onclick="changePage(1)">1</button>';
                                 if ($start_page > 2) {
-                                    echo '<span class="pagination-ellipsis">...</span>';
+                                    echo '<span class="w-8 h-8 flex items-center justify-center text-sm text-gray-500">...</span>';
                                 }
                             }
 
+                            // Page numbers
                             for ($i = $start_page; $i <= $end_page; $i++) {
-                                $active_class = ($i == $current_page) ? 'active' : '';
-                                echo "<button type=\"button\" class=\"pagination-btn $active_class\" onclick=\"changePage($i)\">$i</button>";
+                                $active_class = ($i == $current_page) ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50';
+                                echo "<button type=\"button\" 
+                          class=\"w-8 h-8 flex items-center justify-center text-sm font-medium border rounded $active_class\" 
+                          onclick=\"changePage($i)\">$i</button>";
                             }
 
+                            // Last page with ellipsis
                             if ($end_page < $total_pages) {
                                 if ($end_page < $total_pages - 1) {
-                                    echo '<span class="pagination-ellipsis">...</span>';
+                                    echo '<span class="w-8 h-8 flex items-center justify-center text-sm text-gray-500">...</span>';
                                 }
-                                echo "<button type=\"button\" class=\"pagination-btn\" onclick=\"changePage($total_pages)\">$total_pages</button>";
+                                echo "<button type=\"button\" 
+                          class=\"w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50\" 
+                          onclick=\"changePage($total_pages)\">$total_pages</button>";
                             }
                             ?>
 
-                            <button type="button" class="pagination-btn" onclick="changePage(<?php echo $current_page + 1; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> title="Next Page">
+                            <!-- Next Page -->
+                            <button type="button"
+                                class="w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onclick="changePage(<?php echo $current_page + 1; ?>)"
+                                <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?>
+                                title="Next Page">
                                 <i class="fas fa-angle-right"></i>
                             </button>
-                            <button type="button" class="pagination-btn" onclick="changePage(<?php echo $total_pages; ?>)" <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?> title="Last Page">
+
+                            <!-- Last Page -->
+                            <button type="button"
+                                class="w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onclick="changePage(<?php echo $total_pages; ?>)"
+                                <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?>
+                                title="Last Page">
                                 <i class="fas fa-angle-double-right"></i>
                             </button>
                         </div>
