@@ -21,9 +21,9 @@ header('Content-Type: application/json');
 
 // Database connection
 $servername = "localhost";
-$db_username = "root";
-$db_password = "";
-$dbname = "hrms_paluan";
+$db_username = "u420482914_paluan_hrms";
+$db_password = "Hrms_Paluan01";
+$dbname = "u420482914_hrms_paluan";
 
 $conn = new mysqli($servername, $db_username, $db_password, $dbname);
 

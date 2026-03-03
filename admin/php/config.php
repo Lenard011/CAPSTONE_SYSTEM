@@ -5,9 +5,9 @@ session_start();
 // Database credentials
 define('DB_HOST', 'localhost');
 define('DB_PORT', '3306');
-define('DB_NAME', 'hrmo_paluan');
-define('DB_USER', 'root');  // Change to 'hrmo_user' for production
-define('DB_PASS', '');      // Set your XAMPP password
+define('DB_NAME', 'u420482914_hrms_paluan');
+define('DB_USER', 'u420482914_paluan_hrms');  // Change to 'hrmo_user' for production
+define('DB_PASS', 'Hrms_Paluan01');      // Set your XAMPP password
 
 // Application settings
 define('APP_NAME', 'HRMO Paluan Attendance System');

@@ -77,9 +77,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
 
         // Database connection
         $host = 'localhost';
-        $user = 'root';
-        $pass = '';
-        $dbname = 'hrms_paluan';
+        $user = 'u420482914_paluan_hrms';
+        $pass = 'Hrms_Paluan01';
+        $dbname = 'u420482914_hrms_paluan';
 
         $conn = new mysqli($host, $user, $pass, $dbname);
 
@@ -185,9 +185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // Database configuration
     $host = 'localhost';
-    $user = 'root';
-    $pass = '';
-    $dbname = 'hrms_paluan';
+    $user = 'u420482914_paluan_hrms';
+    $pass = 'Hrms_Paluan01';
+    $dbname = 'u420482914_hrms_paluan';
 
     $conn = new mysqli($host, $user, $pass, $dbname);
 

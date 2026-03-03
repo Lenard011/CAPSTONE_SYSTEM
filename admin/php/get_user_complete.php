@@ -11,9 +11,9 @@ if (!isset($_SESSION['admin_id']) && !isset($_SESSION['user_id'])) {
 
 // Database connection
 $host = "localhost";
-$username = "root";
-$password = "";
-$database = "hrms_paluan";
+$username = "u420482914_paluan_hrms";
+$password = "Hrms_Paluan01";
+$database = "u420482914_hrms_paluan";
 
 $conn = new mysqli($host, $username, $password, $database);
 if ($conn->connect_error) {

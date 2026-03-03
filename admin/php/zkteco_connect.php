@@ -1,10 +1,10 @@
 <?php
 // Database connection
 $servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "zkteco_db";
-
+$username = "u420482914_paluan_hrms";
+$password = "Hrms_Paluan01";
+$dbname = "u420482914_hrms_paluan";
+    
 $conn = new mysqli($servername, $username, $password, $dbname);
 
 if ($conn->connect_error) {

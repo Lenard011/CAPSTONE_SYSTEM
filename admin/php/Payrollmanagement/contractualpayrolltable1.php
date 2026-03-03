@@ -52,9 +52,9 @@ if (isset($_GET['logout'])) {
 
 // Database configuration
 $host = 'localhost';
-$dbname = 'hrms_paluan';
-$username = 'root';
-$password = '';
+$dbname = 'u420482914_hrms_paluan';
+$username = 'u420482914_paluan_hrms';
+$password = 'Hrms_Paluan01';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);

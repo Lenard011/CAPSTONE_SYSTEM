@@ -47,9 +47,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // DATABASE CONFIGURATION
 // ===============================================
 define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'hrms_paluan');
+define('DB_USER', 'u420482914_paluan_hrms');
+define('DB_PASS', 'Hrms_Paluan01');
+define('DB_NAME', 'u420482914_hrms_paluan');
 
 // ===============================================
 // CORE CLASSES & FUNCTIONS

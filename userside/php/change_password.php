@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = 'Password must be at least 8 characters long';
     } else {
         // Connect to database
-        $conn = new mysqli('localhost', 'root', '', 'hrms_paluan');
+        $conn = new mysqli('localhost', 'u420482914_paluan_hrms', 'Hrms_Paluan01', 'hrms_paluan');
         
         if ($conn->connect_error) {
             $error_message = 'Database connection failed';

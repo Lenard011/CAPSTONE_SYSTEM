@@ -44,7 +44,7 @@ if (!$is_admin) {
 // Logout functionality - MATCHING DASHBOARD.PHP
 if (isset($_GET['logout'])) {
     // Database connection for logging
-    $conn = new mysqli("localhost", "root", "", "hrms_paluan");
+    $conn = new mysqli("localhost", "u420482914_paluan_hrms", "Hrms_Paluan01", "u420482914_hrms_paluan");
 
     if (!$conn->connect_error) {
         // Log audit trail
@@ -90,9 +90,9 @@ if (isset($_GET['logout'])) {
 
 // Database configuration
 $host = "localhost";
-$username = "root";
-$password = "";
-$database = "hrms_paluan";
+$username = "u420482914_paluan_hrms";
+$password = "Hrms_Paluan01";
+$database = "u420482914_hrms_paluan";
 
 // Create connection
 $conn = new mysqli($host, $username, $password, $database);

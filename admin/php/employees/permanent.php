@@ -38,9 +38,9 @@ if (isset($_GET['logout'])) {
 
 // Database configuration
 $servername = "localhost";
-$username = "root"; // Change as needed
-$password = ""; // Change as needed
-$database = "hrms_paluan";
+$username = "u420482914_paluan_hrms"; // Change as needed
+$password = "Hrms_Paluan01"; // Change as needed
+$database = "u420482914_hrms_paluan";
 
 // Create connection
 $conn = new mysqli($servername, $username, $password, $database);

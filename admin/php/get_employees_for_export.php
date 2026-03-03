@@ -10,9 +10,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Database Configuration
 define('DB_SERVER', 'localhost');
-define('DB_USERNAME', 'root');
-define('DB_PASSWORD', '');
-define('DB_NAME', 'hrms_paluan');
+define('DB_USERNAME', 'u420482914_paluan_hrms');
+define('DB_PASSWORD', 'Hrms_Paluan01');
+define('DB_NAME', 'u420482914_hrms_paluan');
 
 try {
     $pdo = new PDO("mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME, DB_USERNAME, DB_PASSWORD);

@@ -61,9 +61,9 @@ $profile_image = $_SESSION['profile_image'] ?? '';
 
 // Database connection
 $servername = "localhost";
-$db_username = "root"; // Change as needed
-$db_password = ""; // Change as needed
-$dbname = "hrms_paluan"; // Change to your database name
+$db_username = "u420482914_paluan_hrms"; // Change as needed
+$db_password = "Hrms_Paluan01"; // Change as needed
+$dbname = "u420482914_hrms_paluan"; // Change to your database name
 
 // Create connection
 $conn = new mysqli($servername, $db_username, $db_password, $dbname);

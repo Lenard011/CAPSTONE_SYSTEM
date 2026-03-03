@@ -55,9 +55,9 @@ if (isset($_GET['logout'])) {
 // =================================================================================
 
 define('DB_SERVER', 'localhost');
-define('DB_USERNAME', 'root');
-define('DB_PASSWORD', '');
-define('DB_NAME', 'hrms_paluan');
+define('DB_USERNAME', 'u420482914_paluan_hrms');
+define('DB_PASSWORD', 'Hrms_Paluan01');
+define('DB_NAME', 'u420482914_hrms_paluan');
 
 // Initialize variables
 $status = '';
