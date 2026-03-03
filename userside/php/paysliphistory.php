@@ -42,65 +42,198 @@ $user_id = $_SESSION['user_id'];
 $full_name = $_SESSION['full_name'] ?? ($_SESSION['first_name'] . ' ' . $_SESSION['last_name']);
 $employee_id = $_SESSION['employee_id'] ?? '';
 
-// Get employee's payroll records
-$sql = "SELECT 
-            p.*,
-            u.first_name,
-            u.last_name,
-            u.employee_id as emp_id_number,
-            DATE_FORMAT(p.created_at, '%M %Y') as period_display,
-            DATE_FORMAT(p.created_at, '%Y-%m') as period_sort,
-            CASE 
-                WHEN p.status = 'approved' THEN 'paid'
-                WHEN p.status = 'pending' THEN 'pending'
-                WHEN p.status = 'processing' THEN 'processing'
-                ELSE p.status
-            END as status_display
-        FROM payroll p
-        JOIN users u ON p.user_id = u.id
-        WHERE p.user_id = ?
-        ORDER BY p.payroll_period DESC, p.created_at DESC";
+// Get employee type from users table
+$user_sql = "SELECT employee_type, employee_id FROM users WHERE id = ?";
+$user_stmt = $conn->prepare($user_sql);
+$user_stmt->bind_param("i", $user_id);
+$user_stmt->execute();
+$user_result = $user_stmt->get_result();
+$user_data = $user_result->fetch_assoc();
+$employee_type = $user_data['employee_type'] ?? '';
+$employee_id = $user_data['employee_id'] ?? $employee_id;
+$user_stmt->close();
 
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
+// Initialize arrays
 $payslips = [];
 $total_earnings = 0;
 $total_payslips = 0;
 $current_month_earnings = 0;
 $pending_count = 0;
-
-while ($row = $result->fetch_assoc()) {
-    $payslips[] = $row;
-    $total_earnings += floatval($row['net_amount'] ?? 0);
-    $total_payslips++;
-    
-    // Check if current month
-    if (date('Y-m') === date('Y-m', strtotime($row['created_at']))) {
-        $current_month_earnings += floatval($row['net_amount'] ?? 0);
-    }
-    
-    // Count pending/processing payslips
-    if (in_array($row['status_display'], ['pending', 'processing'])) {
-        $pending_count++;
-    }
-}
-
-$stmt->close();
-
-// Get distinct years and months for filters
-$year_sql = "SELECT DISTINCT YEAR(payroll_period) as year FROM payroll WHERE user_id = ? ORDER BY year DESC";
-$year_stmt = $conn->prepare($year_sql);
-$year_stmt->bind_param("i", $user_id);
-$year_stmt->execute();
-$years_result = $year_stmt->get_result();
 $years = [];
-while ($row = $years_result->fetch_assoc()) {
-    $years[] = $row['year'];
+
+// Determine which table to query based on employee type
+if ($employee_type === 'joborder') {
+    // Query joborder payroll history
+    $sql = "SELECT 
+                id as payroll_id,
+                employee_id,
+                user_id,
+                employee_type,
+                payroll_period,
+                payroll_cutoff,
+                monthly_salaries_wages,
+                monthly_salary,
+                other_comp,
+                gross_amount,
+                earned_salary,
+                withholding_tax,
+                sss,
+                philhealth,
+                pagibig,
+                total_deductions,
+                net_amount,
+                days_present,
+                working_days,
+                gratuity,
+                income_tax,
+                community_tax,
+                gsis,
+                status,
+                approved_by,
+                approved_date,
+                processed_date,
+                obligation_id,
+                obligation_status,
+                created_at,
+                updated_at,
+                DATE_FORMAT(payroll_period, '%M %Y') as period_display,
+                CASE 
+                    WHEN status = 'approved' THEN 'paid'
+                    WHEN status = 'pending' THEN 'pending'
+                    WHEN status = 'processing' THEN 'processing'
+                    ELSE status
+                END as status_display
+            FROM payroll_history_joborder 
+            WHERE user_id = ? 
+            ORDER BY payroll_period DESC, 
+                CASE 
+                    WHEN payroll_cutoff = 'second_half' THEN 2
+                    WHEN payroll_cutoff = 'first_half' THEN 1
+                    ELSE 3
+                END DESC,
+                created_at DESC";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($row = $result->fetch_assoc()) {
+        $payslips[] = $row;
+        $total_earnings += floatval($row['net_amount'] ?? 0);
+        $total_payslips++;
+        
+        // Check if current month
+        $period_date = $row['payroll_period'] . '-01';
+        if (date('Y-m') === date('Y-m', strtotime($period_date))) {
+            $current_month_earnings += floatval($row['net_amount'] ?? 0);
+        }
+        
+        // Count pending/processing payslips
+        if (in_array($row['status_display'], ['pending', 'processing'])) {
+            $pending_count++;
+        }
+    }
+    $stmt->close();
+    
+    // Get distinct years for filters
+    $year_sql = "SELECT DISTINCT YEAR(payroll_period) as year FROM payroll_history_joborder WHERE user_id = ? ORDER BY year DESC";
+    $year_stmt = $conn->prepare($year_sql);
+    $year_stmt->bind_param("i", $user_id);
+    $year_stmt->execute();
+    $years_result = $year_stmt->get_result();
+    while ($row = $years_result->fetch_assoc()) {
+        $years[] = $row['year'];
+    }
+    $year_stmt->close();
+    
+} else {
+    // Query contractual payroll history (default)
+    $sql = "SELECT 
+                id as payroll_id,
+                employee_id,
+                user_id,
+                employee_type,
+                monthly_salaries_wages,
+                payroll_period,
+                monthly_salary,
+                days_present,
+                earned_salary,
+                gratuity,
+                income_tax,
+                community_tax,
+                gsis,
+                total_deductions,
+                net_amount,
+                processed_date,
+                status,
+                created_at,
+                updated_at,
+                payroll_cutoff,
+                working_days,
+                withholding_tax,
+                sss,
+                other_comp,
+                gross_amount,
+                philhealth,
+                pagibig,
+                obligation_id,
+                obligation_status,
+                DATE_FORMAT(payroll_period, '%M %Y') as period_display,
+                CASE 
+                    WHEN payroll_cutoff = 'full' THEN 'Full Month'
+                    ELSE payroll_cutoff
+                END as cutoff_display,
+                CASE 
+                    WHEN status = 'approved' THEN 'paid'
+                    WHEN status = 'pending' THEN 'pending'
+                    WHEN status = 'processing' THEN 'processing'
+                    ELSE status
+                END as status_display
+            FROM payroll_history 
+            WHERE user_id = ? 
+            ORDER BY payroll_period DESC, 
+                CASE 
+                    WHEN payroll_cutoff = 'second_half' THEN 2
+                    WHEN payroll_cutoff = 'first_half' THEN 1
+                    ELSE 3
+                END DESC,
+                created_at DESC";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($row = $result->fetch_assoc()) {
+        $payslips[] = $row;
+        $total_earnings += floatval($row['net_amount'] ?? 0);
+        $total_payslips++;
+        
+        // Check if current month
+        $period_date = $row['payroll_period'] . '-01';
+        if (date('Y-m') === date('Y-m', strtotime($period_date))) {
+            $current_month_earnings += floatval($row['net_amount'] ?? 0);
+        }
+        
+        // Count pending/processing payslips
+        if (in_array($row['status_display'], ['pending', 'processing'])) {
+            $pending_count++;
+        }
+    }
+    $stmt->close();
+    
+    // Get distinct years for filters
+    $year_sql = "SELECT DISTINCT YEAR(payroll_period) as year FROM payroll_history WHERE user_id = ? ORDER BY year DESC";
+    $year_stmt = $conn->prepare($year_sql);
+    $year_stmt->bind_param("i", $user_id);
+    $year_stmt->execute();
+    $years_result = $year_stmt->get_result();
+    while ($row = $years_result->fetch_assoc()) {
+        $years[] = $row['year'];
+    }
+    $year_stmt->close();
 }
-$year_stmt->close();
 
 $conn->close();
 
@@ -108,10 +241,24 @@ $conn->close();
 function formatCurrency($amount) {
     return '₱' . number_format($amount, 2);
 }
+
+// Helper function to get cutoff display
+function getCutoffDisplay($cutoff) {
+    switch(strtolower($cutoff)) {
+        case 'first_half':
+            return 'First Half';
+        case 'second_half':
+            return 'Second Half';
+        case 'full':
+        case 'full_month':
+            return 'Full Month';
+        default:
+            return ucfirst(str_replace('_', ' ', $cutoff));
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -120,7 +267,7 @@ function formatCurrency($amount) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Modern Variables */
+        /* [Keep all your existing CSS styles here - same as before] */
         :root {
             --primary: #2563eb;
             --primary-dark: #1d4ed8;
@@ -145,7 +292,6 @@ function formatCurrency($amount) {
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* Base Styles */
         * {
             margin: 0;
             padding: 0;
@@ -161,7 +307,6 @@ function formatCurrency($amount) {
             overflow-x: hidden;
         }
 
-        /* Layout Container */
         .app-container {
             display: flex;
             min-height: 100vh;
@@ -169,7 +314,6 @@ function formatCurrency($amount) {
             width: 100%;
         }
 
-        /* Overlay for mobile sidebar */
         .sidebar-overlay {
             position: fixed;
             top: 0;
@@ -189,7 +333,6 @@ function formatCurrency($amount) {
             opacity: 1;
         }
 
-        /* Sidebar Navigation */
         .sidebar {
             width: 260px;
             background: var(--sidebar-bg);
@@ -248,7 +391,6 @@ function formatCurrency($amount) {
             font-weight: 500;
         }
 
-        /* Navigation Menu */
         .nav-menu {
             padding: 1rem 0;
         }
@@ -288,7 +430,6 @@ function formatCurrency($amount) {
             flex-shrink: 0;
         }
 
-        /* User Profile Section */
         .user-profile {
             padding: 1.5rem;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -329,7 +470,6 @@ function formatCurrency($amount) {
             opacity: 0.8;
         }
 
-        /* Main Content */
         .main-content {
             flex: 1;
             padding: 1rem;
@@ -350,7 +490,6 @@ function formatCurrency($amount) {
             }
         }
 
-        /* Top Bar */
         .top-bar {
             display: flex;
             justify-content: space-between;
@@ -447,7 +586,6 @@ function formatCurrency($amount) {
             }
         }
 
-        /* Summary Cards */
         .summary-cards {
             display: grid;
             grid-template-columns: 1fr;
@@ -536,7 +674,6 @@ function formatCurrency($amount) {
             }
         }
 
-        /* Color Variations */
         .summary-card:nth-child(1) .summary-icon {
             background: linear-gradient(135deg, #10b981, #059669);
         }
@@ -553,7 +690,6 @@ function formatCurrency($amount) {
             background: linear-gradient(135deg, #06b6d4, #0ea5e9);
         }
 
-        /* Filter Section */
         .filter-section {
             background: var(--card-bg);
             border-radius: var(--radius);
@@ -739,7 +875,6 @@ function formatCurrency($amount) {
             box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);
         }
 
-        /* Mobile Card View */
         .mobile-card-view {
             display: grid;
             grid-template-columns: 1fr;
@@ -832,7 +967,6 @@ function formatCurrency($amount) {
             border-top: 1px solid var(--gray-light);
         }
 
-        /* Table Section */
         .table-container {
             background: var(--card-bg);
             border-radius: var(--radius);
@@ -1044,7 +1178,6 @@ function formatCurrency($amount) {
             color: var(--success);
         }
 
-        /* Table Footer */
         .table-footer {
             padding: 1.25rem;
             border-top: 1px solid var(--gray-light);
@@ -1120,7 +1253,6 @@ function formatCurrency($amount) {
             color: var(--success);
         }
 
-        /* Pagination */
         .pagination {
             display: flex;
             flex-direction: column;
@@ -1193,7 +1325,6 @@ function formatCurrency($amount) {
             color: var(--gray);
         }
 
-        /* Export Modal */
         .export-modal {
             position: fixed;
             inset: 0;
@@ -1305,7 +1436,6 @@ function formatCurrency($amount) {
             color: var(--dark);
         }
 
-        /* Footer */
         .footer {
             background: var(--footer-bg);
             color: white;
@@ -1444,27 +1574,6 @@ function formatCurrency($amount) {
             color: var(--primary);
         }
 
-        .contact-info {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .contact-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
-            color: #9ca3af;
-            font-size: 0.9rem;
-        }
-
-        .contact-item i {
-            color: var(--primary);
-            margin-top: 0.25rem;
-            font-size: 1rem;
-        }
-
         .social-links {
             display: flex;
             gap: 0.75rem;
@@ -1526,33 +1635,7 @@ function formatCurrency($amount) {
             font-weight: 600;
         }
 
-        .footer-bottom-links {
-            display: flex;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        @media (min-width: 768px) {
-            .footer-bottom-links {
-                justify-content: flex-start;
-            }
-        }
-
-        .footer-bottom-links a {
-            color: #9ca3af;
-            text-decoration: none;
-            font-size: 0.85rem;
-            transition: var(--transition);
-        }
-
-        .footer-bottom-links a:hover {
-            color: white;
-        }
-
-        /* Print Styles */
         @media print {
-
             .sidebar,
             .top-bar-actions,
             .mobile-menu-btn,
@@ -1586,7 +1669,6 @@ function formatCurrency($amount) {
             }
         }
 
-        /* Custom Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -1606,7 +1688,6 @@ function formatCurrency($amount) {
             background: var(--primary);
         }
 
-        /* Animation */
         @keyframes fadeInUp {
             from {
                 opacity: 0;
@@ -1618,7 +1699,6 @@ function formatCurrency($amount) {
             }
         }
 
-        /* Notification Toast */
         .notification-toast {
             position: fixed;
             top: 1rem;
@@ -1660,6 +1740,18 @@ function formatCurrency($amount) {
                 transform: translateX(0);
                 opacity: 1;
             }
+        }
+
+        .employee-type-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: var(--primary-light);
+            color: white;
+            margin-left: 0.5rem;
         }
     </style>
 </head>
@@ -1724,11 +1816,18 @@ function formatCurrency($amount) {
             <div class="user-profile">
                 <div class="user-info">
                     <div class="user-avatar">
-                        <?php echo strtoupper(substr($full_name, 0, 1) . (strpos($full_name, ' ') ? substr($full_name, strpos($full_name, ' ') + 1, 1) : '')); ?>
+                        <?php 
+                        $initial = strtoupper(substr($full_name, 0, 1));
+                        if (strpos($full_name, ' ') !== false) {
+                            $initial .= strtoupper(substr($full_name, strpos($full_name, ' ') + 1, 1));
+                        }
+                        echo $initial; 
+                        ?>
                     </div>
                     <div class="user-details">
                         <h4><?php echo htmlspecialchars($full_name); ?></h4>
                         <p>Employee ID: <?php echo htmlspecialchars($employee_id); ?></p>
+                        <p style="font-size: 0.7rem; opacity: 0.7;"><?php echo ucfirst($employee_type); ?></p>
                     </div>
                 </div>
             </div>
@@ -1739,7 +1838,7 @@ function formatCurrency($amount) {
             <!-- Top Bar -->
             <div class="top-bar">
                 <div class="page-header">
-                    <h1>Payslip History</h1>
+                    <h1>Payslip History <span class="employee-type-badge"><?php echo ucfirst($employee_type); ?></span></h1>
                     <p>View and manage your salary history and payslips</p>
                 </div>
                 <div class="top-bar-actions">
@@ -1806,9 +1905,14 @@ function formatCurrency($amount) {
                         <div class="filter-select">
                             <select class="filter-input" id="yearFilter">
                                 <option value="">All Years</option>
-                                <?php foreach ($years as $year): ?>
-                                <option value="<?php echo $year; ?>"><?php echo $year; ?></option>
-                                <?php endforeach; ?>
+                                <?php if (!empty($years)): ?>
+                                    <?php foreach ($years as $year): ?>
+                                    <option value="<?php echo $year; ?>"><?php echo $year; ?></option>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <option value="2024">2024</option>
+                                    <option value="2023">2023</option>
+                                <?php endif; ?>
                             </select>
                         </div>
 
@@ -1839,6 +1943,15 @@ function formatCurrency($amount) {
                             </select>
                         </div>
 
+                        <div class="filter-select">
+                            <select class="filter-input" id="cutoffFilter">
+                                <option value="">All Cutoffs</option>
+                                <option value="first_half">First Half</option>
+                                <option value="second_half">Second Half</option>
+                                <option value="full">Full Month</option>
+                            </select>
+                        </div>
+
                         <div class="search-container">
                             <i class="fas fa-search search-icon"></i>
                             <input type="text" class="search-input" placeholder="Search period..." id="searchInput">
@@ -1863,9 +1976,9 @@ function formatCurrency($amount) {
                         <button class="btn btn-primary" id="exportBtn">
                             <i class="fas fa-download"></i> Export
                         </button>
-                        <button class="btn btn-success" id="printBtn">
+                        <!-- <button class="btn btn-success" id="printBtn">
                             <i class="fas fa-print"></i> Print Selected
-                        </button>
+                        </button> -->
                         <button class="btn btn-secondary" id="selectAllBtn">
                             <i class="fas fa-check-double"></i> Select All
                         </button>
@@ -1883,6 +1996,7 @@ function formatCurrency($amount) {
                                     </div>
                                 </th>
                                 <th>Period</th>
+                                <th>Cutoff</th>
                                 <th>Rate/Day</th>
                                 <th>Days Worked</th>
                                 <th>Gross Amount</th>
@@ -1899,23 +2013,37 @@ function formatCurrency($amount) {
                         <tbody id="payslipTableBody">
                             <?php if (empty($payslips)): ?>
                             <tr>
-                                <td colspan="13" class="text-center py-8 text-gray-500">
+                                <td colspan="14" class="text-center py-8 text-gray-500">
                                     No payslip records found.
                                 </td>
                             </tr>
                             <?php else: ?>
                                 <?php foreach ($payslips as $index => $payslip): ?>
-                                <tr data-id="<?php echo $payslip['payroll_id']; ?>" data-period="<?php echo $payslip['period_display']; ?>" data-status="<?php echo $payslip['status_display']; ?>" data-year="<?php echo date('Y', strtotime($payslip['payroll_period'])); ?>" data-month="<?php echo date('n', strtotime($payslip['payroll_period'])); ?>">
+                                <tr data-id="<?php echo $payslip['payroll_id'] ?? $index; ?>" 
+                                    data-period="<?php echo $payslip['period_display'] ?? ''; ?>" 
+                                    data-status="<?php echo $payslip['status_display'] ?? ''; ?>" 
+                                    data-cutoff="<?php echo $payslip['payroll_cutoff'] ?? ''; ?>"
+                                    data-year="<?php echo date('Y', strtotime(($payslip['payroll_period'] ?? 'now') . '-01')); ?>" 
+                                    data-month="<?php echo date('n', strtotime(($payslip['payroll_period'] ?? 'now') . '-01')); ?>">
                                     <td class="checkbox-cell">
                                         <div class="checkbox-wrapper">
-                                            <input type="checkbox" class="payslip-checkbox" data-id="<?php echo $payslip['payroll_id']; ?>">
+                                            <input type="checkbox" class="payslip-checkbox" data-id="<?php echo $payslip['payroll_id'] ?? $index; ?>">
                                         </div>
                                     </td>
                                     <td>
-                                        <div class="employee-name"><?php echo $payslip['period_display']; ?></div>
-                                        <div class="employee-id">Cutoff: <?php echo ucfirst($payslip['payroll_cutoff'] ?? 'N/A'); ?></div>
+                                        <div class="employee-name"><?php echo $payslip['period_display'] ?? 'N/A'; ?></div>
                                     </td>
-                                    <td class="amount-cell"><?php echo formatCurrency($payslip['daily_rate'] ?? 0); ?></td>
+                                    <td>
+                                        <div class="employee-id"><?php echo getCutoffDisplay($payslip['payroll_cutoff'] ?? ''); ?></div>
+                                    </td>
+                                    <td class="amount-cell">
+                                        <?php 
+                                        $rate = $employee_type === 'joborder' ? 
+                                            ($payslip['monthly_salary'] ?? 0) / max(($payslip['working_days'] ?? 1), 1) : 
+                                            ($payslip['monthly_salary'] ?? 0) / max(($payslip['working_days'] ?? 1), 1);
+                                        echo formatCurrency($rate);
+                                        ?>
+                                    </td>
                                     <td><?php echo number_format($payslip['days_present'] ?? 0, 1); ?></td>
                                     <td class="amount-cell"><?php echo formatCurrency($payslip['gross_amount'] ?? 0); ?></td>
                                     <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['withholding_tax'] ?? 0); ?></td>
@@ -1925,15 +2053,15 @@ function formatCurrency($amount) {
                                     <td class="amount-cell amount-negative"><?php echo formatCurrency($payslip['total_deductions'] ?? 0); ?></td>
                                     <td class="amount-cell amount-positive"><?php echo formatCurrency($payslip['net_amount'] ?? 0); ?></td>
                                     <td>
-                                        <span class="status-badge status-<?php echo $payslip['status_display']; ?>">
-                                            <?php echo ucfirst($payslip['status_display']); ?>
+                                        <span class="status-badge status-<?php echo $payslip['status_display'] ?? 'pending'; ?>">
+                                            <?php echo ucfirst($payslip['status_display'] ?? 'Pending'); ?>
                                         </span>
                                     </td>
                                     <td>
-                                        <button class="action-btn view-btn" onclick="viewPayslip(<?php echo $payslip['payroll_id']; ?>)">
+                                        <button class="action-btn view-btn" onclick="viewPayslip(<?php echo $payslip['payroll_id'] ?? $index; ?>)">
                                             <i class="fas fa-eye"></i> View
                                         </button>
-                                        <button class="action-btn download-btn" onclick="downloadPayslip(<?php echo $payslip['payroll_id']; ?>)">
+                                        <button class="action-btn download-btn" onclick="downloadPayslip(<?php echo $payslip['payroll_id'] ?? $index; ?>)">
                                             <i class="fas fa-download"></i>
                                         </button>
                                     </td>
@@ -1947,23 +2075,26 @@ function formatCurrency($amount) {
                 <!-- Mobile Card View -->
                 <div class="mobile-card-view" id="mobileCardView">
                     <?php if (!empty($payslips)): ?>
-                        <?php foreach ($payslips as $payslip): ?>
-                        <div class="payslip-card" data-id="<?php echo $payslip['payroll_id']; ?>" data-period="<?php echo $payslip['period_display']; ?>" data-status="<?php echo $payslip['status_display']; ?>" data-year="<?php echo date('Y', strtotime($payslip['payroll_period'])); ?>" data-month="<?php echo date('n', strtotime($payslip['payroll_period'])); ?>">
-                            <input type="checkbox" class="payslip-checkbox card-checkbox" data-id="<?php echo $payslip['payroll_id']; ?>">
+                        <?php foreach ($payslips as $index => $payslip): ?>
+                        <div class="payslip-card" data-id="<?php echo $payslip['payroll_id'] ?? $index; ?>" 
+                             data-period="<?php echo $payslip['period_display'] ?? ''; ?>" 
+                             data-status="<?php echo $payslip['status_display'] ?? ''; ?>"
+                             data-cutoff="<?php echo $payslip['payroll_cutoff'] ?? ''; ?>"
+                             data-year="<?php echo date('Y', strtotime(($payslip['payroll_period'] ?? 'now') . '-01')); ?>" 
+                             data-month="<?php echo date('n', strtotime(($payslip['payroll_period'] ?? 'now') . '-01')); ?>">
+                            <input type="checkbox" class="payslip-checkbox card-checkbox" data-id="<?php echo $payslip['payroll_id'] ?? $index; ?>">
                             <div class="card-header">
                                 <div>
-                                    <div class="card-title"><?php echo $payslip['period_display']; ?></div>
-                                    <div style="font-size: 0.85rem; color: var(--gray); margin-top: 0.25rem;">Cutoff: <?php echo ucfirst($payslip['payroll_cutoff'] ?? 'N/A'); ?></div>
+                                    <div class="card-title"><?php echo $payslip['period_display'] ?? 'N/A'; ?></div>
+                                    <div style="font-size: 0.85rem; color: var(--gray); margin-top: 0.25rem;">
+                                        Cutoff: <?php echo getCutoffDisplay($payslip['payroll_cutoff'] ?? ''); ?>
+                                    </div>
                                 </div>
-                                <span class="card-status status-<?php echo $payslip['status_display']; ?>">
-                                    <?php echo ucfirst($payslip['status_display']); ?>
+                                <span class="card-status status-<?php echo $payslip['status_display'] ?? 'pending'; ?>">
+                                    <?php echo ucfirst($payslip['status_display'] ?? 'Pending'); ?>
                                 </span>
                             </div>
                             <div class="card-body">
-                                <div class="card-item">
-                                    <span class="card-label">Rate/Day</span>
-                                    <span class="card-value card-amount"><?php echo formatCurrency($payslip['daily_rate'] ?? 0); ?></span>
-                                </div>
                                 <div class="card-item">
                                     <span class="card-label">Days Worked</span>
                                     <span class="card-value"><?php echo number_format($payslip['days_present'] ?? 0, 1); ?></span>
@@ -1998,10 +2129,10 @@ function formatCurrency($amount) {
                                 </div>
                             </div>
                             <div class="card-actions">
-                                <button class="action-btn view-btn" onclick="viewPayslip(<?php echo $payslip['payroll_id']; ?>)" style="flex: 1;">
+                                <button class="action-btn view-btn" onclick="viewPayslip(<?php echo $payslip['payroll_id'] ?? $index; ?>)" style="flex: 1;">
                                     <i class="fas fa-eye"></i> View
                                 </button>
-                                <button class="action-btn download-btn" onclick="downloadPayslip(<?php echo $payslip['payroll_id']; ?>)" style="flex: 1;">
+                                <button class="action-btn download-btn" onclick="downloadPayslip(<?php echo $payslip['payroll_id'] ?? $index; ?>)" style="flex: 1;">
                                     <i class="fas fa-download"></i> Download
                                 </button>
                             </div>
@@ -2178,6 +2309,7 @@ function formatCurrency($amount) {
     <script>
         // Store payslip data from PHP
         const payslipData = <?php echo json_encode($payslips); ?>;
+        const employeeType = '<?php echo $employee_type; ?>';
 
         // State variables
         let currentData = [...payslipData];
@@ -2206,6 +2338,7 @@ function formatCurrency($amount) {
             const yearFilter = document.getElementById('yearFilter');
             const monthFilter = document.getElementById('monthFilter');
             const statusFilter = document.getElementById('statusFilter');
+            const cutoffFilter = document.getElementById('cutoffFilter');
             const exportAllCheckbox = document.getElementById('exportAll');
             const payslipTableBody = document.getElementById('payslipTableBody');
             const mobileCardView = document.getElementById('mobileCardView');
@@ -2225,22 +2358,28 @@ function formatCurrency($amount) {
             setupPagination();
 
             // Mobile sidebar toggle
-            mobileMenuBtn.addEventListener('click', function () {
-                sidebar.classList.toggle('active');
-                sidebarOverlay.classList.toggle('active');
-                document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : 'auto';
-                this.querySelector('i').classList.toggle('fa-bars');
-                this.querySelector('i').classList.toggle('fa-times');
-            });
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', function () {
+                    sidebar.classList.toggle('active');
+                    sidebarOverlay.classList.toggle('active');
+                    document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : 'auto';
+                    this.querySelector('i').classList.toggle('fa-bars');
+                    this.querySelector('i').classList.toggle('fa-times');
+                });
+            }
 
             // Close sidebar when clicking on overlay
-            sidebarOverlay.addEventListener('click', function () {
-                sidebar.classList.remove('active');
-                sidebarOverlay.classList.remove('active');
-                document.body.style.overflow = 'auto';
-                mobileMenuBtn.querySelector('i').classList.remove('fa-times');
-                mobileMenuBtn.querySelector('i').classList.add('fa-bars');
-            });
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', function () {
+                    sidebar.classList.remove('active');
+                    sidebarOverlay.classList.remove('active');
+                    document.body.style.overflow = 'auto';
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.querySelector('i').classList.remove('fa-times');
+                        mobileMenuBtn.querySelector('i').classList.add('fa-bars');
+                    }
+                });
+            }
 
             // Close sidebar when window is resized to desktop size
             window.addEventListener('resize', function () {
@@ -2248,8 +2387,10 @@ function formatCurrency($amount) {
                     sidebar.classList.remove('active');
                     sidebarOverlay.classList.remove('active');
                     document.body.style.overflow = 'auto';
-                    mobileMenuBtn.querySelector('i').classList.remove('fa-times');
-                    mobileMenuBtn.querySelector('i').classList.add('fa-bars');
+                    if (mobileMenuBtn) {
+                        mobileMenuBtn.querySelector('i').classList.remove('fa-times');
+                        mobileMenuBtn.querySelector('i').classList.add('fa-bars');
+                    }
                 }
             });
 
@@ -2381,7 +2522,7 @@ function formatCurrency($amount) {
                 rows.forEach(row => {
                     const id = row.dataset.id;
                     if (id) {
-                        const item = filteredData.find(i => i.payroll_id == id);
+                        const item = filteredData.find(i => (i.payroll_id || i.id) == id);
                         row.style.display = item ? '' : 'none';
                         
                         // Update checkbox state
@@ -2399,7 +2540,7 @@ function formatCurrency($amount) {
                 cards.forEach(card => {
                     const id = card.dataset.id;
                     if (id) {
-                        const item = filteredData.find(i => i.payroll_id == id);
+                        const item = filteredData.find(i => (i.payroll_id || i.id) == id);
                         card.style.display = item ? '' : 'none';
                         
                         // Update checkbox state
@@ -2416,7 +2557,7 @@ function formatCurrency($amount) {
             checkboxes.forEach(cb => {
                 cb.addEventListener('change', function () {
                     const id = this.dataset.id;
-                    const item = filteredData.find(item => item.payroll_id == id);
+                    const item = filteredData.find(item => (item.payroll_id || item.id) == id);
                     if (item) {
                         item.selected = this.checked;
                         updateSelectedCount();
@@ -2468,6 +2609,7 @@ function formatCurrency($amount) {
             const year = document.getElementById('yearFilter')?.value || '';
             const month = document.getElementById('monthFilter')?.value || '';
             const status = document.getElementById('statusFilter')?.value || '';
+            const cutoff = document.getElementById('cutoffFilter')?.value || '';
 
             filteredData = payslipData.filter(item => {
                 // Search filter (by period)
@@ -2477,18 +2619,23 @@ function formatCurrency($amount) {
 
                 // Year filter
                 if (year) {
-                    const itemYear = new Date(item.payroll_period).getFullYear();
+                    const itemYear = item.payroll_period ? new Date(item.payroll_period + '-01').getFullYear() : null;
                     if (itemYear != year) return false;
                 }
 
                 // Month filter
                 if (month) {
-                    const itemMonth = new Date(item.payroll_period).getMonth() + 1;
+                    const itemMonth = item.payroll_period ? new Date(item.payroll_period + '-01').getMonth() + 1 : null;
                     if (itemMonth != month) return false;
                 }
 
                 // Status filter
                 if (status && item.status_display !== status) {
+                    return false;
+                }
+
+                // Cutoff filter
+                if (cutoff && item.payroll_cutoff !== cutoff) {
                     return false;
                 }
 
@@ -2506,11 +2653,13 @@ function formatCurrency($amount) {
             const yearFilter = document.getElementById('yearFilter');
             const monthFilter = document.getElementById('monthFilter');
             const statusFilter = document.getElementById('statusFilter');
+            const cutoffFilter = document.getElementById('cutoffFilter');
             
             if (searchInput) searchInput.value = '';
             if (yearFilter) yearFilter.value = '';
             if (monthFilter) monthFilter.value = '';
             if (statusFilter) statusFilter.value = '';
+            if (cutoffFilter) cutoffFilter.value = '';
             
             filteredData = [...payslipData];
             currentPage = 1;
@@ -2639,16 +2788,16 @@ function formatCurrency($amount) {
 
         // Global functions accessible from onclick handlers
         function viewPayslip(id) {
-            const item = payslipData.find(item => item.payroll_id == id);
+            const item = payslipData.find(item => (item.payroll_id || item.id) == id);
             if (item) {
-                showNotification(`Opening payslip for ${item.period_display}`, 'info');
+                showNotification(`Opening payslip for ${item.period_display || 'selected period'}`, 'info');
                 
                 // Create detailed modal view
                 const modalHtml = `
                     <div class="export-modal active" id="payslipDetailModal">
                         <div class="modal-content">
                             <div class="modal-header">
-                                <h3 class="modal-title">Payslip Details - ${item.period_display}</h3>
+                                <h3 class="modal-title">Payslip Details - ${item.period_display || 'N/A'}</h3>
                                 <button class="modal-close" onclick="document.getElementById('payslipDetailModal').remove(); document.body.style.overflow='auto'">
                                     <i class="fas fa-times"></i>
                                 </button>
@@ -2657,21 +2806,19 @@ function formatCurrency($amount) {
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                                     <div>
                                         <strong>Employee:</strong><br>
-                                        ${item.full_name || 'N/A'}<br>
-                                        <small>ID: ${item.emp_id_number || 'N/A'}</small>
+                                        <?php echo addslashes($full_name); ?><br>
+                                        <small>ID: <?php echo addslashes($employee_id); ?></small>
                                     </div>
                                     <div>
                                         <strong>Pay Period:</strong><br>
-                                        ${item.period_display}<br>
-                                        <small>Cutoff: ${item.payroll_cutoff || 'N/A'}</small>
+                                        ${item.period_display || 'N/A'}<br>
+                                        <small>Cutoff: ${getCutoffDisplay(item.payroll_cutoff || '')}</small>
                                     </div>
                                 </div>
                                 
                                 <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
                                     <h4 style="margin-bottom: 0.5rem;">Earnings</h4>
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                                        <div>Daily Rate:</div>
-                                        <div class="amount-cell">₱${parseFloat(item.daily_rate || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                                         <div>Days Present:</div>
                                         <div>${item.days_present || 0}</div>
                                         <div>Gross Amount:</div>
@@ -2701,7 +2848,7 @@ function formatCurrency($amount) {
                                         ₱${parseFloat(item.net_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                     </div>
                                     <div style="text-align: center; margin-top: 0.5rem; color: var(--gray);">
-                                        Status: <span class="status-badge status-${item.status_display}">${item.status_display.charAt(0).toUpperCase() + item.status_display.slice(1)}</span>
+                                        Status: <span class="status-badge status-${item.status_display || 'pending'}">${(item.status_display || 'Pending').charAt(0).toUpperCase() + (item.status_display || 'Pending').slice(1)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -2722,14 +2869,14 @@ function formatCurrency($amount) {
         }
 
         function downloadPayslip(id) {
-            const item = payslipData.find(item => item.payroll_id == id);
+            const item = payslipData.find(item => (item.payroll_id || item.id) == id);
             if (item) {
-                showNotification(`Downloading payslip for ${item.period_display}`, 'success');
+                showNotification(`Downloading payslip for ${item.period_display || 'selected period'}`, 'success');
                 // In a real application, this would trigger a file download
                 setTimeout(() => {
                     const link = document.createElement('a');
                     link.href = '#';
-                    link.download = `payslip_${item.period_display.replace(' ', '_')}.pdf`;
+                    link.download = `payslip_${(item.period_display || 'payslip').replace(' ', '_')}.pdf`;
                     link.click();
                 }, 500);
             }
@@ -2764,11 +2911,27 @@ function formatCurrency($amount) {
             // Remove after delay
             setTimeout(() => {
                 notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s, transform 0.3s';
                 notification.style.transform = 'translateX(100%)';
                 setTimeout(() => {
                     notification.remove();
                 }, 300);
             }, 4000);
+        }
+
+        // Helper function to get cutoff display
+        function getCutoffDisplay(cutoff) {
+            switch(String(cutoff).toLowerCase()) {
+                case 'first_half':
+                    return 'First Half';
+                case 'second_half':
+                    return 'Second Half';
+                case 'full':
+                case 'full_month':
+                    return 'Full Month';
+                default:
+                    return cutoff ? cutoff.charAt(0).toUpperCase() + cutoff.slice(1).replace('_', ' ') : 'N/A';
+            }
         }
     </script>
 </body>

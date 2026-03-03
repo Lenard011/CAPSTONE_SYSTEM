@@ -16,7 +16,7 @@ session_set_cookie_params([
     'lifetime' => 86400,
     'path' => $cookiePath,
     'domain' => '',
-    'secure' => false, // false for localhost
+    'secure' => false,
     'httponly' => true,
     'samesite' => 'Lax'
 ]);
@@ -30,6 +30,27 @@ require_once __DIR__ . '/../../admin/php/mailer.php';
 
 // DEBUG: Show session info in HTML comment
 echo "<!-- SESSION DEBUG: ID=" . session_id() . " Path=" . $cookiePath . " -->\n";
+
+// IMPORTANT FIX: Check if already logged in - but DON'T redirect on login page
+// Only redirect if user is already logged in AND this is NOT a login POST request
+$isLoginPost = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']);
+$isForgotPasswordPost = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']);
+
+// Check if user is already logged in
+if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id']) && !$isLoginPost && !$isForgotPasswordPost) {
+    // Update last activity
+    $_SESSION['last_activity'] = time();
+    
+    // Check for forced password change
+    if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
+        header('Location: change_password.php');
+        exit();
+    }
+    
+    // Redirect to homepage
+    header('Location: homepage.php');
+    exit();
+}
 
 // Handle AJAX login request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
@@ -153,706 +174,280 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
     exit();
 }
 
-// Handle Forgot Password AJAX Requests - USING EXISTING USERS TABLE
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action'])) {
-        // Clear output buffers
-        while (ob_get_level()) {
-            ob_end_clean();
-        }
-
-        header('Content-Type: application/json');
-
-        // Database configuration
-        $host = 'localhost';
-        $user = 'root';
-        $pass = '';
-        $dbname = 'hrms_paluan';
-
-        $conn = new mysqli($host, $user, $pass, $dbname);
-
-        if ($conn->connect_error) {
-            echo json_encode(['success' => false, 'message' => 'Database connection failed']);
-            exit();
-        }
-
-        $conn->set_charset("utf8mb4");
-
-        // Handle Send OTP
-        if ($_POST['action'] === 'send_otp') {
-            $email = trim($_POST['email']);
-
-            // Validate email
-            if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                echo json_encode(['success' => false, 'message' => 'Valid email is required']);
-                exit();
-            }
-
-            // Check if email exists in users table
-            $stmt = $conn->prepare("SELECT id, username, first_name, email FROM users WHERE email = ? AND is_active = 1");
-            $stmt->bind_param("s", $email);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $user = $result->fetch_assoc();
-            $stmt->close();
-
-            if (!$user) {
-                echo json_encode(['success' => false, 'message' => 'Email not found in our records']);
-                exit();
-            }
-
-            // Generate OTP (6-digit code)
-            $otp = sprintf("%06d", mt_rand(1, 999999));
-
-            // Set expiration to 15 minutes from now
-            $expires = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-
-            // Store OTP in users table using password_reset_token and password_reset_expires columns
-            $updateStmt = $conn->prepare("
-                UPDATE users 
-                SET password_reset_token = ?, 
-                    password_reset_expires = ? 
-                WHERE id = ? AND email = ?
-            ");
-            $updateStmt->bind_param("ssis", $otp, $expires, $user['id'], $email);
-
-            if (!$updateStmt->execute()) {
-                error_log("Failed to store OTP: " . $updateStmt->error);
-                echo json_encode(['success' => false, 'message' => 'Database error. Please try again.']);
-                $updateStmt->close();
-                exit();
-            }
-            $updateStmt->close();
-
-            // Initialize mailer and send OTP
-            try {
-                $mailer = new Mailer();
-
-                // Get user's name
-                $userName = $user['first_name'] ?: $user['username'];
-
-                // Send OTP using mailer's sendResetOTP method
-                $result = $mailer->sendResetOTP($email, $otp, $userName);
-
-                if ($result['success']) {
-                    if (isset($result['demo_mode']) && $result['demo_mode']) {
-                        echo json_encode([
-                            'success' => true,
-                            'message' => 'OTP sent (Development Mode)',
-                            'debug_otp' => $otp,
-                            'development_mode' => true,
-                            'expires_at' => $expires
-                        ]);
-                    } else {
-                        echo json_encode([
-                            'success' => true,
-                            'message' => 'OTP has been sent to your email address.'
-                        ]);
-                    }
-                } else {
-                    // Still return success since OTP is saved in database
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'OTP generated. Please check your email.',
-                        'debug_otp' => $otp // Remove in production
-                    ]);
-                }
-            } catch (Exception $e) {
-                error_log("Mailer error: " . $e->getMessage());
-                // Still return success since OTP is in database
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'OTP generated. Please check your email.',
-                    'debug_otp' => $otp // Remove in production
-                ]);
-            }
-            exit();
-        }
-
-        // Handle Verify OTP - USING USERS TABLE
-        if ($_POST['action'] === 'verify_otp') {
-            $email = trim($_POST['email']);
-            $otp = trim($_POST['otp']);
-
-            if (empty($email) || empty($otp)) {
-                echo json_encode(['success' => false, 'message' => 'Email and OTP are required']);
-                exit();
-            }
-
-            // Debug: Log the current time and OTP being verified
-            error_log("Verifying OTP - Email: $email, OTP: $otp, Current Time: " . date('Y-m-d H:i:s'));
-
-            // Check OTP from users table
-            $stmt = $conn->prepare("
-                SELECT id, password_reset_token, password_reset_expires 
-                FROM users 
-                WHERE email = ? 
-                AND password_reset_token IS NOT NULL 
-                AND password_reset_expires IS NOT NULL
-            ");
-            $stmt->bind_param("s", $email);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $user = $result->fetch_assoc();
-            $stmt->close();
-
-            if (!$user) {
-                echo json_encode(['success' => false, 'message' => 'No OTP found. Please request a new one.']);
-                exit();
-            }
-
-            error_log("Stored OTP: {$user['password_reset_token']}, Expires: {$user['password_reset_expires']}");
-
-            // Check if OTP matches
-            if ($user['password_reset_token'] !== $otp) {
-                echo json_encode(['success' => false, 'message' => 'Invalid OTP. Please check and try again.']);
-                exit();
-            }
-
-            // Check if OTP is expired
-            $now = date('Y-m-d H:i:s');
-            if ($user['password_reset_expires'] < $now) {
-                echo json_encode(['success' => false, 'message' => 'OTP has expired. Please request a new one.']);
-                exit();
-            }
-
-            // OTP is valid - clear the token (mark as used)
-            $clearStmt = $conn->prepare("
-                UPDATE users 
-                SET password_reset_token = NULL, 
-                    password_reset_expires = NULL 
-                WHERE id = ?
-            ");
-            $clearStmt->bind_param("i", $user['id']);
-            $clearStmt->execute();
-            $clearStmt->close();
-
-            // Store verification in session with timestamp
-            $_SESSION['reset_email'] = $email;
-            $_SESSION['reset_user_id'] = $user['id'];
-            $_SESSION['reset_verified'] = true;
-            $_SESSION['reset_time'] = time();
-            $_SESSION['reset_expires'] = time() + 1800; // 30 minutes from now
-
-            error_log("OTP verified successfully for email: $email");
-
-            echo json_encode(['success' => true, 'message' => 'OTP verified successfully']);
-            exit();
-        }
-
-        // Handle Reset Password - USING USERS TABLE
-        if ($_POST['action'] === 'reset_password') {
-            $email = trim($_POST['email']);
-            $newPassword = $_POST['new_password'];
-            $confirmPassword = $_POST['confirm_password'];
-
-            // Check session verification
-            if (
-                !isset($_SESSION['reset_verified']) || $_SESSION['reset_verified'] !== true ||
-                $_SESSION['reset_email'] !== $email
-            ) {
-
-                echo json_encode(['success' => false, 'message' => 'Please verify OTP first']);
-                exit();
-            }
-
-            // Check session timeout (30 minutes)
-            if (time() > $_SESSION['reset_expires']) {
-                // Clear expired session
-                unset($_SESSION['reset_email']);
-                unset($_SESSION['reset_user_id']);
-                unset($_SESSION['reset_verified']);
-                unset($_SESSION['reset_time']);
-                unset($_SESSION['reset_expires']);
-
-                echo json_encode(['success' => false, 'message' => 'Session expired. Please verify OTP again.']);
-                exit();
-            }
-
-            // Validate passwords
-            if (empty($newPassword) || empty($confirmPassword)) {
-                echo json_encode(['success' => false, 'message' => 'All password fields are required']);
-                exit();
-            }
-
-            if ($newPassword !== $confirmPassword) {
-                echo json_encode(['success' => false, 'message' => 'Passwords do not match']);
-                exit();
-            }
-
-            if (strlen($newPassword) < 8) {
-                echo json_encode(['success' => false, 'message' => 'Password must be at least 8 characters']);
-                exit();
-            }
-
-            // Check password strength
-            if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/', $newPassword)) {
-                echo json_encode(['success' => false, 'message' => 'Password must contain at least one uppercase letter, one lowercase letter, and one number']);
-                exit();
-            }
-
-            // Update password in users table
-            $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("
-                UPDATE users 
-                SET password_hash = ?, 
-                    password_is_temporary = 0,
-                    last_password_change = NOW(),
-                    login_attempts = 0,
-                    last_login_attempt = NULL
-                WHERE id = ? AND email = ?
-            ");
-            $stmt->bind_param("sis", $hashedPassword, $_SESSION['reset_user_id'], $email);
-
-            if ($stmt->execute()) {
-                // Clear reset session
-                unset($_SESSION['reset_email']);
-                unset($_SESSION['reset_user_id']);
-                unset($_SESSION['reset_verified']);
-                unset($_SESSION['reset_time']);
-                unset($_SESSION['reset_expires']);
-
-                error_log("Password reset successful for email: $email");
-
-                echo json_encode(['success' => true, 'message' => 'Password reset successful! You can now login with your new password.']);
-            } else {
-                error_log("Password reset failed for email: $email - " . $conn->error);
-                echo json_encode(['success' => false, 'message' => 'Failed to reset password. Please try again.']);
-            }
-            $stmt->close();
-            exit();
-        }
-
-        $conn->close();
-    }
-}
-
-// Function to cleanup expired OTP tokens (call this periodically or on every request)
-function cleanupExpiredOTPTokens($conn)
-{
-    $stmt = $conn->prepare("
-        UPDATE users 
-        SET password_reset_token = NULL, 
-            password_reset_expires = NULL 
-        WHERE password_reset_expires < NOW() 
-        AND password_reset_expires IS NOT NULL
-    ");
-    $stmt->execute();
-    $cleaned = $stmt->affected_rows;
-    $stmt->close();
-
-    if ($cleaned > 0) {
-        error_log("Cleaned up $cleaned expired OTP tokens");
-    }
-    return $cleaned;
-}
-// Check if already logged in
-if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id'])) {
-    header('Location: homepage.php');
-    exit();
-}
-
-// Handle session messages
-$sessionExpired = isset($_GET['session']) && $_GET['session'] == 'expired';
-$logoutSuccess = isset($_GET['logout']) && $_GET['logout'] == 'success';
-
-// Check if user is already logged in - REDIRECT TO HOMEPAGE
-if (isset($_SESSION['user_id']) && isset($_SESSION['username']) && !empty($_SESSION['user_id'])) {
-    // Check if this is a login POST request
-    $isLoginRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']);
-
-    if (!$isLoginRequest) {
-        // Update last activity
-        $_SESSION['last_activity'] = time();
-
-        // Check for forced password change
-        if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'] === true) {
-            header('Location: change_password.php');
-            exit();
-        }
-
-        // Clear output buffer
-        while (ob_get_level()) {
-            ob_end_clean();
-        }
-
-        // Redirect to homepage
-        header('Location: homepage.php');
-        exit();
-    }
-}
-
-// Check for remember me cookie (only if not already logged in)
-if ((!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) && isset($_COOKIE['remember_me'])) {
-    try {
-        error_log("Checking remember me cookie...");
-        $cookieValue = $_COOKIE['remember_me'];
-        $parts = explode(':', $cookieValue);
-
-        if (count($parts) === 2) {
-            $selector = $parts[0];
-            $token = $parts[1];
-
-            // Database configuration
-            $host = 'localhost';
-            $user = 'root';
-            $pass = '';
-            $dbname = 'hrms_paluan';
-
-            // Connect to database
-            $conn = new mysqli($host, $user, $pass, $dbname);
-
-            if (!$conn->connect_error) {
-                $conn->set_charset("utf8mb4");
-
-                // Check if remember_tokens table exists
-                $checkTable = $conn->query("SHOW TABLES LIKE 'remember_tokens'");
-                if ($checkTable && $checkTable->num_rows > 0) {
-                    $stmt = $conn->prepare("
-                        SELECT rt.user_id, rt.hashed_token, rt.expires, 
-                               u.id, u.username, u.email, u.first_name, u.last_name, u.full_name,
-                               u.role, u.access_level, u.employee_id, u.profile_image,
-                               u.employment_type, u.department, u.position,
-                               u.password_is_temporary, u.is_verified, u.is_active, u.status
-                        FROM remember_tokens rt
-                        JOIN users u ON rt.user_id = u.id
-                        WHERE rt.selector = ? 
-                        AND rt.expires > NOW()
-                        AND u.account_status = 'ACTIVE'
-                        AND u.is_active = 1
-                        AND u.is_verified = 1
-                        AND u.status = 'approved'
-                    ");
-
-                    if ($stmt) {
-                        $stmt->bind_param("s", $selector);
-                        $stmt->execute();
-                        $result = $stmt->get_result();
-                        $tokenData = $result->fetch_assoc();
-                        $stmt->close();
-
-                        if ($tokenData && password_verify($token, $tokenData['hashed_token'])) {
-                            error_log("Remember me token valid for user: " . $tokenData['username']);
-
-                            // Regenerate session ID for security
-                            session_regenerate_id(true);
-
-                            // IMPORTANT: Don't clear session, just set/update variables
-                            $_SESSION['user_id'] = $tokenData['id'];
-                            $_SESSION['username'] = $tokenData['username'];
-                            $_SESSION['email'] = $tokenData['email'];
-                            $_SESSION['first_name'] = $tokenData['first_name'];
-                            $_SESSION['last_name'] = $tokenData['last_name'];
-                            $_SESSION['full_name'] = $tokenData['full_name'];
-                            $_SESSION['role'] = $tokenData['role'];
-                            $_SESSION['access_level'] = $tokenData['access_level'];
-                            $_SESSION['employee_id'] = $tokenData['employee_id'];
-                            $_SESSION['profile_image'] = $tokenData['profile_image'];
-                            $_SESSION['employment_type'] = $tokenData['employment_type'];
-                            $_SESSION['department'] = $tokenData['department'];
-                            $_SESSION['position'] = $tokenData['position'];
-                            $_SESSION['last_activity'] = time();
-                            $_SESSION['login_time'] = time();
-                            $_SESSION['created'] = time();
-                            $_SESSION['remember_login'] = true;
-
-                            // Check for temporary password
-                            if ($tokenData['password_is_temporary'] == 1) {
-                                $_SESSION['must_change_password'] = true;
-                                $_SESSION['temp_password_login'] = true;
-
-                                // Clear output buffer
-                                while (ob_get_level()) {
-                                    ob_end_clean();
-                                }
-
-                                header('Location: change_password.php');
-                                exit();
-                            }
-
-                            // Update last login in database
-                            $updateStmt = $conn->prepare("
-                                UPDATE users 
-                                SET last_login = NOW(), 
-                                    login_attempts = 0,
-                                    last_login_attempt = NULL
-                                WHERE id = ?
-                            ");
-
-                            if ($updateStmt) {
-                                $updateStmt->bind_param("i", $tokenData['id']);
-                                $updateStmt->execute();
-                                $updateStmt->close();
-                            }
-
-                            // Force session write
-                            session_write_close();
-
-                            // Restart session immediately
-                            session_start();
-
-                            // Clear output buffer
-                            while (ob_get_level()) {
-                                ob_end_clean();
-                            }
-
-                            // Redirect to homepage
-                            error_log("Remember me login successful, redirecting to homepage");
-                            header('Location: homepage.php');
-                            exit();
-                        } else {
-                            error_log("Invalid remember me token");
-                            // Invalid token, clear the cookie
-                            setcookie('remember_me', '', time() - 3600, '/', '', true, true);
-                        }
-                    }
-                }
-                $conn->close();
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Remember me error: " . $e->getMessage());
-    }
-}
-
-// Check if this is an AJAX login request
-$isLoginRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']);
-
-if ($isLoginRequest) {
-    // Clear ALL output buffers
+// Handle Forgot Password AJAX Requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    // Clear output buffers
     while (ob_get_level()) {
         ob_end_clean();
     }
 
-    // Set JSON response headers
     header('Content-Type: application/json');
 
-    // Initialize response
-    $response = [
-        'success' => false,
-        'message' => '',
-        'redirect' => null,
-        'temp_password' => false,
-        'debug' => [] // Added for debugging
-    ];
+    // Database configuration
+    $host = 'localhost';
+    $user = 'root';
+    $pass = '';
+    $dbname = 'hrms_paluan';
 
-    try {
-        // Validate inputs
-        if (empty($_POST['username']) || empty($_POST['password'])) {
-            throw new Exception('Username and password are required');
+    $conn = new mysqli($host, $user, $pass, $dbname);
+
+    if ($conn->connect_error) {
+        echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+        exit();
+    }
+
+    $conn->set_charset("utf8mb4");
+
+    // Handle Send OTP
+    if ($_POST['action'] === 'send_otp') {
+        $email = trim($_POST['email']);
+
+        // Validate email
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['success' => false, 'message' => 'Valid email is required']);
+            exit();
         }
 
-        $identifier = trim($_POST['username']);
-        $password = $_POST['password'];
-        $rememberMe = isset($_POST['remember_me']) && $_POST['remember_me'] === 'true';
-
-        // Database configuration
-        $host = 'localhost';
-        $user = 'root';
-        $pass = '';
-        $dbname = 'hrms_paluan';
-
-        // Connect to database
-        $conn = new mysqli($host, $user, $pass, $dbname);
-
-        if ($conn->connect_error) {
-            throw new Exception('Database connection failed.');
-        }
-
-        $conn->set_charset("utf8mb4");
-
-        // Build SELECT query with all necessary fields
-        $sql = "SELECT 
-                    id, username, email, password_hash, first_name, last_name, full_name,
-                    role, access_level, account_status, employee_id, profile_image,
-                    password_is_temporary, must_change_password,
-                    is_verified, is_active, status,
-                    employment_type, department, position
-                FROM users 
-                WHERE (username = ? OR email = ?) 
-                AND account_status = 'ACTIVE'
-                AND is_active = 1";
-
-        $stmt = $conn->prepare($sql);
-
-        if (!$stmt) {
-            throw new Exception('Database query error: ' . $conn->error);
-        }
-
-        $stmt->bind_param("ss", $identifier, $identifier);
+        // Check if email exists in users table
+        $stmt = $conn->prepare("SELECT id, username, first_name, email FROM users WHERE email = ? AND is_active = 1");
+        $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
         $user = $result->fetch_assoc();
         $stmt->close();
 
         if (!$user) {
-            throw new Exception('Invalid username or email');
+            echo json_encode(['success' => false, 'message' => 'Email not found in our records']);
+            exit();
         }
 
-        // Check if user is verified
-        if ($user['is_verified'] != 1) {
-            throw new Exception('Your account is not verified. Please check your email.');
-        }
+        // Generate OTP (6-digit code)
+        $otp = sprintf("%06d", mt_rand(1, 999999));
 
-        // Check user status
-        if ($user['status'] !== 'approved') {
-            $statusMessage = match ($user['status']) {
-                'pending' => 'Your account is pending approval.',
-                'rejected' => 'Your account has been rejected.',
-                'suspended' => 'Your account is suspended.',
-                default => 'Your account is not approved.'
-            };
-            throw new Exception($statusMessage);
-        }
+        // Set expiration to 15 minutes from now
+        $expires = date('Y-m-d H:i:s', strtotime('+15 minutes'));
 
-        // Verify password
-        if (!password_verify($password, $user['password_hash'])) {
-            // Increment failed login attempts
-            $updateStmt = $conn->prepare("
-                UPDATE users 
-                SET login_attempts = COALESCE(login_attempts, 0) + 1, 
-                    last_login_attempt = NOW() 
-                WHERE id = ?
-            ");
-
-            if ($updateStmt) {
-                $updateStmt->bind_param("i", $user['id']);
-                $updateStmt->execute();
-                $updateStmt->close();
-            }
-
-            throw new Exception('Invalid password');
-        }
-
-        // Check for temporary password
-        $isTemporaryPassword = $user['password_is_temporary'] == 1;
-
-        // Regenerate session ID for security
-        session_regenerate_id(true);
-
-        // Set all session variables
-        $_SESSION['user_id'] = (int) $user['id'];
-        $_SESSION['username'] = $user['username'];
-        $_SESSION['email'] = $user['email'];
-        $_SESSION['first_name'] = $user['first_name'];
-        $_SESSION['last_name'] = $user['last_name'];
-        $_SESSION['full_name'] = $user['full_name'];
-        $_SESSION['role'] = $user['role'];
-        $_SESSION['access_level'] = (int) $user['access_level'];
-        $_SESSION['employee_id'] = $user['employee_id'];
-        $_SESSION['profile_image'] = $user['profile_image'];
-        $_SESSION['employment_type'] = $user['employment_type'];
-        $_SESSION['department'] = $user['department'];
-        $_SESSION['position'] = $user['position'];
-        $_SESSION['last_activity'] = time();
-        $_SESSION['login_time'] = time();
-        $_SESSION['created'] = time();
-        $_SESSION['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? '';
-        $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
-
-        // Add debug info
-        $response['debug']['session_id'] = session_id();
-        $response['debug']['user_id'] = $_SESSION['user_id'];
-        $response['debug']['cookie_path'] = ini_get('session.cookie_path');
-
-        // Handle temporary password
-        if ($isTemporaryPassword) {
-            $_SESSION['must_change_password'] = true;
-            $response['temp_password'] = true;
-            $response['redirect'] = 'change_password.php';
-            $response['message'] = 'Temporary password detected. Please create a new password.';
-        } else {
-            $response['redirect'] = 'homepage.php';
-            $response['message'] = 'Login successful! Redirecting...';
-        }
-
-        $response['success'] = true;
-
-        // Update last login and reset attempts
+        // Store OTP in users table
         $updateStmt = $conn->prepare("
             UPDATE users 
-            SET last_login = NOW(), 
-                login_attempts = 0,
-                last_login_attempt = NULL
-            WHERE id = ?
+            SET password_reset_token = ?, 
+                password_reset_expires = ? 
+            WHERE id = ? AND email = ?
         ");
+        $updateStmt->bind_param("ssis", $otp, $expires, $user['id'], $email);
 
-        if ($updateStmt) {
-            $updateStmt->bind_param("i", $user['id']);
-            $updateStmt->execute();
+        if (!$updateStmt->execute()) {
+            error_log("Failed to store OTP: " . $updateStmt->error);
+            echo json_encode(['success' => false, 'message' => 'Database error. Please try again.']);
             $updateStmt->close();
+            exit();
         }
+        $updateStmt->close();
 
-        // Remember me functionality
-        if ($rememberMe) {
-            $token = bin2hex(random_bytes(32));
-            $selector = bin2hex(random_bytes(16));
-            $expires = time() + (30 * 24 * 60 * 60); // 30 days
+        // Initialize mailer and send OTP
+        try {
+            $mailer = new Mailer();
 
-            $hashedToken = password_hash($token, PASSWORD_BCRYPT);
+            // Get user's name
+            $userName = $user['first_name'] ?: $user['username'];
 
-            $checkTable = $conn->query("SHOW TABLES LIKE 'remember_tokens'");
-            if ($checkTable && $checkTable->num_rows > 0) {
-                // Delete any existing tokens for this user
-                $deleteStmt = $conn->prepare("DELETE FROM remember_tokens WHERE user_id = ?");
-                if ($deleteStmt) {
-                    $deleteStmt->bind_param("i", $user['id']);
-                    $deleteStmt->execute();
-                    $deleteStmt->close();
+            // Send OTP using mailer's sendResetOTP method
+            $result = $mailer->sendResetOTP($email, $otp, $userName);
+
+            if ($result['success']) {
+                if (isset($result['demo_mode']) && $result['demo_mode']) {
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'OTP sent (Development Mode)',
+                        'debug_otp' => $otp,
+                        'development_mode' => true,
+                        'expires_at' => $expires
+                    ]);
+                } else {
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'OTP has been sent to your email address.'
+                    ]);
                 }
-
-                // Insert new token
-                $stmt = $conn->prepare("
-                    INSERT INTO remember_tokens 
-                    (user_id, selector, hashed_token, expires) 
-                    VALUES (?, ?, ?, FROM_UNIXTIME(?))
-                ");
-
-                if ($stmt) {
-                    $stmt->bind_param("issi", $user['id'], $selector, $hashedToken, $expires);
-                    $stmt->execute();
-                    $stmt->close();
-
-                    $cookieValue = $selector . ':' . $token;
-                    setcookie(
-                        'remember_me',
-                        $cookieValue,
-                        $expires,
-                        '/CAPSTONE_SYSTEM/userside/php/', // Same path as session
-                        $_SERVER['HTTP_HOST'] ?? '',
-                        isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
-                        true
-                    );
-                }
+            } else {
+                // Still return success since OTP is saved in database
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'OTP generated. Please check your email.',
+                    'debug_otp' => $otp
+                ]);
             }
+        } catch (Exception $e) {
+            error_log("Mailer error: " . $e->getMessage());
+            echo json_encode([
+                'success' => true,
+                'message' => 'OTP generated. Please check your email.',
+                'debug_otp' => $otp
+            ]);
         }
-
-        $conn->close();
-
-        // Force session write
-        session_write_close();
-
-        // Don't restart session - let homepage.php start it fresh
-        error_log("Login successful for user: " . $user['username']);
-        error_log("Session ID after login: " . session_id());
-
-    } catch (Exception $e) {
-        $response['message'] = $e->getMessage();
-        error_log("Login error: " . $e->getMessage());
+        exit();
     }
 
-    echo json_encode($response);
-    exit();
+    // Handle Verify OTP
+    if ($_POST['action'] === 'verify_otp') {
+        $email = trim($_POST['email']);
+        $otp = trim($_POST['otp']);
+
+        if (empty($email) || empty($otp)) {
+            echo json_encode(['success' => false, 'message' => 'Email and OTP are required']);
+            exit();
+        }
+
+        // Debug: Log the current time and OTP being verified
+        error_log("Verifying OTP - Email: $email, OTP: $otp, Current Time: " . date('Y-m-d H:i:s'));
+
+        // Check OTP from users table
+        $stmt = $conn->prepare("
+            SELECT id, password_reset_token, password_reset_expires 
+            FROM users 
+            WHERE email = ? 
+            AND password_reset_token IS NOT NULL 
+            AND password_reset_expires IS NOT NULL
+        ");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $user = $result->fetch_assoc();
+        $stmt->close();
+
+        if (!$user) {
+            echo json_encode(['success' => false, 'message' => 'No OTP found. Please request a new one.']);
+            exit();
+        }
+
+        error_log("Stored OTP: {$user['password_reset_token']}, Expires: {$user['password_reset_expires']}");
+
+        // Check if OTP matches
+        if ($user['password_reset_token'] !== $otp) {
+            echo json_encode(['success' => false, 'message' => 'Invalid OTP. Please check and try again.']);
+            exit();
+        }
+
+        // Check if OTP is expired
+        $now = date('Y-m-d H:i:s');
+        if ($user['password_reset_expires'] < $now) {
+            echo json_encode(['success' => false, 'message' => 'OTP has expired. Please request a new one.']);
+            exit();
+        }
+
+        // OTP is valid - clear the token (mark as used)
+        $clearStmt = $conn->prepare("
+            UPDATE users 
+            SET password_reset_token = NULL, 
+                password_reset_expires = NULL 
+            WHERE id = ?
+        ");
+        $clearStmt->bind_param("i", $user['id']);
+        $clearStmt->execute();
+        $clearStmt->close();
+
+        // Store verification in session with timestamp
+        $_SESSION['reset_email'] = $email;
+        $_SESSION['reset_user_id'] = $user['id'];
+        $_SESSION['reset_verified'] = true;
+        $_SESSION['reset_time'] = time();
+        $_SESSION['reset_expires'] = time() + 1800; // 30 minutes from now
+
+        error_log("OTP verified successfully for email: $email");
+
+        echo json_encode(['success' => true, 'message' => 'OTP verified successfully']);
+        exit();
+    }
+
+    // Handle Reset Password
+    if ($_POST['action'] === 'reset_password') {
+        $email = trim($_POST['email']);
+        $newPassword = $_POST['new_password'];
+        $confirmPassword = $_POST['confirm_password'];
+
+        // Check session verification
+        if (
+            !isset($_SESSION['reset_verified']) || $_SESSION['reset_verified'] !== true ||
+            $_SESSION['reset_email'] !== $email
+        ) {
+
+            echo json_encode(['success' => false, 'message' => 'Please verify OTP first']);
+            exit();
+        }
+
+        // Check session timeout (30 minutes)
+        if (time() > $_SESSION['reset_expires']) {
+            // Clear expired session
+            unset($_SESSION['reset_email']);
+            unset($_SESSION['reset_user_id']);
+            unset($_SESSION['reset_verified']);
+            unset($_SESSION['reset_time']);
+            unset($_SESSION['reset_expires']);
+
+            echo json_encode(['success' => false, 'message' => 'Session expired. Please verify OTP again.']);
+            exit();
+        }
+
+        // Validate passwords
+        if (empty($newPassword) || empty($confirmPassword)) {
+            echo json_encode(['success' => false, 'message' => 'All password fields are required']);
+            exit();
+        }
+
+        if ($newPassword !== $confirmPassword) {
+            echo json_encode(['success' => false, 'message' => 'Passwords do not match']);
+            exit();
+        }
+
+        if (strlen($newPassword) < 8) {
+            echo json_encode(['success' => false, 'message' => 'Password must be at least 8 characters']);
+            exit();
+        }
+
+        // Check password strength
+        if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/', $newPassword)) {
+            echo json_encode(['success' => false, 'message' => 'Password must contain at least one uppercase letter, one lowercase letter, and one number']);
+            exit();
+        }
+
+        // Update password in users table
+        $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("
+            UPDATE users 
+            SET password_hash = ?, 
+                password_is_temporary = 0,
+                last_password_change = NOW(),
+                login_attempts = 0,
+                last_login_attempt = NULL
+            WHERE id = ? AND email = ?
+        ");
+        $stmt->bind_param("sis", $hashedPassword, $_SESSION['reset_user_id'], $email);
+
+        if ($stmt->execute()) {
+            // Clear reset session
+            unset($_SESSION['reset_email']);
+            unset($_SESSION['reset_user_id']);
+            unset($_SESSION['reset_verified']);
+            unset($_SESSION['reset_time']);
+            unset($_SESSION['reset_expires']);
+
+            error_log("Password reset successful for email: $email");
+
+            echo json_encode(['success' => true, 'message' => 'Password reset successful! You can now login with your new password.']);
+        } else {
+            error_log("Password reset failed for email: $email - " . $conn->error);
+            echo json_encode(['success' => false, 'message' => 'Failed to reset password. Please try again.']);
+        }
+        $stmt->close();
+        exit();
+    }
+
+    $conn->close();
 }
 
-// Check for logout success
-$logoutSuccess = isset($_GET['logout']) && $_GET['logout'] == 'success';
-
-// Check for session expired
+// Handle session messages
 $sessionExpired = isset($_GET['session']) && $_GET['session'] == 'expired';
-
-// Check if redirected
-$redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
+$logoutSuccess = isset($_GET['logout']) && $_GET['logout'] == 'success';
 ?>
 
 <!DOCTYPE html>
@@ -869,6 +464,7 @@ $redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
         rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        /* Keep all your existing CSS styles exactly as they are */
         /* Modern Color Palette - Updated to match image */
         :root {
             --navy-blue: #0235a2ff;
@@ -2026,7 +1622,7 @@ $redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
                 <?php endif; ?>
 
                 <!-- Show logout message if applicable -->
-                <?php if (isset($_GET['logout']) && $_GET['logout'] == 'success'): ?>
+                <?php if ($logoutSuccess): ?>
                     <div class="alert-message success visible" id="logoutAlert">
                         <i class="fas fa-check-circle"></i>
                         <span>You have been successfully logged out.</span>
@@ -2578,55 +2174,6 @@ $redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
                 alertMessage.classList.remove('visible');
             }
 
-            // Create celebration particles
-            function createCelebrationParticles() {
-                const colors = ['#10b981', '#2c6bc4', '#0d9488', '#f97316'];
-
-                for (let i = 0; i < 20; i++) {
-                    setTimeout(() => {
-                        createParticle(colors[Math.floor(Math.random() * colors.length)]);
-                    }, i * 100);
-                }
-            }
-
-            // Create a single particle
-            function createParticle(color) {
-                const particle = document.createElement('div');
-                particle.style.position = 'absolute';
-                particle.style.width = '8px';
-                particle.style.height = '8px';
-                particle.style.background = color;
-                particle.style.borderRadius = '50%';
-                particle.style.pointerEvents = 'none';
-                particle.style.zIndex = '100';
-                particle.style.top = '50%';
-                particle.style.left = '50%';
-                particle.style.boxShadow = `0 0 12px ${color}`;
-
-                document.querySelector('.login-card').appendChild(particle);
-
-                const angle = Math.random() * Math.PI * 2;
-                const distance = 150 + Math.random() * 150;
-                const size = 0.5 + Math.random() * 1.5;
-                const duration = 1000 + Math.random() * 1000;
-
-                particle.animate([{
-                    transform: 'translate(-50%, -50%) scale(1)',
-                    opacity: 1
-                },
-                {
-                    transform: `translate(
-                            ${Math.cos(angle) * distance}px, 
-                            ${Math.sin(angle) * distance}px
-                        ) scale(${size})`,
-                    opacity: 0
-                }
-                ], {
-                    duration: duration,
-                    easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
-                }).onfinish = () => particle.remove();
-            }
-
             // Handle form submission
             async function handleFormSubmit(e) {
                 e.preventDefault();
@@ -2673,11 +2220,9 @@ $redirected = isset($_GET['redirected']) && $_GET['redirected'] == 'true';
                             }, 1500);
                         } else {
                             showAlert(data.message || 'Login successful!', 'success');
-
-                            // ALWAYS redirect to homepage.php after successful login
                             setTimeout(() => {
                                 window.location.href = data.redirect || 'homepage.php';
-                            }, 500); // Reduced delay for faster redirect
+                            }, 500);
                         }
                     } else {
                         // Handle login error

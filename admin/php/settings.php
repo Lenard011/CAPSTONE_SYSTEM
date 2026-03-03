@@ -299,20 +299,363 @@ $upload_dir = '../uploads/profile_pictures/';
 if (!file_exists($upload_dir)) {
     mkdir($upload_dir, 0755, true);
 }
+<<<<<<< HEAD
 
 // Function to log audit trail
+=======
+// Function to log audit trail with better error handling
+>>>>>>> ba53bcc15e0a30ad333fc1307c40f5fbc565458b
 function logAuditTrail($conn, $user_id, $action_type, $description): void
 {
+    // First check if the user exists in the users table
+    $check_sql = "SELECT id FROM users WHERE id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    
+    if ($check_result->num_rows === 0) {
+        // User doesn't exist, try to find if this is an admin
+        $check_admin_sql = "SELECT id FROM admins WHERE id = ?";
+        $check_admin_stmt = $conn->prepare($check_admin_sql);
+        $check_admin_stmt->bind_param("i", $user_id);
+        $check_admin_stmt->execute();
+        $check_admin_result = $check_admin_stmt->get_result();
+        
+        if ($check_admin_result->num_rows > 0) {
+            // This is an admin - we need to find or create a corresponding users entry
+            // For now, we'll use a system user ID (you might have a system user with ID 1)
+            $user_id = 1; // Assuming user ID 1 is the system admin
+        } else {
+            // No user found, use a default system user ID
+            $user_id = 1; // Change this to a valid user ID that exists in your users table
+        }
+        $check_admin_stmt->close();
+    }
+    $check_stmt->close();
+
     $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
     $stmt = $conn->prepare("INSERT INTO audit_logs (user_id, action_type, description, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)");
+    if (!$stmt) {
+        error_log("Failed to prepare audit log statement: " . $conn->error);
+        return;
+    }
+    
     $stmt->bind_param("issss", $user_id, $action_type, $description, $ip_address, $user_agent);
 
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        error_log("Failed to insert audit log: " . $stmt->error);
+    }
     $stmt->close();
 }
 
+<<<<<<< HEAD
+=======
+// Function to get complete user data including employee-specific details
+function getCompleteUserData($conn, $user_id, $employment_type)
+{
+    $user_data = [];
+
+    // Get base user data
+    $sql = "SELECT * FROM users WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        $user_data = $result->fetch_assoc();
+    }
+    $stmt->close();
+
+    // Get employee-specific data based on employment type
+    switch ($employment_type) {
+        case 'permanent':
+            $sql = "SELECT * FROM permanent WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $emp_data = $result->fetch_assoc();
+                $user_data = array_merge($user_data, $emp_data);
+            }
+            $stmt->close();
+            break;
+
+        case 'job_order':
+            $sql = "SELECT * FROM job_order WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $emp_data = $result->fetch_assoc();
+                $user_data = array_merge($user_data, $emp_data);
+            }
+            $stmt->close();
+            break;
+
+        case 'contract_of_service':
+            $sql = "SELECT * FROM contractofservice WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $emp_data = $result->fetch_assoc();
+                $user_data = array_merge($user_data, $emp_data);
+            }
+            $stmt->close();
+            break;
+    }
+
+    return $user_data;
+}
+
+// Helper function to update employee-specific tables
+function updateEmployeeTable($conn, $employment_type, $user_id, $post_data, $user_data)
+{
+    switch ($employment_type) {
+        case 'contract_of_service':
+            updateContractOfService($conn, $user_id, $post_data, $user_data);
+            break;
+        case 'job_order':
+            updateJobOrder($conn, $user_id, $post_data, $user_data);
+            break;
+        case 'permanent':
+            updatePermanent($conn, $user_id, $post_data, $user_data);
+            break;
+    }
+}
+
+// Update Contract of Service employee
+function updateContractOfService($conn, $user_id, $post_data, $user_data)
+{
+    // Check if record exists
+    $check_sql = "SELECT id FROM contractofservice WHERE user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+
+    $designation = $conn->real_escape_string($post_data['cos_designation'] ?? '');
+    $office = $conn->real_escape_string($post_data['cos_office'] ?? '');
+    $period_from = $post_data['cos_period_from'] ?? null;
+    $period_to = $post_data['cos_period_to'] ?? null;
+    $wages = floatval($post_data['cos_wages'] ?? 0);
+    $contribution = $conn->real_escape_string($post_data['cos_contribution'] ?? '');
+    $status = $conn->real_escape_string($post_data['cos_status'] ?? 'active');
+
+    if ($check_result->num_rows > 0) {
+        // Update existing record
+        $sql = "UPDATE contractofservice SET 
+            designation = ?,
+            office = ?,
+            period_from = ?,
+            period_to = ?,
+            wages = ?,
+            contribution = ?,
+            status = ?,
+            updated_at = NOW()
+            WHERE user_id = ?";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "ssssdssi",
+            $designation,
+            $office,
+            $period_from,
+            $period_to,
+            $wages,
+            $contribution,
+            $status,
+            $user_id
+        );
+        $stmt->execute();
+        $stmt->close();
+    }
+    $check_stmt->close();
+}
+
+// Update Job Order employee
+function updateJobOrder($conn, $user_id, $post_data, $user_data)
+{
+    // Check if record exists
+    $check_sql = "SELECT id FROM job_order WHERE user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+
+    $employee_id = $conn->real_escape_string($post_data['jo_employee_id'] ?? '');
+    $occupation = $conn->real_escape_string($post_data['jo_occupation'] ?? '');
+    $office = $conn->real_escape_string($post_data['jo_office'] ?? '');
+    $rate_per_day = floatval($post_data['jo_rate_per_day'] ?? 0);
+    $sss_contribution = $conn->real_escape_string($post_data['jo_sss_contribution'] ?? '');
+    $place_of_issue = $conn->real_escape_string($post_data['jo_place_of_issue'] ?? '');
+
+    if ($check_result->num_rows > 0) {
+        // Update existing record
+        $sql = "UPDATE job_order SET 
+            employee_id = ?,
+            occupation = ?,
+            office = ?,
+            rate_per_day = ?,
+            sss_contribution = ?,
+            place_of_issue = ?,
+            updated_at = NOW()
+            WHERE user_id = ?";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "sssdssi",
+            $employee_id,
+            $occupation,
+            $office,
+            $rate_per_day,
+            $sss_contribution,
+            $place_of_issue,
+            $user_id
+        );
+        $stmt->execute();
+        $stmt->close();
+    } else {
+        // Insert new record
+        $sql = "INSERT INTO job_order (
+            user_id, employee_id, employee_name, occupation, office, 
+            rate_per_day, sss_contribution, 
+            place_of_issue, first_name, last_name, middle, 
+            email_address, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+
+        $employee_name = $user_data['full_name'] ?? '';
+        $first_name = $user_data['first_name'] ?? '';
+        $last_name = $user_data['last_name'] ?? '';
+        $middle = $user_data['middle_name'] ?? '';
+        $email = $user_data['email'] ?? '';
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "issssdssssss",
+            $user_id,
+            $employee_id,
+            $employee_name,
+            $occupation,
+            $office,
+            $rate_per_day,
+            $sss_contribution,
+            $place_of_issue,
+            $first_name,
+            $last_name,
+            $middle,
+            $email
+        );
+        $stmt->execute();
+        $stmt->close();
+    }
+    $check_stmt->close();
+}
+
+// Update Permanent employee
+function updatePermanent($conn, $user_id, $post_data, $user_data)
+{
+    // Check if record exists in permanent table
+    $check_sql = "SELECT id FROM permanent WHERE user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $user_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    $record_exists = $check_result->num_rows > 0;
+    $check_stmt->close();
+
+    // Map form fields to database fields
+    $employee_id = $conn->real_escape_string($post_data['perm_employee_id'] ?? '');
+    $position = $conn->real_escape_string($post_data['perm_position'] ?? '');
+    $office = $conn->real_escape_string($post_data['perm_office'] ?? '');
+    $monthly_salary = floatval($post_data['perm_monthly_salary'] ?? 0);
+    $amount_accrued = floatval($post_data['perm_amount_accrued'] ?? 0);
+    $mobile_number = $conn->real_escape_string($post_data['perm_mobile_number'] ?? '');
+    $email = $conn->real_escape_string($post_data['perm_email'] ?? '');
+    $date_of_birth = !empty($post_data['perm_dob']) ? $post_data['perm_dob'] : null;
+    $marital_status = $conn->real_escape_string($post_data['perm_marital_status'] ?? 'Single');
+    $gender = $conn->real_escape_string($post_data['perm_gender'] ?? 'Male');
+    $nationality = $conn->real_escape_string($post_data['perm_nationality'] ?? 'Filipino');
+    $street_address = $conn->real_escape_string($post_data['perm_street_address'] ?? '');
+    $city = $conn->real_escape_string($post_data['perm_city'] ?? '');
+    $state_region = $conn->real_escape_string($post_data['perm_state_region'] ?? '');
+    $zip_code = $conn->real_escape_string($post_data['perm_zip_code'] ?? '');
+    $joining_date = !empty($post_data['perm_joining_date']) ? $post_data['perm_joining_date'] : null;
+    $eligibility = $conn->real_escape_string($post_data['perm_eligibility'] ?? 'Eligible');
+    $status = $conn->real_escape_string($post_data['perm_status'] ?? 'Active');
+
+    // Create full name
+    $full_name = trim(
+        ($user_data['full_name'] ?? '') ?:
+        ($user_data['first_name'] ?? '') . ' ' .
+        ($user_data['middle_name'] ?? '') . ' ' .
+        ($user_data['last_name'] ?? '')
+    );
+
+    if ($record_exists) {
+        // UPDATE existing record
+        $sql = "UPDATE permanent SET 
+                employee_id = ?,
+                full_name = ?,
+                position = ?,
+                office = ?,
+                monthly_salary = ?,
+                amount_accrued = ?,
+                mobile_number = ?,
+                email_address = ?,
+                date_of_birth = ?,
+                marital_status = ?,
+                gender = ?,
+                nationality = ?,
+                street_address = ?,
+                city = ?,
+                state_region = ?,
+                zip_code = ?,
+                joining_date = ?,
+                eligibility = ?,
+                status = ?,
+                updated_at = NOW()
+                WHERE user_id = ?";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "ssssddsssssssssssssi",
+            $employee_id,
+            $full_name,
+            $position,
+            $office,
+            $monthly_salary,
+            $amount_accrued,
+            $mobile_number,
+            $email,
+            $date_of_birth,
+            $marital_status,
+            $gender,
+            $nationality,
+            $street_address,
+            $city,
+            $state_region,
+            $zip_code,
+            $joining_date,
+            $eligibility,
+            $status,
+            $user_id
+        );
+
+        if (!$stmt->execute()) {
+            error_log("Error updating permanent employee: " . $stmt->error);
+        }
+        $stmt->close();
+    }
+}
+
+>>>>>>> ba53bcc15e0a30ad333fc1307c40f5fbc565458b
 // Function to validate password
 function validatePassword($password)
 {
@@ -359,6 +702,7 @@ function generateTemporaryPassword($length = 8)
     return str_shuffle($password);
 }
 
+<<<<<<< HEAD
 // Handle Send Verification Invitation
 if (isset($_POST['send_verification_invitation']) && $is_admin) {
     $invite_user_id = (int) $_POST['invite_user_id'];
@@ -392,9 +736,28 @@ if (isset($_POST['send_verification_invitation']) && $is_admin) {
                 updated_at = NOW() 
                 WHERE id = ?";
 
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssi", $hashed_temp_password, $temp_expiry, $invite_user_id);
+=======
+// Initialize messages
+$success_message = "";
+$error_message = "";
 
+// Handle Send Verification Invitation with better error handling
+if (isset($_POST['send_verification_invitation']) && $is_admin) {
+    $invite_user_id = (int) $_POST['invite_user_id'];
+    
+    // Start transaction
+    $conn->begin_transaction();
+    
+    try {
+        // Get user info
+        $sql = "SELECT id, email, full_name, employee_id, employment_type, first_name, last_name FROM users WHERE id = ?";
+>>>>>>> ba53bcc15e0a30ad333fc1307c40f5fbc565458b
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $invite_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+<<<<<<< HEAD
         if ($stmt->execute()) {
             $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'];
             $login_url = $base_url . dirname($_SERVER['PHP_SELF']) . "/login.php";
@@ -438,14 +801,253 @@ if (isset($_POST['send_verification_invitation']) && $is_admin) {
             } else {
                 $success_message = "User updated. Password: <code>$temp_password</code>";
                 logAuditTrail($conn, $user_id, 'invite', "Created credentials for: " . $user['full_name']);
-            }
-
-            $stmt->close();
-        } else {
-            $error_message = "Error sending invitation: " . $conn->error;
+=======
+        if ($result->num_rows === 0) {
+            throw new Exception("User not found!");
         }
-    } else {
-        $error_message = "User not found!";
+        
+        $user = $result->fetch_assoc();
+        $stmt->close();
+
+        // Generate temporary password (8 characters for user-friendly)
+        $temp_password = generateTemporaryPassword(8);
+
+        // Set expiration for temp password (24 hours)
+        $temp_expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
+
+        // Hash the temporary password
+        $hashed_temp_password = password_hash($temp_password, PASSWORD_DEFAULT);
+
+        // Update user with temporary password and expiry
+        $update_sql = "UPDATE users SET 
+                password_hash = ?, 
+                temporary_password_expiry = ?,
+                password_is_temporary = 1,
+                must_change_password = 1,
+                is_active = 1,
+                is_verified = 1,
+                account_status = 'ACTIVE',  
+                status = 'approved',        
+                last_verification_sent = NOW(), 
+                updated_at = NOW() 
+                WHERE id = ?";
+
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("ssi", $hashed_temp_password, $temp_expiry, $invite_user_id);
+
+        if (!$update_stmt->execute()) {
+            throw new Exception("Error updating user: " . $update_stmt->error);
+        }
+        $update_stmt->close();
+
+        // Generate login URL
+        $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'];
+        $login_url = $base_url . dirname($_SERVER['PHP_SELF']) . "/login.php";
+        $login_url = preg_replace('/([^:])(\/{2,})/', '$1/', $login_url);
+
+        // Send email notification
+        $email_sent = false;
+        $email_error = '';
+        
+        if (class_exists('Mailer')) {
+            try {
+                $mailer = new Mailer();
+
+                // Create email subject and body
+                $subject = "Your HRMS Account is Ready - Login Credentials";
+
+                // Create full name for display
+                $display_name = $user['full_name'] ?? trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+                if (empty($display_name)) {
+                    $display_name = 'User';
+                }
+
+                $body = "
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset='UTF-8'>
+                    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                    <title>HRMS Account Credentials</title>
+                    <style>
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                            line-height: 1.6; 
+                            color: #333; 
+                            background-color: #f8fafc;
+                            margin: 0;
+                            padding: 20px;
+                        }
+                        .container { 
+                            max-width: 650px; 
+                            margin: 0 auto; 
+                            background: white;
+                            border-radius: 12px;
+                            overflow: hidden;
+                            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+                        }
+                        .header { 
+                            background: linear-gradient(135deg, #0235a2 0%, #1e3a8a 100%); 
+                            color: white; 
+                            padding: 35px 30px;
+                            text-align: center; 
+                            border-bottom: 5px solid #2c6bc4;
+                        }
+                        .header h1 {
+                            margin: 0;
+                            font-size: 28px;
+                            font-weight: 700;
+                        }
+                        .header .subtitle {
+                            font-size: 16px;
+                            opacity: 0.9;
+                            margin-top: 10px;
+                        }
+                        .content { 
+                            padding: 40px 35px; 
+                        }
+                        .credentials-box { 
+                            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
+                            border: 2px solid #2c6bc4; 
+                            padding: 30px; 
+                            margin: 25px 0; 
+                            border-radius: 12px;
+                            border-left: 5px solid #2c6bc4;
+                        }
+                        .password-display {
+                            background: #1e293b;
+                            color: #ffffff;
+                            padding: 15px;
+                            border-radius: 8px;
+                            font-family: 'Courier New', monospace;
+                            font-size: 20px;
+                            letter-spacing: 2px;
+                            text-align: center;
+                            margin: 15px 0;
+                            border: 2px solid #2c6bc4;
+                            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                        }
+                        .login-button {
+                            display: inline-block;
+                            background: linear-gradient(135deg, #2c6bc4 0%, #1e4a8a 100%); 
+                            color: white; 
+                            padding: 18px 40px;
+                            text-decoration: none; 
+                            border-radius: 10px; 
+                            font-weight: 700;
+                            font-size: 18px;
+                            margin: 25px 0;
+                        }
+                        .warning-box { 
+                            background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%); 
+                            border-left: 5px solid #f59e0b; 
+                            padding: 22px; 
+                            margin: 25px 0; 
+                            border-radius: 8px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='header'>
+                            <h1>HR Management System Account</h1>
+                            <div class='subtitle'>Municipality of Paluan, Occidental Mindoro</div>
+                        </div>
+                        
+                        <div class='content'>
+                            <h2>Hello " . htmlspecialchars($display_name) . ",</h2>
+                            
+                            <p>Welcome to the HR Management System of Paluan! Your employee account has been successfully created and is ready for use.</p>
+                            
+                            <div class='warning-box'>
+                                <h4><i class='fas fa-shield-alt'></i> Important Security Notice</h4>
+                                <p>You have been provided with temporary credentials. For security reasons, you <strong>must</strong> change your password immediately after your first login.</p>
+                            </div>
+                            
+                            <div class='credentials-box'>
+                                <h3><i class='fas fa-key'></i> Your Login Credentials</h3>
+                                
+                                <p><strong>Login URL:</strong> " . htmlspecialchars($login_url) . "</p>
+                                <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
+                                <p><strong>Temporary Password:</strong></p>
+                                <div class='password-display'>" . htmlspecialchars($temp_password) . "</div>
+                                <p><em>Expires in 24 hours</em></p>
+                            </div>
+                            
+                            <div style='text-align: center;'>
+                                <a href='" . htmlspecialchars($login_url) . "' class='login-button'>
+                                    <i class='fas fa-sign-in-alt'></i> Go to Login Page
+                                </a>
+                            </div>
+                            
+                            <p><strong>Need Help?</strong> Contact HR Department: hrmo@paluan.gov.ph</p>
+                            
+                            <div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #64748b; font-size: 14px;'>
+                                <p>Best regards,<br>
+                                <strong>Human Resource Management Office</strong><br>
+                                Municipality of Paluan, Occidental Mindoro</p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                ";
+
+                // Send email using Mailer class
+                $email_result = $mailer->sendGeneralEmail(
+                    $user['email'],
+                    $display_name,
+                    $subject,
+                    $body
+                );
+
+                $email_sent = $email_result['success'] && $email_result['email_sent'];
+                
+                if (!$email_sent && isset($email_result['error'])) {
+                    $email_error = $email_result['error'];
+                }
+
+            } catch (Exception $e) {
+                $email_error = $e->getMessage();
+                error_log("Mailer error: " . $e->getMessage());
+>>>>>>> ba53bcc15e0a30ad333fc1307c40f5fbc565458b
+            }
+        } else {
+            $email_error = "Mailer class not found";
+            error_log("Mailer class not found");
+        }
+
+        // Commit transaction
+        $conn->commit();
+
+        // Log the action (with error handling for the audit log)
+        try {
+            logAuditTrail($conn, $user_id, 'invite', "Sent verification invitation to: " . ($user['full_name'] ?? $user['email']));
+        } catch (Exception $e) {
+            error_log("Failed to log audit trail: " . $e->getMessage());
+            // Don't throw here, we still want to show success message
+        }
+
+        if ($email_sent) {
+            $success_message = "Verification invitation sent successfully to " . htmlspecialchars($user['full_name'] ?? $user['email']) . "! Email has been delivered.";
+        } else {
+            // Display credentials on screen if email failed
+            $credentials_display = "
+            <div class='credentials-display' style='background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; border: 1px solid #ffc107;'>
+                <h4 style='color: #856404;'><i class='fas fa-exclamation-triangle'></i> Credentials for " . htmlspecialchars($user['full_name'] ?? $user['email']) . " (Email " . ($email_error ? "failed: $email_error" : "not sent") . "):</h4>
+                <p><strong>Email/Username:</strong> " . htmlspecialchars($user['email']) . "</p>
+                <p><strong>Temporary Password:</strong> <code style='background: #333; color: #fff; padding: 5px 10px; border-radius: 4px;'>$temp_password</code></p>
+                <p><strong>Login URL:</strong> $login_url</p>
+                <p><em>Please provide these credentials to the user manually.</em></p>
+            </div>";
+
+            $success_message = "Verification invitation prepared successfully!<br>" . $credentials_display;
+        }
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        $error_message = "Error sending invitation: " . $e->getMessage();
+        error_log("Invitation error: " . $e->getMessage());
     }
 }
 
@@ -809,6 +1411,68 @@ if ($is_admin) {
 if (!in_array($current_tab, $valid_tabs)) {
     $current_tab = $default_tab;
 }
+<<<<<<< HEAD
+=======
+
+// Add this near the top after database connection, before fetching users
+// Get current page for pagination
+$page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+$records_per_page = isset($system_settings['pagination_limit']) ? (int) $system_settings['pagination_limit'] : 10;
+$offset = ($page - 1) * $records_per_page;
+
+// Get total users count for pagination
+$total_users_query = "SELECT COUNT(*) as total FROM users";
+$total_users_result = $conn->query($total_users_query);
+$total_users = $total_users_result->fetch_assoc()['total'];
+$total_pages = ceil($total_users / $records_per_page);
+
+// Get users for user management with pagination - CORRECTED VERSION
+$users = [];
+$sql = "SELECT u.*, 
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.full_name
+                   WHEN u.employment_type = 'job_order' THEN jo.employee_name
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.full_name
+                   ELSE u.full_name
+               END as employee_full_name,
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.position
+                   WHEN u.employment_type = 'job_order' THEN jo.occupation
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.designation
+               END as employee_position,
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.office
+                   WHEN u.employment_type = 'job_order' THEN jo.office
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.office
+               END as employee_office,
+               CASE 
+                   WHEN u.employment_type = 'permanent' THEN p.employee_id
+                   WHEN u.employment_type = 'job_order' THEN jo.employee_id
+                   WHEN u.employment_type = 'contract_of_service' THEN cos.employee_id
+               END as emp_id
+        FROM users u
+        LEFT JOIN permanent p ON u.id = p.user_id AND u.employment_type = 'permanent'
+        LEFT JOIN job_order jo ON u.id = jo.user_id AND u.employment_type = 'job_order'
+        LEFT JOIN contractofservice cos ON u.id = cos.user_id AND u.employment_type = 'contract_of_service'
+        ORDER BY u.full_name ASC 
+        LIMIT ? OFFSET ?";
+
+$stmt = $conn->prepare($sql);
+if (!$stmt) {
+    die("Error preparing statement: " . $conn->error);
+}
+$stmt->bind_param("ii", $records_per_page, $offset);
+$stmt->execute();
+$result = $stmt->get_result();
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        // Use employee_full_name if available, otherwise fall back to users.full_name
+        $row['display_name'] = $row['employee_full_name'] ?? $row['full_name'];
+        $users[] = $row;
+    }
+}
+$stmt->close();
+>>>>>>> ba53bcc15e0a30ad333fc1307c40f5fbc565458b
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1936,6 +2600,334 @@ if (!in_array($current_tab, $valid_tabs)) {
                 <?php endif; ?>
             </div>
 
+<<<<<<< HEAD
+=======
+            <!-- Tab Contents -->
+            <?php if ($is_admin): ?>
+                <!-- System Settings Tab
+                <div id="system" class="tab-content <?php echo $current_tab == 'system' ? 'active' : ''; ?>">
+                    <div class="settings-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-cog"></i> General System Settings</h2>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="system_name">System Name <span>*</span></label>
+                                        <input type="text" class="form-control" id="system_name" name="system_name"
+                                            value="<?php echo htmlspecialchars($system_settings['system_name']); ?>"
+                                            required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="timezone">Timezone <span>*</span></label>
+                                        <select class="form-control form-select" id="timezone" name="timezone" required>
+                                            <option value="Asia/Manila" <?php echo $system_settings['timezone'] == 'Asia/Manila' ? 'selected' : ''; ?>>
+                                                Asia/Manila (GMT+8)</option>
+                                            <option value="UTC" <?php echo $system_settings['timezone'] == 'UTC' ? 'selected' : ''; ?>>UTC (GMT+0)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="date_format">Date Format <span>*</span></label>
+                                        <select class="form-control form-select" id="date_format" name="date_format"
+                                            required>
+                                            <option value="Y-m-d" <?php echo $system_settings['date_format'] == 'Y-m-d' ? 'selected' : ''; ?>>YYYY-MM-DD (2024-01-15)</option>
+                                            <option value="d/m/Y" <?php echo $system_settings['date_format'] == 'd/m/Y' ? 'selected' : ''; ?>>DD/MM/YYYY (15/01/2024)</option>
+                                            <option value="m/d/Y" <?php echo $system_settings['date_format'] == 'm/d/Y' ? 'selected' : ''; ?>>MM/DD/YYYY (01/15/2024)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="time_format">Time Format <span>*</span></label>
+                                        <select class="form-control form-select" id="time_format" name="time_format"
+                                            required>
+                                            <option value="H:i:s" <?php echo $system_settings['time_format'] == 'H:i:s' ? 'selected' : ''; ?>>24-hour (14:30:00)</option>
+                                            <option value="h:i:s A" <?php echo $system_settings['time_format'] == 'h:i:s A' ? 'selected' : ''; ?>>12-hour (02:30:00 PM)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="pagination_limit">Items Per Page
+                                            <span>*</span></label>
+                                        <select class="form-control form-select" id="pagination_limit"
+                                            name="pagination_limit" required>
+                                            <option value="10" <?php echo $system_settings['pagination_limit'] == 10 ? 'selected' : ''; ?>>10 items</option>
+                                            <option value="25" <?php echo $system_settings['pagination_limit'] == 25 ? 'selected' : ''; ?>>25 items</option>
+                                            <option value="50" <?php echo $system_settings['pagination_limit'] == 50 ? 'selected' : ''; ?>>50 items</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="session_timeout">Session Timeout (minutes)
+                                            <span>*</span></label>
+                                        <select class="form-control form-select" id="session_timeout" name="session_timeout"
+                                            required>
+                                            <option value="15" <?php echo $system_settings['session_timeout'] == 15 ? 'selected' : ''; ?>>15 minutes</option>
+                                            <option value="30" <?php echo $system_settings['session_timeout'] == 30 ? 'selected' : ''; ?>>30 minutes</option>
+                                            <option value="60" <?php echo $system_settings['session_timeout'] == 60 ? 'selected' : ''; ?>>1 hour</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="enable_registration"
+                                                name="enable_registration" value="1" <?php echo $system_settings['enable_registration'] ? 'checked' : ''; ?>>
+                                            <label class="form-check-label" for="enable_registration">
+                                                Enable User Registration
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="enable_remember_me"
+                                                name="enable_remember_me" value="1" <?php echo $system_settings['enable_remember_me'] ? 'checked' : ''; ?>>
+                                            <label class="form-check-label" for="enable_remember_me">
+                                                Enable Remember Me
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <button type="submit" name="update_system_settings" class="btn btn-primary">
+                                        <i class="fas fa-save"></i>
+                                        Save System Settings
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div> -->
+
+                <!-- User Management Tab -->
+                <div id="users" class="tab-content <?php echo $current_tab == 'users' ? 'active' : ''; ?>">
+                    <div class="settings-card">
+                        <div class="card-header"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            <h2><i class="fas fa-users"></i> User Management</h2>
+                            <!-- Search Bar integrated in header -->
+                            <div class="search-wrapper" style="width: 300px;">
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="userSearch" class="form-control border-left-0"
+                                        placeholder="Search users..." style="border-left: none; padding-left: 20;">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-container">
+                                <table class="table" id="usersTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Employee ID</th>
+                                            <th>Email</th>
+                                            <th>Username</th>
+                                            <th>Verification Status</th>
+                                            <th>Employment Type</th>
+                                            <th>Role</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($users as $user): ?>
+                                            <?php
+                                            // Get employment type
+                                            $emp_type = $user['employment_type'] ?? $user['employee_type'] ?? 'Not set';
+                                            $emp_type_display = ucfirst(str_replace('_', ' ', $emp_type));
+
+                                            // Determine badge class based on employment type
+                                            $emp_badge = 'badge-info';
+                                            if ($emp_type == 'permanent')
+                                                $emp_badge = 'badge-success';
+                                            elseif ($emp_type == 'job_order')
+                                                $emp_badge = 'badge-warning';
+                                            elseif ($emp_type == 'contract_of_service')
+                                                $emp_badge = 'badge-primary';
+
+                                            // Check invitation status
+                                            $has_username = !empty($user['username']);
+                                            $is_verified = $user['is_verified'] ?? 0;
+                                            $invitation_sent = !empty($user['last_verification_sent']);
+                                            $invitation_accepted = !empty($user['verified_at']);
+
+                                            if ($has_username && $is_verified) {
+                                                $verification_status = 'Verified';
+                                                $verification_badge = 'badge-success';
+                                            } elseif ($invitation_accepted) {
+                                                $verification_status = 'Accepted';
+                                                $verification_badge = 'badge-info';
+                                            } elseif ($invitation_sent) {
+                                                $verification_status = 'Invited';
+                                                $verification_badge = 'badge-warning';
+                                            } else {
+                                                $verification_status = 'Pending';
+                                                $verification_badge = 'badge-secondary';
+                                            }
+                                            ?>
+                                            <tr class="user-row" data-search="<?php
+                                            echo htmlspecialchars(strtolower(
+                                                ($user['display_name'] ?? '') . ' ' .
+                                                ($user['emp_id'] ?? '') . ' ' .
+                                                $user['email'] . ' ' .
+                                                ($user['username'] ?? '') . ' ' .
+                                                $verification_status . ' ' .
+                                                $emp_type_display . ' ' .
+                                                $user['role'] . ' ' .
+                                                ($user['is_active'] ? 'Active' : 'Inactive')
+                                            ));
+                                            ?>">
+                                                <td><?php echo htmlspecialchars($user['display_name'] ?? $user['full_name'] ?? 'N/A'); ?>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($user['emp_id'] ?? $user['employee_id'] ?? 'N/A'); ?>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($user['email']); ?></td>
+                                                <td>
+                                                    <?php if ($has_username): ?>
+                                                        <?php echo htmlspecialchars($user['username']); ?>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">Not set</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <span class="badge <?php echo $verification_badge; ?>">
+                                                        <?php echo $verification_status; ?>
+                                                        <?php if ($invitation_sent && !$invitation_accepted): ?>
+                                                            <br><small>Sent:
+                                                                <?php echo date('M d', strtotime($user['last_verification_sent'])); ?></small>
+                                                        <?php endif; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge <?php echo $emp_badge; ?>">
+                                                        <?php echo $emp_type_display; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge <?php echo $user['role'] == 'admin' ? 'badge-danger' : ($user['role'] == 'manager' ? 'badge-warning' : 'badge-info'); ?>">
+                                                        <?php echo ucfirst($user['role']); ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span
+                                                        class="badge <?php echo $user['is_active'] ? 'badge-success' : 'badge-danger'; ?>">
+                                                        <?php echo $user['is_active'] ? 'Active' : 'Inactive'; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div class="action-buttons" style="display: flex; gap: 0.25rem;">
+                                                        <button class="btn btn-secondary btn-sm"
+                                                            onclick="editUser(<?php echo $user['id']; ?>)">
+                                                            <i class="fas fa-edit"></i>
+                                                        </button>
+                                                        <?php if ($has_username): ?>
+                                                            <button class="btn btn-warning btn-sm"
+                                                                onclick="resetUserPassword(<?php echo $user['id']; ?>, '<?php echo addslashes($user['display_name'] ?? $user['full_name']); ?>')">
+                                                                <i class="fas fa-key"></i>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                        <?php if (!$has_username || !$is_verified): ?>
+                                                            <form method="POST" style="display: inline;">
+                                                                <input type="hidden" name="invite_user_id"
+                                                                    value="<?php echo $user['id']; ?>">
+                                                                <input type="hidden" name="send_verification_invitation" value="1">
+                                                                <button type="submit" class="btn btn-success btn-sm"
+                                                                    onclick="return confirm('Send verification invitation to <?php echo addslashes($user['display_name'] ?? $user['full_name']); ?>?')">
+                                                                    <i class="fas fa-paper-plane"></i>
+                                                                </button>
+                                                            </form>
+                                                        <?php endif; ?>
+                                                        <?php if ($user['id'] != $user_id): ?>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                onclick="openDeleteModal(<?php echo $user['id']; ?>, '<?php echo addslashes($user['display_name'] ?? $user['full_name']); ?>')">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Pagination -->
+                            <?php if ($total_pages > 1): ?>
+                                <div class="pagination-container"
+                                    style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                                    <div class="pagination-info" style="color: var(--gray-600);">
+                                        Showing <?php echo $offset + 1; ?> to
+                                        <?php echo min($offset + $records_per_page, $total_users); ?> of
+                                        <?php echo $total_users; ?> users
+                                    </div>
+                                    <div class="pagination" style="display: flex; gap: 5px;">
+                                        <!-- Previous button -->
+                                        <?php if ($page > 1): ?>
+                                            <a href="?tab=users&page=<?php echo $page - 1; ?>" class="btn btn-secondary btn-sm">
+                                                <i class="fas fa-chevron-left"></i> Previous
+                                            </a>
+                                        <?php else: ?>
+                                            <button class="btn btn-secondary btn-sm" disabled>
+                                                <i class="fas fa-chevron-left"></i> Previous
+                                            </button>
+                                        <?php endif; ?>
+
+                                        <!-- Page numbers -->
+                                        <div class="page-numbers" style="display: flex; gap: 5px;">
+                                            <?php
+                                            $start_page = max(1, $page - 2);
+                                            $end_page = min($total_pages, $page + 2);
+
+                                            if ($start_page > 1) {
+                                                echo '<a href="?tab=users&page=1" class="btn btn-secondary btn-sm">1</a>';
+                                                if ($start_page > 2) {
+                                                    echo '<span class="btn btn-secondary btn-sm" disabled>...</span>';
+                                                }
+                                            }
+
+                                            for ($i = $start_page; $i <= $end_page; $i++) {
+                                                if ($i == $page) {
+                                                    echo '<button class="btn btn-primary btn-sm" style="background: var(--primary); color: white;" disabled>' . $i . '</button>';
+                                                } else {
+                                                    echo '<a href="?tab=users&page=' . $i . '" class="btn btn-secondary btn-sm">' . $i . '</a>';
+                                                }
+                                            }
+
+                                            if ($end_page < $total_pages) {
+                                                if ($end_page < $total_pages - 1) {
+                                                    echo '<span class="btn btn-secondary btn-sm" disabled>...</span>';
+                                                }
+                                                echo '<a href="?tab=users&page=' . $total_pages . '" class="btn btn-secondary btn-sm">' . $total_pages . '</a>';
+                                            }
+                                            ?>
+                                        </div>
+
+                                        <!-- Next button -->
+                                        <?php if ($page < $total_pages): ?>
+                                            <a href="?tab=users&page=<?php echo $page + 1; ?>" class="btn btn-secondary btn-sm">
+                                                Next <i class="fas fa-chevron-right"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <button class="btn btn-secondary btn-sm" disabled>
+                                                Next <i class="fas fa-chevron-right"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+            <?php endif; ?>
+
+>>>>>>> ba53bcc15e0a30ad333fc1307c40f5fbc565458b
             <!-- Profile Tab -->
             <div id="profile" class="tab-content <?php echo $current_tab == 'profile' ? 'active' : ''; ?>">
                 <div class="settings-card">
