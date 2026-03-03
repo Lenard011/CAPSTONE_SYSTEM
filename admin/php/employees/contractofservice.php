@@ -13,20 +13,42 @@ header('X-XSS-Protection: 1; mode=block');
 // Check if user is logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     // Redirect to login page
-    header('Location: login.php');
+    header('Location: ../login.php');
     exit();
 }
 
-// Logout functionality
+// ===============================================
+// UPDATED LOGOUT FUNCTIONALITY - Enhanced version from dashboard.php
+// ===============================================
 if (isset($_GET['logout'])) {
-    // Destroy all session data
+    // Optional: Log the logout activity if you have an activity manager
+    // This would require the ActivityManager class to be available
+
+    // Clear session data
+    $_SESSION = array();
+
+    // Destroy session cookie if using cookies
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(
+            session_name(),
+            '',
+            time() - 42000,
+            $params["path"],
+            $params["domain"],
+            $params["secure"],
+            $params["httponly"]
+        );
+    }
+
+    // Destroy session
     session_destroy();
 
     // Clear remember me cookie
-    setcookie('remember_user', '', time() - 3600, "/");
+    setcookie('remember_user', '', time() - 3600, "/", "", true, true);
 
     // Redirect to login page
-    header('Location: login.php');
+    header('Location: ../login.php');
     exit();
 }
 
@@ -38,6 +60,7 @@ $user_email = isset($_SESSION['user_email']) ? $_SESSION['user_email'] : 'admin@
 if (!isset($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
+
 
 // Database Configuration
 define('DB_SERVER', 'localhost');
@@ -373,7 +396,6 @@ if (isset($_GET['edit_fetch_id'])) {
             echo json_encode(['success' => false, 'error' => 'Employee not found']);
         }
         exit();
-
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit();
@@ -671,7 +693,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $pdo->commit();
                     $success = "Employee record updated successfully!";
                     error_log("Employee updated successfully. ID: " . $edit_id);
-
                 } else {
                     $full_name = trim($_POST['first_name'] . ' ' .
                         (!empty($_POST['middle']) ? substr($_POST['middle'], 0, 1) . '. ' : '') .
@@ -741,7 +762,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Redirect to prevent form resubmission
                 header("Location: contractofservice.php");
                 exit();
-
             } catch (Exception $e) {
                 $pdo->rollBack();
                 $error = "Error: " . $e->getMessage();
@@ -834,7 +854,6 @@ try {
         }
         $employees[$key]['full_name_alt'] = !empty($alt_name_parts) ? implode(' ', $alt_name_parts) : 'No Name Provided';
     }
-
 } catch (PDOException $e) {
     error_log("Query execution error: " . $e->getMessage());
     $error_message = "Could not retrieve employee data.";
@@ -2793,7 +2812,7 @@ $office_options = [
                                         $status = $employee['status']; // This will be 'active' or 'inactive'
                                         $period_from = date('M d, Y', strtotime($employee['period_from']));
                                         $period_to = date('M d, Y', strtotime($employee['period_to']));
-                                        ?>
+                                    ?>
                                         <tr class="hover:bg-gray-50 transition-colors">
                                             <td class="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                                                 <?php echo $start_number + $index; ?>
@@ -2952,7 +2971,7 @@ $office_options = [
                                 // Show page numbers
                                 for ($i = $start_page; $i <= $end_page; $i++):
                                     $view_param = $view_inactive ? "&view=inactive" : "";
-                                    ?>
+                                ?>
                                     <a href="contractofservice.php?page=<?php echo $i; ?><?php echo $view_param; ?>&per_page=<?php echo $records_per_page; ?>"
                                         class="pagination-btn <?php echo ($i == $current_page) ? 'active' : ''; ?>">
                                         <?php echo $i; ?>
@@ -3539,12 +3558,12 @@ $office_options = [
         const overlay = document.getElementById('overlay');
 
         if (sidebarToggle && sidebarContainer && overlay) {
-            sidebarToggle.addEventListener('click', function () {
+            sidebarToggle.addEventListener('click', function() {
                 sidebarContainer.classList.toggle('active');
                 overlay.classList.toggle('active');
             });
 
-            overlay.addEventListener('click', function () {
+            overlay.addEventListener('click', function() {
                 sidebarContainer.classList.remove('active');
                 overlay.classList.remove('active');
             });
@@ -3555,7 +3574,7 @@ $office_options = [
         const payrollDropdown = document.getElementById('payroll-dropdown');
 
         if (payrollToggle && payrollDropdown) {
-            payrollToggle.addEventListener('click', function (e) {
+            payrollToggle.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 payrollDropdown.classList.toggle('open');
@@ -3779,13 +3798,30 @@ $office_options = [
             }
 
             // Documents
-            const fileFields = [
-                { id: 'doc_id', field: 'doc_id_path' },
-                { id: 'doc_resume', field: 'doc_resume_path' },
-                { id: 'doc_service', field: 'doc_service_path' },
-                { id: 'doc_appointment', field: 'doc_appointment_path' },
-                { id: 'doc_transcript', field: 'doc_transcript_path' },
-                { id: 'doc_eligibility', field: 'doc_eligibility_path' }
+            const fileFields = [{
+                    id: 'doc_id',
+                    field: 'doc_id_path'
+                },
+                {
+                    id: 'doc_resume',
+                    field: 'doc_resume_path'
+                },
+                {
+                    id: 'doc_service',
+                    field: 'doc_service_path'
+                },
+                {
+                    id: 'doc_appointment',
+                    field: 'doc_appointment_path'
+                },
+                {
+                    id: 'doc_transcript',
+                    field: 'doc_transcript_path'
+                },
+                {
+                    id: 'doc_eligibility',
+                    field: 'doc_eligibility_path'
+                }
             ];
 
             fileFields.forEach(fileField => {
@@ -3902,15 +3938,20 @@ $office_options = [
         // ===============================================
         // CLOSE MODAL FUNCTIONS
         // ===============================================
-        function closeModal() { hideModal('employeeModal'); }
+        function closeModal() {
+            hideModal('employeeModal');
+        }
+
         function closeViewModal() {
             hideModal('viewEmployeeModal');
             currentViewEmployeeId = null;
         }
+
         function closeInactivateModal() {
             hideModal('inactivateModal');
             inactivateEmployeeId = null;
         }
+
         function closeActivateModal() {
             hideModal('activateModal');
             activateEmployeeId = null;
@@ -3986,10 +4027,10 @@ $office_options = [
         // ===============================================
         // FORM SUBMISSION - FIXED
         // ===============================================
-        document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('employeeForm');
             if (form) {
-                form.addEventListener('submit', function (e) {
+                form.addEventListener('submit', function(e) {
                     e.preventDefault();
 
                     // Validate all steps
@@ -4023,7 +4064,7 @@ $office_options = [
 
             // Step navigation
             document.querySelectorAll('.step-nav').forEach(nav => {
-                nav.addEventListener('click', function () {
+                nav.addEventListener('click', function() {
                     const step = parseInt(this.getAttribute('data-step'));
                     if (step < currentStep || validateFormStep(currentStep)) {
                         currentStep = step;
@@ -4035,7 +4076,7 @@ $office_options = [
 
             // Next/Previous buttons
             document.querySelectorAll('.next-step').forEach(btn => {
-                btn.addEventListener('click', function () {
+                btn.addEventListener('click', function() {
                     const nextStep = parseInt(this.getAttribute('data-next'));
                     if (validateFormStep(currentStep)) {
                         currentStep = nextStep;
@@ -4046,7 +4087,7 @@ $office_options = [
             });
 
             document.querySelectorAll('.prev-step').forEach(btn => {
-                btn.addEventListener('click', function () {
+                btn.addEventListener('click', function() {
                     currentStep--;
                     showStep(currentStep);
                     updateStepNavigation();
@@ -4061,7 +4102,7 @@ $office_options = [
                 if (fileInput && fileStatus) {
                     zone.addEventListener('click', () => fileInput.click());
 
-                    fileInput.addEventListener('change', function () {
+                    fileInput.addEventListener('change', function() {
                         if (this.files.length > 0) {
                             const fileName = this.files[0].name;
                             const fileSize = (this.files[0].size / 1024 / 1024).toFixed(2);
@@ -4086,7 +4127,7 @@ $office_options = [
             const profileImageContainer = document.getElementById('profileImageContainer');
 
             if (profileImageInput && profileImageContainer) {
-                profileImageInput.addEventListener('change', function () {
+                profileImageInput.addEventListener('change', function() {
                     if (this.files && this.files[0]) {
                         const fileSize = (this.files[0].size / 1024 / 1024).toFixed(2);
                         if (fileSize > 5) {
@@ -4107,7 +4148,7 @@ $office_options = [
             // Confirmation buttons
             const confirmInactivateBtn = document.getElementById('confirmInactivateBtn');
             if (confirmInactivateBtn) {
-                confirmInactivateBtn.addEventListener('click', function () {
+                confirmInactivateBtn.addEventListener('click', function() {
                     if (inactivateEmployeeId) {
                         window.location.href = `contractofservice.php?inactivate_id=${inactivateEmployeeId}`;
                     }
@@ -4116,7 +4157,7 @@ $office_options = [
 
             const confirmActivateBtn = document.getElementById('confirmActivateBtn');
             if (confirmActivateBtn) {
-                confirmActivateBtn.addEventListener('click', function () {
+                confirmActivateBtn.addEventListener('click', function() {
                     if (activateEmployeeId) {
                         window.location.href = `contractofservice.php?activate_id=${activateEmployeeId}`;
                     }
@@ -4126,7 +4167,7 @@ $office_options = [
             // Close modals on backdrop click
             const backdrop = document.getElementById('modalBackdrop');
             if (backdrop) {
-                backdrop.addEventListener('click', function () {
+                backdrop.addEventListener('click', function() {
                     closeModal();
                     closeViewModal();
                     closeInactivateModal();
@@ -4183,7 +4224,10 @@ $office_options = [
             try {
                 const now = new Date();
                 const dateString = now.toLocaleDateString('en-US', {
-                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
                 });
 
                 let hours = now.getHours();

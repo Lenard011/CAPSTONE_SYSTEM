@@ -7,10 +7,37 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
-// Logout functionality
+// ===============================================
+// ENHANCED LOGOUT FUNCTIONALITY - From contractofservice.php
+// ===============================================
 if (isset($_GET['logout'])) {
+    // Optional: Log the logout activity if you have an activity manager
+    // This would require the ActivityManager class to be available
+
+    // Clear session data
+    $_SESSION = array();
+
+    // Destroy session cookie if using cookies
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(
+            session_name(),
+            '',
+            time() - 42000,
+            $params["path"],
+            $params["domain"],
+            $params["secure"],
+            $params["httponly"]
+        );
+    }
+
+    // Destroy session
     session_destroy();
-    setcookie('remember_user', '', time() - 3600, "/");
+
+    // Clear remember me cookie
+    setcookie('remember_user', '', time() - 3600, "/", "", true, true);
+
+    // Redirect to login page
     header('Location: login.php');
     exit();
 }
@@ -2282,7 +2309,7 @@ $departments = [
                 </div>
 
                 <!-- Settings -->
-                <a href="../settings.php" class="sidebar-item">
+                <a href="settings.php" class="sidebar-item">
                     <i class="fas fa-sliders-h"></i>
                     <span>Settings</span>
                 </a>

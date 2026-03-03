@@ -6,6 +6,41 @@
 // Start session for notifications
 session_start();
 
+// ===============================================
+// ENHANCED LOGOUT FUNCTIONALITY - From contractofservice.php
+// ===============================================
+if (isset($_GET['logout'])) {
+  // Optional: Log the logout activity if you have an activity manager
+  // This would require the ActivityManager class to be available
+
+  // Clear session data
+  $_SESSION = array();
+
+  // Destroy session cookie if using cookies
+  if (ini_get("session.use_cookies")) {
+    $params = session_get_cookie_params();
+    setcookie(
+      session_name(),
+      '',
+      time() - 42000,
+      $params["path"],
+      $params["domain"],
+      $params["secure"],
+      $params["httponly"]
+    );
+  }
+
+  // Destroy session
+  session_destroy();
+
+  // Clear remember me cookie
+  setcookie('remember_user', '', time() - 3600, "/", "", true, true);
+
+  // Redirect to login page
+  header('Location: ../login.php');
+  exit();
+}
+
 // Define database credentials
 define('DB_SERVER', 'localhost');
 define('DB_USERNAME', 'root');
@@ -779,7 +814,6 @@ if (isset($pdo)) {
 
     // Reset counter for current page
     $counter = ($current_page - 1) * $records_per_page + 1;
-
   } catch (PDOException $e) {
     error_log("Query execution error: " . $e->getMessage());
     $employees = [];
@@ -854,7 +888,6 @@ if (isset($_GET['get_employee_data']) && isset($_GET['id'])) {
       echo json_encode(['error' => 'Employee not found']);
     }
     exit;
-
   } catch (PDOException $e) {
     error_log("Get employee data error: " . $e->getMessage());
     echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
@@ -3075,16 +3108,16 @@ if (isset($_SESSION['error'])) {
     }
 
     .sidebar-item.logout {
-            color: #fecaca;
-            margin-top: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            padding-top: 1rem;
-        }
+      color: #fecaca;
+      margin-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 1rem;
+    }
 
-        .sidebar-item.logout:hover {
-            background: rgba(239, 68, 68, 0.15);
-            color: #fecaca;
-        }
+    .sidebar-item.logout:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fecaca;
+    }
   </style>
 </head>
 
@@ -4126,7 +4159,7 @@ if (isset($_SESSION['error'])) {
                   ];
 
                   foreach ($documents as $doc_name => $doc_path):
-                    ?>
+                  ?>
                     <div class="document-item">
                       <div class="document-icon">
                         <?php if (!empty($doc_path)): ?>
@@ -4903,7 +4936,7 @@ if (isset($_SESSION['error'])) {
         const newNav = nav.cloneNode(true);
         nav.parentNode.replaceChild(newNav, nav);
 
-        newNav.addEventListener('click', function (e) {
+        newNav.addEventListener('click', function(e) {
           e.preventDefault();
           const stepNumber = parseInt(this.getAttribute('data-step'));
 
@@ -4934,7 +4967,7 @@ if (isset($_SESSION['error'])) {
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
 
-        newBtn.addEventListener('click', function (e) {
+        newBtn.addEventListener('click', function(e) {
           e.preventDefault();
 
           // Find current active step
@@ -4982,7 +5015,7 @@ if (isset($_SESSION['error'])) {
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
 
-        newBtn.addEventListener('click', function (e) {
+        newBtn.addEventListener('click', function(e) {
           e.preventDefault();
 
           // Find current active step
@@ -5041,7 +5074,7 @@ if (isset($_SESSION['error'])) {
 
       // Step navigation click handlers
       stepNavs.forEach(nav => {
-        nav.addEventListener('click', function () {
+        nav.addEventListener('click', function() {
           const stepNumber = parseInt(this.getAttribute('data-step'));
 
           // Update active states
@@ -5070,7 +5103,7 @@ if (isset($_SESSION['error'])) {
 
       // Next button click handlers
       nextBtns.forEach(btn => {
-        btn.addEventListener('click', function (e) {
+        btn.addEventListener('click', function(e) {
           e.preventDefault();
 
           // Find current active step
@@ -5115,7 +5148,7 @@ if (isset($_SESSION['error'])) {
 
       // Previous button click handlers
       prevBtns.forEach(btn => {
-        btn.addEventListener('click', function (e) {
+        btn.addEventListener('click', function(e) {
           e.preventDefault();
 
           // Find current active step
@@ -5240,7 +5273,7 @@ if (isset($_SESSION['error'])) {
 
     // Initialize edit modal steps when the modal is opened
     const originalPopulateEditForm = populateEditForm;
-    populateEditForm = function (data) {
+    populateEditForm = function(data) {
       // Call the original function
       originalPopulateEditForm(data);
 
@@ -5276,13 +5309,13 @@ if (isset($_SESSION['error'])) {
     };
 
     // Also initialize when the page loads
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', function() {
       // Initialize edit modal steps
       initEditModalSteps();
 
       // Re-initialize when modal is opened via the edit button
-      const observer = new MutationObserver(function (mutations) {
-        mutations.forEach(function (mutation) {
+      const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
           if (mutation.attributeName === 'class') {
             const modal = mutation.target;
             if (modal.classList.contains('active') && modal.id === 'editEmployeeModal') {
@@ -5294,7 +5327,9 @@ if (isset($_SESSION['error'])) {
 
       const editModal = document.getElementById('editEmployeeModal');
       if (editModal) {
-        observer.observe(editModal, { attributes: true });
+        observer.observe(editModal, {
+          attributes: true
+        });
       }
     });
   </script>
@@ -5394,13 +5429,13 @@ if (isset($_SESSION['error'])) {
     // INITIALIZATION
     // ===============================================
 
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', function() {
       console.log('Pagination initialized');
 
       // Add Enter key support for search
       const searchInput = document.getElementById('simple-search');
       if (searchInput) {
-        searchInput.addEventListener('keypress', function (e) {
+        searchInput.addEventListener('keypress', function(e) {
           if (e.key === 'Enter') {
             searchEmployees();
           }
@@ -5424,7 +5459,7 @@ if (isset($_SESSION['error'])) {
 
       // Close notification buttons
       document.querySelectorAll('.notification-close').forEach(btn => {
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', function() {
           const notification = this.closest('.notification');
           if (notification) {
             notification.classList.add('hide');
@@ -5480,10 +5515,10 @@ if (isset($_SESSION['error'])) {
     }
 
     // Update pagination buttons to use the new goToPage function
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', function() {
       // Add loading indicators to pagination buttons
       document.querySelectorAll('.pagination-btn[href]').forEach(link => {
-        link.addEventListener('click', function (e) {
+        link.addEventListener('click', function(e) {
           // Only show loading for page changes, not first/last/prev/next icons
           if (!this.querySelector('i')) {
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -5885,7 +5920,7 @@ if (isset($_SESSION['error'])) {
         payrollDropdown.classList.remove('open');
 
         // Add click event
-        payrollToggle.addEventListener('click', function (e) {
+        payrollToggle.addEventListener('click', function(e) {
           e.preventDefault();
           e.stopPropagation();
           payrollDropdown.classList.toggle('open');
@@ -5898,7 +5933,7 @@ if (isset($_SESSION['error'])) {
         });
 
         // Close dropdown when clicking outside
-        document.addEventListener('click', function (event) {
+        document.addEventListener('click', function(event) {
           if (!payrollToggle.contains(event.target) && !payrollDropdown.contains(event.target)) {
             payrollDropdown.classList.remove('open');
             const chevron = payrollToggle.querySelector('.chevron');
@@ -5920,12 +5955,12 @@ if (isset($_SESSION['error'])) {
       const overlay = document.getElementById('overlay');
 
       if (sidebarToggle && sidebarContainer && overlay) {
-        sidebarToggle.addEventListener('click', function () {
+        sidebarToggle.addEventListener('click', function() {
           sidebarContainer.classList.toggle('active');
           overlay.classList.toggle('active');
         });
 
-        overlay.addEventListener('click', function () {
+        overlay.addEventListener('click', function() {
           sidebarContainer.classList.remove('active');
           overlay.classList.remove('active');
         });
@@ -6071,11 +6106,11 @@ if (isset($_SESSION['error'])) {
     // 9. INITIALIZATION
     // =========================================
 
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', function() {
       // Search functionality
       const searchInput = document.getElementById('simple-search');
       if (searchInput) {
-        searchInput.addEventListener('input', function () {
+        searchInput.addEventListener('input', function() {
           searchEmployees();
         });
 
@@ -6171,13 +6206,13 @@ if (isset($_SESSION['error'])) {
         const preview = zone.querySelector('.file-preview');
 
         if (fileInput) {
-          zone.addEventListener('click', function (e) {
+          zone.addEventListener('click', function(e) {
             if (e.target !== fileInput && !e.target.closest('.file-preview')) {
               fileInput.click();
             }
           });
 
-          fileInput.addEventListener('change', function () {
+          fileInput.addEventListener('change', function() {
             if (this.files.length > 0) {
               const file = this.files[0];
               if (preview) {
@@ -6196,7 +6231,7 @@ if (isset($_SESSION['error'])) {
       });
 
       // Remove file function
-      window.removeFile = function (button) {
+      window.removeFile = function(button) {
         const preview = button.closest('.file-preview');
         const fileInput = preview.parentElement.querySelector('input[type="file"]');
         if (fileInput) fileInput.value = '';
@@ -6206,7 +6241,7 @@ if (isset($_SESSION['error'])) {
       // Open add employee modal
       const openAddModalBtn = document.getElementById('openAddEmployeeModal');
       if (openAddModalBtn) {
-        openAddModalBtn.addEventListener('click', function () {
+        openAddModalBtn.addEventListener('click', function() {
           openModal('addEmployeeModal');
           showStep(1);
         });
@@ -6214,7 +6249,7 @@ if (isset($_SESSION['error'])) {
 
       // Edit employee - UPDATED VERSION with step navigation fix
       document.querySelectorAll('.edit-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', async function (e) {
+        btn.addEventListener('click', async function(e) {
           e.preventDefault();
 
           const employeeId = this.getAttribute('data-employee-id');
@@ -6376,12 +6411,12 @@ if (isset($_SESSION['error'])) {
             const imagePath = `uploads/job_order_documents/${data.profile_image_path}`;
             // Create new image element
             const img = new Image();
-            img.onload = function () {
+            img.onload = function() {
               profileContainer.innerHTML = '';
               profileContainer.appendChild(img);
               img.className = 'w-full h-full object-cover';
             };
-            img.onerror = function () {
+            img.onerror = function() {
               profileContainer.innerHTML = '<i class="fas fa-user text-gray-400 text-4xl"></i>';
             };
             img.src = imagePath;
@@ -6389,13 +6424,30 @@ if (isset($_SESSION['error'])) {
         }
 
         // Update document status
-        const docFields = [
-          { input: 'edit_doc_id', path: data.doc_id_path },
-          { input: 'edit_doc_resume', path: data.doc_resume_path },
-          { input: 'edit_doc_service', path: data.doc_service_path },
-          { input: 'edit_doc_appointment', path: data.doc_appointment_path },
-          { input: 'edit_doc_transcript', path: data.doc_transcript_path },
-          { input: 'edit_doc_eligibility', path: data.doc_eligibility_path }
+        const docFields = [{
+            input: 'edit_doc_id',
+            path: data.doc_id_path
+          },
+          {
+            input: 'edit_doc_resume',
+            path: data.doc_resume_path
+          },
+          {
+            input: 'edit_doc_service',
+            path: data.doc_service_path
+          },
+          {
+            input: 'edit_doc_appointment',
+            path: data.doc_appointment_path
+          },
+          {
+            input: 'edit_doc_transcript',
+            path: data.doc_transcript_path
+          },
+          {
+            input: 'edit_doc_eligibility',
+            path: data.doc_eligibility_path
+          }
         ];
 
         docFields.forEach(doc => {
@@ -6525,7 +6577,7 @@ if (isset($_SESSION['error'])) {
 
       // Archive employee
       document.querySelectorAll('.archive-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', function() {
           const employeeId = this.getAttribute('data-employee-id');
           const employeeName = this.getAttribute('data-employee-name');
           document.getElementById('archive_employee_id').value = employeeId;
@@ -6536,7 +6588,7 @@ if (isset($_SESSION['error'])) {
 
       // Restore employee
       document.querySelectorAll('.restore-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', function() {
           const employeeId = this.getAttribute('data-employee-id');
           const employeeName = this.getAttribute('data-employee-name');
           document.getElementById('restore_employee_id').value = employeeId;
@@ -6547,7 +6599,7 @@ if (isset($_SESSION['error'])) {
 
       // View employee
       document.querySelectorAll('.view-trigger-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', function() {
           const employeeId = this.getAttribute('data-employee-id');
           const url = new URL(window.location.href);
           url.searchParams.set('view_id', employeeId);

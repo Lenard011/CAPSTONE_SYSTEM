@@ -3,7 +3,42 @@ session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header('Location: login.php');
+    header('Location: ../login.php');
+    exit();
+}
+
+// ===============================================
+// ENHANCED LOGOUT FUNCTIONALITY - From contractofservice.php
+// ===============================================
+if (isset($_GET['logout'])) {
+    // Optional: Log the logout activity if you have an activity manager
+    // This would require the ActivityManager class to be available
+
+    // Clear session data
+    $_SESSION = array();
+
+    // Destroy session cookie if using cookies
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(
+            session_name(),
+            '',
+            time() - 42000,
+            $params["path"],
+            $params["domain"],
+            $params["secure"],
+            $params["httponly"]
+        );
+    }
+
+    // Destroy session
+    session_destroy();
+
+    // Clear remember me cookie
+    setcookie('remember_user', '', time() - 3600, "/", "", true, true);
+
+    // Redirect to login page
+    header('Location: ../login.php');
     exit();
 }
 
@@ -2046,12 +2081,6 @@ try {
                         </div>
                     </div>
                 </div>
-
-                <!-- Logout Button -->
-                <a href="?logout=true" class="logout-btn" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(239, 68, 68, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 50px; padding: 0.5rem 1rem; color: white; text-decoration: none; transition: all 0.3s ease; font-weight: 500; font-size: 0.9rem;">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
             </div>
         </div>
     </nav>
